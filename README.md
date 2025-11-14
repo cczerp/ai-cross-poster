@@ -92,6 +92,32 @@ pip install -e .
 
 ## ⚡ Quick Start
 
+### Main CLI Application (Recommended)
+
+Run the all-in-one menu-driven interface:
+
+```bash
+# Configure your credentials first
+cp .env.example .env
+# Edit .env with your API keys
+
+# Run the main application
+python main.py
+```
+
+**Main Menu Options:**
+1. Create New Listing (Manual)
+2. Create Listing from Photos (AI Analysis)
+3. Enhance Current Listing with AI
+4. Preview Current Listing
+5. Publish to eBay
+6. Publish to Mercari
+7. Publish to All Platforms
+8. View Publishing History
+9. Load Example Listing
+
+### Python API Usage
+
 ```python
 from dotenv import load_dotenv
 from src.schema import UnifiedListing, Photo, Price, ListingCondition

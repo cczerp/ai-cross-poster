@@ -284,20 +284,30 @@ OPENAI_API_KEY=sk-proj-your-key-here
 
 **Step 1: Create Anthropic Account**
 1. Go to https://console.anthropic.com/
-2. Sign up for an account
-3. Verify your email
+2. Click "Sign Up" (top right)
+3. Create account with email or Google
+4. Verify your email
 
-**Step 2: Add Credits**
-1. Go to https://console.anthropic.com/settings/billing
-2. Add a payment method
-3. Add credits ($10 minimum recommended)
+**Step 2: Navigate to API Keys**
+1. Once logged in to the console
+2. Look for "API Keys" in the left sidebar (or Settings → API Keys)
+3. **Alternative**: Direct link: https://console.anthropic.com/settings/keys
+4. If you see a workspace selector, make sure you're in the right workspace
 
-**Step 3: Create API Key**
-1. Go to https://console.anthropic.com/settings/keys
-2. Click "Create Key"
+**Step 3: Add Credits (Required before creating keys)**
+1. Click "Billing" in left sidebar (or go to https://console.anthropic.com/settings/billing)
+2. Click "Purchase Credits"
+3. Add payment method
+4. Purchase credits ($5 minimum, $10 recommended)
+5. Wait for credits to appear in your account
+
+**Step 4: Create API Key**
+1. Go back to "API Keys" section
+2. Click "+ Create Key" button
 3. Name it: "AI Cross-Poster" (or your choice)
-4. Copy the key (starts with `sk-ant-...`)
-   - ⚠️ **Save it immediately** - you can't see it again!
+4. Click "Create Key"
+5. **IMPORTANT**: Copy the key immediately (starts with `sk-ant-...`)
+   - ⚠️ **You can only see it once!** Save it now or you'll have to create a new one
 
 **Add to .env:**
 ```env
@@ -305,6 +315,12 @@ ANTHROPIC_API_KEY=sk-ant-your-key-here
 ```
 
 **Pricing**: ~$0.01-0.02 per image analysis with Claude 3.5 Sonnet
+
+**Troubleshooting:**
+- **Can't find API Keys?** Make sure you're logged in to the **Console** (console.anthropic.com), not the chat interface (claude.ai)
+- **No API Keys option?** You need to purchase credits first (Step 3 above)
+- **Workspace issues?** Click your profile (bottom left) and check which workspace you're in
+- **Need help?** Visit https://docs.anthropic.com/claude/reference/getting-started-with-the-api
 
 ---
 

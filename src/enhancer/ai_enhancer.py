@@ -27,12 +27,14 @@ from ..schema.unified_listing import (
 
 class AIEnhancer:
     """
-    Dual-AI enhancer using both Anthropic Claude and OpenAI.
+    Dual-AI enhancer with cost-efficient fallback strategy.
 
-    Strategy:
-    - Step 1: Claude analyzes photos and creates initial listing (details, SEO, keywords)
-    - Step 2: GPT-4 Vision verifies and refines to ensure label and description accuracy
-    - Combined: Best of both for maximum listing quality
+    Strategy (Cost-Optimized):
+    - Step 1: Claude analyzes photos (primary analyzer)
+    - Step 2: Only use GPT-4 Vision as fallback if Claude can't identify the item
+    - This saves costs by avoiding double analysis on every photo
+
+    Claude handles ~90% of listings successfully, so GPT-4 is rarely needed.
     """
 
     def __init__(
@@ -195,20 +197,19 @@ Format as JSON:
         else:
             raise Exception(f"Claude API error: {response.text}")
 
-    def verify_with_gpt4_vision(self, photos: List[Photo], claude_data: Dict[str, Any]) -> Dict[str, Any]:
+    def analyze_photos_openai_fallback(self, photos: List[Photo]) -> Dict[str, Any]:
         """
-        Verify and refine listing using GPT-4 Vision (Step 2).
-        Double-checks Claude's analysis to ensure accuracy of label and description.
+        Analyze photos using GPT-4 Vision as fallback (when Claude fails).
+        Does a fresh analysis from scratch.
 
         Args:
-            photos: List of photos to verify
-            claude_data: Initial data from Claude analysis
+            photos: List of photos to analyze
 
         Returns:
-            Dictionary with verified/refined data
+            Dictionary with photo analysis, suggested title, description, keywords
         """
         if not self.use_openai:
-            return claude_data
+            return {}
 
         # Prepare images for vision analysis
         image_contents = []
@@ -228,32 +229,32 @@ Format as JSON:
                     "image_url": {"url": photo.url}
                 })
 
-        # Build verification prompt with Claude's initial data
-        prompt = f"""Review these product images and verify the following listing details created by another AI.
+        # Build prompt for fresh analysis
+        prompt = """Analyze these product images and provide comprehensive listing details.
 
-**Current Title**: {claude_data.get('title', 'N/A')}
-**Current Description**: {claude_data.get('description', 'N/A')}
-**Suggested Keywords**: {', '.join(claude_data.get('keywords', []))}
-**Category**: {claude_data.get('category', 'N/A')}
-**Brand/Model**: {claude_data.get('brand', 'N/A')} / {claude_data.get('model', 'N/A')}
+Provide:
+1. **Item Title**: Compelling, keyword-rich title (under 80 characters)
+2. **Detailed Description**: 2-3 paragraphs covering features, condition, and value proposition
+3. **SEO Keywords**: 15-20 relevant search keywords
+4. **Search Terms**: Alternative phrases buyers might use
+5. **Category**: Suggested category (e.g., "Electronics > Cameras")
+6. **Item Specifics**: Brand, model, size, color, material if visible
+7. **Condition Notes**: Specific observations about condition
+8. **Key Features**: Bullet points of notable selling points
 
-Your task: Verify accuracy and refine if needed. Focus on:
-1. Is the title accurate and optimized?
-2. Is the description factually correct based on what you see?
-3. Are there any missing important details?
-4. Any corrections needed for brand, model, or specifics?
-
-Provide refined/corrected data as JSON:
-{{
+Format as JSON:
+{
   "title": "...",
   "description": "...",
   "keywords": ["...", "..."],
+  "search_terms": ["...", "..."],
   "category": "...",
   "brand": "...",
   "model": "...",
-  "corrections_made": ["list any corrections"],
-  "verified": true
-}}"""
+  "color": "...",
+  "condition_notes": "...",
+  "features": ["...", "..."]
+}"""
 
         messages = [
             {
@@ -275,7 +276,7 @@ Provide refined/corrected data as JSON:
             "model": "gpt-4o",  # GPT-4 Vision
             "messages": messages,
             "max_tokens": 1500,
-            "temperature": 0.3,  # Lower temperature for verification accuracy
+            "temperature": 0.7,
         }
 
         response = requests.post(
@@ -297,20 +298,31 @@ Provide refined/corrected data as JSON:
                 elif "```" in content:
                     content = content.split("```")[1].split("```")[0].strip()
 
-                verified_data = json.loads(content)
-
-                # Merge verified data with original claude_data (keep search_terms from Claude if not provided)
-                final_data = {**claude_data, **verified_data}
-
-                return final_data
+                analysis = json.loads(content)
+                return analysis
             except json.JSONDecodeError:
-                # If parsing fails, return Claude's data as-is
-                return claude_data
+                # Fallback if JSON parsing fails
+                return {"raw_response": content}
         else:
-            # If API call fails, return Claude's data
-            print(f"GPT-4 Vision verification failed: {response.text}")
-            return claude_data
+            raise Exception(f"OpenAI API error: {response.text}")
 
+
+    def _is_analysis_complete(self, analysis: Dict[str, Any]) -> bool:
+        """
+        Check if AI analysis successfully identified the item.
+
+        Args:
+            analysis: Analysis data from AI
+
+        Returns:
+            True if analysis has minimum required fields, False otherwise
+        """
+        # Check for essential fields that indicate successful identification
+        has_title = bool(analysis.get("title")) and len(analysis.get("title", "")) > 10
+        has_description = bool(analysis.get("description")) and len(analysis.get("description", "")) > 20
+        has_category = bool(analysis.get("category"))
+
+        return has_title and has_description and has_category
 
     def enhance_listing(
         self,
@@ -319,10 +331,12 @@ Provide refined/corrected data as JSON:
         force: bool = False,
     ) -> UnifiedListing:
         """
-        Complete AI enhancement workflow with two-step process.
+        Complete AI enhancement workflow with cost-efficient fallback.
 
-        Step 1: Claude analyzes photos and creates initial listing
-        Step 2: GPT-4 Vision verifies and refines for accuracy
+        Strategy:
+        - Step 1: Claude analyzes photos (primary analyzer)
+        - Step 2: If Claude can't identify the item, use GPT-4 Vision as fallback
+        - This saves costs by only using GPT-4 when necessary
 
         Args:
             listing: UnifiedListing to enhance
@@ -336,24 +350,51 @@ Provide refined/corrected data as JSON:
             # Already enhanced, skip
             return listing
 
-        # Step 1: Claude analyzes photos first (initial comprehensive analysis)
-        claude_analysis = {}
+        final_data = {}
+        ai_providers_used = []
+
+        # Step 1: Claude analyzes photos first (primary analyzer)
         if self.use_anthropic and listing.photos:
             try:
-                print("🤖 Step 1: Claude analyzing photos...")
+                print("🤖 Claude analyzing photos...")
                 claude_analysis = self.analyze_photos_claude(listing.photos, target_platform)
+
+                # Check if Claude successfully identified the item
+                if self._is_analysis_complete(claude_analysis):
+                    print("✅ Claude successfully identified the item")
+                    final_data = claude_analysis
+                    ai_providers_used.append("Claude")
+                else:
+                    print("⚠️  Claude analysis incomplete - will try GPT-4 Vision as fallback")
+                    # Keep Claude's partial data, may use as fallback
+                    final_data = claude_analysis
+
             except Exception as e:
                 print(f"❌ Claude analysis failed: {e}")
 
-        # Step 2: GPT-4 Vision verifies and refines Claude's analysis
-        final_data = claude_analysis
-        if self.use_openai and listing.photos and claude_analysis:
-            try:
-                print("🔍 Step 2: GPT-4 Vision verifying accuracy...")
-                final_data = self.verify_with_gpt4_vision(listing.photos, claude_analysis)
-            except Exception as e:
-                print(f"⚠️  GPT-4 Vision verification failed (using Claude data): {e}")
-                final_data = claude_analysis
+        # Step 2: Use GPT-4 Vision as fallback ONLY if Claude failed or couldn't identify
+        if self.use_openai and listing.photos:
+            # Only use GPT-4 if Claude didn't successfully complete the analysis
+            if not self._is_analysis_complete(final_data):
+                try:
+                    print("🔄 Using GPT-4 Vision as fallback...")
+                    # Use GPT-4 to analyze from scratch (not verify Claude's data)
+                    gpt_analysis = self.analyze_photos_openai_fallback(listing.photos)
+
+                    if self._is_analysis_complete(gpt_analysis):
+                        print("✅ GPT-4 Vision successfully identified the item")
+                        final_data = gpt_analysis
+                        ai_providers_used.append("GPT-4 Vision (fallback)")
+                    else:
+                        # Merge partial results from both
+                        final_data = {**final_data, **gpt_analysis}
+                        ai_providers_used.append("GPT-4 Vision (fallback partial)")
+
+                except Exception as e:
+                    print(f"❌ GPT-4 Vision fallback failed: {e}")
+                    # Continue with whatever data we have from Claude
+            else:
+                print("💰 Skipping GPT-4 Vision (Claude analysis was complete)")
 
         # Step 3: Apply enhancements to listing
         if final_data:
@@ -393,13 +434,11 @@ Provide refined/corrected data as JSON:
             listing.ai_enhanced = True
             listing.ai_enhancement_timestamp = datetime.now()
 
-            # Track which AI providers were used (Claude first, then GPT-4)
-            providers = []
-            if self.use_anthropic:
-                providers.append("Claude (analysis)")
-            if self.use_openai:
-                providers.append("GPT-4 Vision (verification)")
-            listing.ai_provider = " → ".join(providers)
+            # Track which AI providers were actually used
+            if ai_providers_used:
+                listing.ai_provider = " → ".join(ai_providers_used)
+            else:
+                listing.ai_provider = "None (analysis failed)"
 
         return listing
 

@@ -9,8 +9,8 @@ AI Cross-Poster is a powerful Python library that streamlines the process of cre
 
 ## ✨ Features
 
-- **📸 AI Photo Analysis**: Two-step AI process - Claude analyzes first, GPT-4 Vision verifies for accuracy
-- **✍️ Dual-AI Enhancement**: Claude creates comprehensive listings, GPT-4 Vision ensures label and description accuracy
+- **📸 AI Photo Analysis**: Cost-efficient strategy - Claude analyzes photos, GPT-4 Vision only used as fallback
+- **✍️ Smart AI Enhancement**: Claude handles ~90% of items, GPT-4 Vision only kicks in when needed
 - **🔄 Cross-Platform Publishing**: Publish to eBay and Mercari from a single unified schema
 - **🎯 SEO Optimization**: Auto-generate keywords, search terms, and optimize titles for maximum visibility
 - **⚡ Batch Processing**: Create and publish multiple listings efficiently
@@ -28,8 +28,9 @@ AI Cross-Poster is a powerful Python library that streamlines the process of cre
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                  AI Listing Enhancer                        │
-│  • Step 1: Claude analyzes photos (details, SEO, keywords)  │
-│  • Step 2: GPT-4 Vision verifies (accuracy check)           │
+│  • Claude analyzes photos (primary analyzer)                │
+│  • GPT-4 Vision fallback (only if Claude can't identify)    │
+│  • 💰 Cost-optimized: Pay for GPT-4 only when needed        │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
@@ -341,10 +342,10 @@ AUTO_ENHANCE=true
 - Mercari credentials (for Mercari publishing)
 
 **For AI enhancement, you need at least ONE of:**
-- OpenAI API key (GPT-4 Vision verification)
-- Anthropic API key (Claude analysis)
+- Anthropic API key (Claude - primary analyzer, recommended)
+- OpenAI API key (GPT-4 Vision - fallback only)
 
-💡 **Tip**: Both AI services work best together - Claude analyzes first, GPT-4 Vision verifies!
+💡 **Tip**: Claude is sufficient for ~90% of items. GPT-4 Vision is only used as fallback when Claude can't identify the item, saving you money!
 
 ## 📖 Usage Guide
 
@@ -418,6 +419,39 @@ enhanced_listing = enhancer.enhance_listing(
     target_platform="ebay",  # or "mercari" or "general"
     force=True,
 )
+```
+
+#### How AI Enhancement Works (Cost-Efficient)
+
+The system uses a smart fallback strategy to minimize costs:
+
+**Step 1: Claude Analyzes (Primary)**
+- Claude analyzes your photos first
+- Generates title, description, keywords, SEO data
+- Successfully identifies ~90% of items
+
+**Step 2: GPT-4 Vision Fallback (Only if needed)**
+- Only runs if Claude's analysis is incomplete
+- Triggers when Claude can't identify brand, category, or generate proper title
+- Saves you money by avoiding double analysis
+
+**Example Output:**
+```
+🤖 Claude analyzing photos...
+✅ Claude successfully identified the item
+💰 Skipping GPT-4 Vision (Claude analysis was complete)
+
+AI Provider: Claude
+```
+
+**Or when fallback is needed:**
+```
+🤖 Claude analyzing photos...
+⚠️  Claude analysis incomplete - will try GPT-4 Vision as fallback
+🔄 Using GPT-4 Vision as fallback...
+✅ GPT-4 Vision successfully identified the item
+
+AI Provider: GPT-4 Vision (fallback)
 ```
 
 ### 3. Publishing

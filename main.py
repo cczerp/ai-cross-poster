@@ -4,6 +4,62 @@ AI Cross-Poster - Main CLI Application
 ======================================
 Unified menu-driven interface for creating, enhancing, and publishing listings.
 """
+###   TO ADD 
+# --------------------------------------------------------------
+# CROSS-LISTER SCAFFOLD (COMMENTED OUT FOR SAFE INSERTION)
+# --------------------------------------------------------------
+
+# from utils.playwright_setup import get_browser
+# from listing_data import ListingData
+# from platforms.mercari import Mercari
+# from platforms.poshmark import Poshmark
+# from platforms.facebook import Facebook
+# from platforms.ebay import Ebay
+
+# def run_cross_lister_example():
+#     """
+#     This is an example scaffold showing how the cross-lister works.
+#     All lines are commented out so you can paste this block anywhere
+#     without affecting your current code.
+#     Claude can safely uncomment and integrate when you're ready.
+#     """
+
+#     # Launch browser
+#     # pw, browser, context, page = get_browser(headless=False)
+
+#     # Example listing data object
+#     # data = ListingData(
+#     #     title="Vintage Levi's Denim Jacket",
+#     #     description="Classic 90s denim jacket in excellent shape.",
+#     #     price=45.00,
+#     #     condition="Good",
+#     #     images=[
+#     #         "images/jacket1.jpg",
+#     #         "images/jacket2.jpg"
+#     #     ]
+#     # )
+
+#     # Platform modules (all optional to enable later)
+#     # mercari = Mercari(page)
+#     # posh = Poshmark(page)
+#     # fb = Facebook(page)
+#     # ebay = Ebay(page)
+
+#     # ---- LOGIN STEPS (enable as needed) ----
+#     # await mercari.login()
+#     # await posh.login()
+#     # await fb.login()
+#     # await ebay.login()
+
+#     # ---- LISTING CREATION STEPS ----
+#     # await mercari.create_listing(data)
+#     # await posh.create_listing(data)
+#     # await fb.create_listing(data)
+#     # await ebay.create_listing(data)
+
+# --------------------------------------------------------------
+# END OF CROSS-LISTER SCAFFOLD
+# --------------------------------------------------------------
 
 import os
 import sys

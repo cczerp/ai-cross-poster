@@ -9,8 +9,8 @@ AI Cross-Poster is a powerful Python library that streamlines the process of cre
 
 ## ✨ Features
 
-- **📸 AI Photo Analysis**: Two-step AI process - Claude analyzes first, GPT-4 Vision verifies for accuracy
-- **✍️ Dual-AI Enhancement**: Claude creates comprehensive listings, GPT-4 Vision ensures label and description accuracy
+- **📸 AI Photo Analysis**: Cost-efficient strategy - Claude analyzes photos, GPT-4 Vision only used as fallback
+- **✍️ Smart AI Enhancement**: Claude handles ~90% of items, GPT-4 Vision only kicks in when needed
 - **🔄 Cross-Platform Publishing**: Publish to eBay and Mercari from a single unified schema
 - **🎯 SEO Optimization**: Auto-generate keywords, search terms, and optimize titles for maximum visibility
 - **⚡ Batch Processing**: Create and publish multiple listings efficiently
@@ -28,8 +28,9 @@ AI Cross-Poster is a powerful Python library that streamlines the process of cre
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                  AI Listing Enhancer                        │
-│  • Step 1: Claude analyzes photos (details, SEO, keywords)  │
-│  • Step 2: GPT-4 Vision verifies (accuracy check)           │
+│  • Claude analyzes photos (primary analyzer)                │
+│  • GPT-4 Vision fallback (only if Claude can't identify)    │
+│  • 💰 Cost-optimized: Pay for GPT-4 only when needed        │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
@@ -162,43 +163,205 @@ Copy `.env.example` to `.env` and configure your credentials:
 cp .env.example .env
 ```
 
-### Required Credentials
+### Getting API Keys - Step by Step
 
-#### eBay API (Required for eBay)
+#### 1️⃣ eBay API Credentials (Required for eBay)
 
-1. Create an eBay developer account: https://developer.ebay.com/
-2. Create an application to get your Client ID and Secret
-3. Generate a refresh token using OAuth
+**Step 1: Create eBay Developer Account**
+1. Go to https://developer.ebay.com/
+2. Click "Register" and create a developer account
+3. Complete the registration process
 
+**Step 2: Create an Application**
+1. Once logged in, go to https://developer.ebay.com/my/keys
+2. Click "Create Application Key"
+3. Choose "Production" keys (or "Sandbox" for testing)
+4. Fill in application details:
+   - Application Title: "AI Cross-Poster" (or your choice)
+   - Privacy Policy URL: (can use placeholder for personal use)
+5. Click "Create"
+
+**Step 3: Get Client ID and Secret**
+1. On the Application Keys page, you'll see:
+   - **App ID (Client ID)**: Copy this
+   - **Cert ID (Client Secret)**: Copy this
+2. Add these to your `.env` file
+
+**Step 4: Generate User Refresh Token**
+1. Go to https://developer.ebay.com/my/auth/?env=production
+2. Select your application
+3. Choose the required scopes:
+   - `https://api.ebay.com/oauth/api_scope/sell.inventory`
+   - `https://api.ebay.com/oauth/api_scope/sell.inventory.readonly`
+   - `https://api.ebay.com/oauth/api_scope/sell.fulfillment`
+   - `https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly`
+   - `https://api.ebay.com/oauth/api_scope/sell.account`
+   - `https://api.ebay.com/oauth/api_scope/sell.account.readonly`
+4. Click "Get OAuth Credential"
+5. Sign in with your eBay seller account
+6. Authorize the application
+7. Copy the **User Refresh Token** (starts with `v^1.1#...`)
+
+**Add to .env:**
 ```env
-EBAY_CLIENT_ID=your_client_id
-EBAY_CLIENT_SECRET=your_client_secret
-EBAY_REFRESH_TOKEN=your_refresh_token
+EBAY_CLIENT_ID=YourAppID-Here
+EBAY_CLIENT_SECRET=YourCertID-Here
+EBAY_REFRESH_TOKEN=v^1.1#your_long_refresh_token
 ```
 
-#### Mercari (Choose one method)
+---
 
-**Option 1: Mercari Shops API** (Recommended)
+#### 2️⃣ Mercari Credentials
+
+**Option A: Mercari Shops API** (Recommended if you have a Mercari Shop)
+
+> **Note**: Mercari Shops API is only available to approved shop sellers.
+
+1. Go to Mercari Shops seller portal
+2. Navigate to "Developer Settings" or "API Access"
+3. Request API access (may require approval)
+4. Once approved, generate:
+   - **API Key**: Your authentication token
+   - **Shop ID**: Your shop identifier
+
+**Add to .env:**
 ```env
-MERCARI_API_KEY=your_api_key
+MERCARI_API_KEY=your_api_key_here
 MERCARI_SHOP_ID=your_shop_id
 ```
 
-**Option 2: Mercari Automation** (Fallback)
+**Option B: Mercari Automation** (For regular Mercari accounts)
+
+> **Note**: This uses browser automation and requires Playwright.
+
+1. Install Playwright:
+   ```bash
+   pip install playwright
+   playwright install
+   ```
+
+2. Use your regular Mercari login credentials:
+
+**Add to .env:**
 ```env
+MERCARI_EMAIL=your_mercari_email@example.com
+MERCARI_PASSWORD=your_mercari_password
+```
+
+⚠️ **Security Note**: Store credentials securely. Never commit `.env` to version control.
+
+---
+
+#### 3️⃣ OpenAI API Key (Optional - for GPT-4 Vision verification)
+
+**Step 1: Create OpenAI Account**
+1. Go to https://platform.openai.com/signup
+2. Sign up for an account
+3. Verify your email
+
+**Step 2: Add Billing**
+1. Go to https://platform.openai.com/account/billing
+2. Add a payment method
+3. Add credits ($10 minimum recommended)
+
+**Step 3: Create API Key**
+1. Go to https://platform.openai.com/api-keys
+2. Click "Create new secret key"
+3. Name it: "AI Cross-Poster" (or your choice)
+4. Copy the key (starts with `sk-proj-...` or `sk-...`)
+   - ⚠️ **Save it immediately** - you can't see it again!
+
+**Add to .env:**
+```env
+OPENAI_API_KEY=sk-proj-your-key-here
+```
+
+**Pricing**: ~$0.01-0.03 per image analysis with GPT-4 Vision
+
+---
+
+#### 4️⃣ Anthropic API Key (Optional - for Claude analysis)
+
+**Step 1: Create Anthropic Account**
+1. Go to https://console.anthropic.com/
+2. Click "Sign Up" (top right)
+3. Create account with email or Google
+4. Verify your email
+
+**Step 2: Navigate to API Keys**
+1. Once logged in to the console
+2. Look for "API Keys" in the left sidebar (or Settings → API Keys)
+3. **Alternative**: Direct link: https://console.anthropic.com/settings/keys
+4. If you see a workspace selector, make sure you're in the right workspace
+
+**Step 3: Add Credits (Required before creating keys)**
+1. Click "Billing" in left sidebar (or go to https://console.anthropic.com/settings/billing)
+2. Click "Purchase Credits"
+3. Add payment method
+4. Purchase credits ($5 minimum, $10 recommended)
+5. Wait for credits to appear in your account
+
+**Step 4: Create API Key**
+1. Go back to "API Keys" section
+2. Click "+ Create Key" button
+3. Name it: "AI Cross-Poster" (or your choice)
+4. Click "Create Key"
+5. **IMPORTANT**: Copy the key immediately (starts with `sk-ant-...`)
+   - ⚠️ **You can only see it once!** Save it now or you'll have to create a new one
+
+**Add to .env:**
+```env
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+```
+
+**Pricing**: ~$0.01-0.02 per image analysis with Claude 3.5 Sonnet
+
+**Troubleshooting:**
+- **Can't find API Keys?** Make sure you're logged in to the **Console** (console.anthropic.com), not the chat interface (claude.ai)
+- **No API Keys option?** You need to purchase credits first (Step 3 above)
+- **Workspace issues?** Click your profile (bottom left) and check which workspace you're in
+- **Need help?** Visit https://docs.anthropic.com/claude/reference/getting-started-with-the-api
+
+---
+
+### Complete .env Example
+
+Here's what your complete `.env` file should look like:
+
+```env
+# eBay (Required for eBay publishing)
+EBAY_CLIENT_ID=YourAppID-ProductionKey
+EBAY_CLIENT_SECRET=YourCertID-ProductionKey
+EBAY_REFRESH_TOKEN=v^1.1#your_refresh_token
+
+# Mercari Shops (Option 1 - if you have Shops API access)
+MERCARI_API_KEY=your_mercari_shops_api_key
+MERCARI_SHOP_ID=your_shop_id
+
+# Mercari Automation (Option 2 - for regular accounts)
 MERCARI_EMAIL=your_email@example.com
 MERCARI_PASSWORD=your_password
-```
 
-#### AI Enhancement (Optional but Recommended)
-
-```env
-# OpenAI (for photo analysis)
-OPENAI_API_KEY=sk-your-openai-key
-
-# Anthropic (for enhanced copywriting)
+# AI Enhancement (Both optional but recommended)
+OPENAI_API_KEY=sk-proj-your-openai-key
 ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
+
+# Optional Settings
+USE_SANDBOX=false
+AUTO_ENHANCE=true
 ```
+
+### Minimum Requirements
+
+**To get started, you need at least ONE of:**
+- eBay credentials (for eBay publishing)
+- Mercari credentials (for Mercari publishing)
+
+**For AI enhancement, you need at least ONE of:**
+- Anthropic API key (Claude - primary analyzer, recommended)
+- OpenAI API key (GPT-4 Vision - fallback only)
+
+💡 **Tip**: Claude is sufficient for ~90% of items. GPT-4 Vision is only used as fallback when Claude can't identify the item, saving you money!
 
 ## 📖 Usage Guide
 
@@ -272,6 +435,39 @@ enhanced_listing = enhancer.enhance_listing(
     target_platform="ebay",  # or "mercari" or "general"
     force=True,
 )
+```
+
+#### How AI Enhancement Works (Cost-Efficient)
+
+The system uses a smart fallback strategy to minimize costs:
+
+**Step 1: Claude Analyzes (Primary)**
+- Claude analyzes your photos first
+- Generates title, description, keywords, SEO data
+- Successfully identifies ~90% of items
+
+**Step 2: GPT-4 Vision Fallback (Only if needed)**
+- Only runs if Claude's analysis is incomplete
+- Triggers when Claude can't identify brand, category, or generate proper title
+- Saves you money by avoiding double analysis
+
+**Example Output:**
+```
+🤖 Claude analyzing photos...
+✅ Claude successfully identified the item
+💰 Skipping GPT-4 Vision (Claude analysis was complete)
+
+AI Provider: Claude
+```
+
+**Or when fallback is needed:**
+```
+🤖 Claude analyzing photos...
+⚠️  Claude analysis incomplete - will try GPT-4 Vision as fallback
+🔄 Using GPT-4 Vision as fallback...
+✅ GPT-4 Vision successfully identified the item
+
+AI Provider: GPT-4 Vision (fallback)
 ```
 
 ### 3. Publishing

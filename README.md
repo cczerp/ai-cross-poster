@@ -53,6 +53,7 @@ AI Cross-Poster is a powerful Python library that streamlines the process of cre
 
 - [Installation](#-installation)
 - [Quick Start](#-quick-start)
+- [PhotoSync Integration](#-photosync-integration)
 - [Configuration](#-configuration)
 - [Usage Guide](#-usage-guide)
 - [API Reference](#-api-reference)
@@ -152,6 +153,49 @@ for platform, result in results.items():
     else:
         print(f"❌ {platform}: {result.error}")
 ```
+
+## 📸 PhotoSync Integration
+
+**Seamlessly sync product photos from your phone to your computer!**
+
+AI Cross-Poster integrates perfectly with [PhotoSync](https://www.photosync-app.com/) for an effortless photo workflow:
+
+1. **Take photos** of your products on your phone
+2. **Auto-sync** to your computer using PhotoSync
+3. **Create listings** with AI analysis - no manual uploading!
+
+### Quick Setup
+
+1. Install PhotoSync app on your phone
+2. Configure it to sync to: `ai-cross-poster/images/new_items/`
+3. Set up your `.env`:
+   ```bash
+   PHOTOSYNC_FOLDER=./images/new_items
+   ```
+4. Take photos and they'll automatically appear in the folder!
+
+### Workflow Example
+
+```bash
+# Create images folder
+mkdir -p images/new_items images/processed images/archive
+
+# Run the app
+python main.py
+
+# Select: 2️⃣ Create Listing from Photos (AI Analysis)
+# Enter paths from PhotoSync folder:
+#   Photo #1: ./images/new_items/item_front.jpg
+#   Photo #2: ./images/new_items/item_back.jpg
+
+# AI analyzes and creates complete listing!
+```
+
+📖 **Full PhotoSync Guide:** See [PHOTOSYNC_SETUP.md](PHOTOSYNC_SETUP.md) for:
+- Detailed setup instructions
+- Batch processing workflows
+- Auto-organization scripts
+- Tips for best photo results
 
 ## 🔧 Configuration
 

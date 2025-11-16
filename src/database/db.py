@@ -342,6 +342,17 @@ class Database:
         row = cursor.fetchone()
         return dict(row) if row else None
 
+    def get_drafts(self, limit: int = 100) -> List[Dict]:
+        """Get all draft listings"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT * FROM listings
+            WHERE status = 'draft'
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
     def update_listing_status(self, listing_id: int, status: str):
         """Update listing status"""
         cursor = self.conn.cursor()
@@ -350,6 +361,15 @@ class Database:
             SET status = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         """, (status, listing_id))
+        self.conn.commit()
+
+    def delete_listing(self, listing_id: int):
+        """Delete a listing and its platform listings"""
+        cursor = self.conn.cursor()
+        # Delete platform listings first
+        cursor.execute("DELETE FROM platform_listings WHERE listing_id = ?", (listing_id,))
+        # Delete listing
+        cursor.execute("DELETE FROM listings WHERE id = ?", (listing_id,))
         self.conn.commit()
 
     def mark_listing_sold(

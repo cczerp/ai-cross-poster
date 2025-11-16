@@ -85,130 +85,54 @@ class AttributeDetector:
 
             image_contents.append(image_dict)
 
-        prompt = """Analyze these images and provide DETAILED item attributes.
+        prompt = """You MUST respond with ONLY valid JSON. No other text before or after the JSON.
 
-Identify:
+Analyze the image and return this exact JSON structure with your analysis:
 
-**1. Item Type/Category:**
-   - Main category (clothing, shoes, accessories, electronics, collectibles, etc.)
-   - Specific type (t-shirt, jeans, sneakers, hoodie, jacket, etc.)
-   - Subcategory if applicable
-
-**2. Size Information:**
-   - Size (XS/S/M/L/XL/XXL or numeric like 32x34, 8.5, etc.)
-   - Fit (slim, regular, oversized, athletic, etc.)
-   - Measurements if visible
-
-**3. Color Details:**
-   - Primary color
-   - Secondary colors
-   - Pattern (solid, striped, plaid, floral, etc.)
-   - Color code/name if identifiable
-
-**4. Brand & Model:**
-   - Brand name
-   - Model/style name
-   - Collection/line
-   - Season/year if identifiable
-
-**5. Material & Composition:**
-   - Primary material (cotton, polyester, leather, etc.)
-   - Fabric blend if visible
-   - Material quality indicators
-
-**6. Condition Assessment:**
-   - Overall condition (new, like new, excellent, good, fair, poor)
-   - Specific issues (stains, holes, fading, etc.)
-   - Wear patterns
-   - Missing parts/accessories
-
-**7. Special Features:**
-   - Tags (price tags, brand tags, size tags)
-   - Special features (pockets, zippers, buttons, etc.)
-   - Technology features (for electronics)
-   - Authentication markers
-
-**8. Target Gender/Age:**
-   - Men's, Women's, Unisex, Kids
-   - Age group if applicable
-
-**9. Style & Aesthetics:**
-   - Style (casual, formal, athletic, streetwear, vintage, etc.)
-   - Design elements
-   - Era/decade (for vintage items)
-
-**10. Retail Information:**
-   - Original retail price if visible
-   - Current market value estimate
-   - Comparable items
-
-Format as JSON:
-```json
 {
   "item_type": {
-    "main_category": "clothing",
-    "specific_type": "t-shirt",
-    "subcategory": "graphic tee"
+    "main_category": "clothing/electronics/collectibles/etc",
+    "specific_type": "specific item name"
   },
   "size": {
-    "size": "L",
-    "fit": "regular",
-    "measurements": {
-      "chest": "22 inches",
-      "length": "29 inches"
-    }
+    "size": "size if visible",
+    "fit": "fit type if applicable"
   },
   "color": {
-    "primary": "black",
-    "secondary": ["white"],
-    "pattern": "graphic print",
-    "description": "Black with white logo"
+    "primary": "main color",
+    "secondary": ["other colors"],
+    "description": "color description"
   },
   "brand": {
-    "name": "Nike",
-    "model": "Sportswear",
-    "collection": "2024 Spring",
-    "verified": true
+    "name": "brand name if visible",
+    "model": "model/style name"
   },
   "material": {
-    "primary": "cotton",
-    "composition": "100% Cotton",
-    "quality": "premium"
+    "primary": "material type",
+    "composition": "material details"
   },
   "condition": {
-    "overall": "excellent",
-    "specific_issues": [],
-    "wear_notes": "Minimal wear",
-    "has_tags": true,
-    "tag_info": "Original tags attached"
+    "overall": "new/like_new/excellent/good/fair/poor",
+    "wear_notes": "description of condition",
+    "has_tags": true/false
   },
   "features": {
-    "special": ["crew neck", "short sleeves", "screen printed logo"],
-    "technology": null
+    "special": ["list of notable features"]
   },
   "target_demographic": {
-    "gender": "unisex",
-    "age_group": "adult"
+    "gender": "mens/womens/unisex",
+    "age_group": "adult/kids/etc"
   },
   "style": {
-    "style_type": "casual athletic",
-    "era": "modern",
-    "aesthetic": "sporty"
+    "style_type": "casual/formal/athletic/etc"
   },
   "retail_info": {
-    "original_price": 35,
-    "estimated_current_value": 25,
-    "market_notes": "Standard Nike tee, good resale demand"
-  },
-  "confidence": {
-    "overall": 0.95,
-    "brand_confidence": 0.98,
-    "size_confidence": 1.0,
-    "condition_confidence": 0.90
+    "estimated_current_value": 0,
+    "market_notes": "market observations"
   }
 }
-```
-"""
+
+IMPORTANT: Return ONLY the JSON object above with your analysis. No markdown formatting, no code blocks, no explanatory text."""
 
         headers = {
             "x-api-key": self.anthropic_api_key,
@@ -219,8 +143,12 @@ Format as JSON:
         content = [{"type": "text", "text": prompt}]
         content.extend(image_contents)
 
+        # Use Claude 3 Haiku by default (faster, cheaper, widely available)
+        # Change to claude-3-opus-20240229 for better quality but higher cost
+        model = os.getenv("CLAUDE_MODEL", "claude-3-haiku-20240307")
+
         payload = {
-            "model": "claude-3-5-sonnet-20241022",
+            "model": model,
             "max_tokens": 2500,
             "messages": [
                 {
@@ -243,19 +171,44 @@ Format as JSON:
                 content_text = result["content"][0]["text"]
 
                 try:
-                    if "```json" in content_text:
-                        content_text = content_text.split("```json")[1].split("```")[0].strip()
-                    elif "```" in content_text:
-                        content_text = content_text.split("```")[1].split("```")[0].strip()
+                    original_text = content_text
 
-                    attributes = json.loads(content_text)
-                    attributes["ai_provider"] = "claude"
-                    return attributes
+                    # Try direct JSON parsing first
+                    try:
+                        attributes = json.loads(content_text)
+                        attributes["ai_provider"] = "claude"
+                        return attributes
+                    except json.JSONDecodeError:
+                        # If direct parsing fails, try extracting from code blocks
+                        if "```json" in content_text:
+                            content_text = content_text.split("```json")[1].split("```")[0].strip()
+                        elif "```" in content_text:
+                            content_text = content_text.split("```")[1].split("```")[0].strip()
+
+                        # Check if we got anything
+                        if not content_text.strip():
+                            return {
+                                "error": f"Claude returned empty or non-JSON response. Raw response: {original_text[:500]}"
+                            }
+
+                        # Try parsing again
+                        attributes = json.loads(content_text)
+                        attributes["ai_provider"] = "claude"
+                        return attributes
 
                 except json.JSONDecodeError as e:
-                    return {"error": f"JSON parse error: {str(e)}", "raw": content_text}
+                    return {
+                        "error": f"JSON parse error: {str(e)}",
+                        "raw_response": f"First 1000 chars: {original_text[:1000]}"
+                    }
             else:
-                return {"error": f"Claude API error: {response.text}"}
+                # Show detailed error including status code
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get("error", {}).get("message", response.text)
+                    return {"error": f"Claude API error ({response.status_code}): {error_msg}"}
+                except:
+                    return {"error": f"Claude API error ({response.status_code}): {response.text[:500]}"}
 
         except Exception as e:
             return {"error": f"Exception: {str(e)}"}

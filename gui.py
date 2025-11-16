@@ -327,6 +327,12 @@ class AIListerGUI(ctk.CTk):
                 # Check for errors in Claude response
                 if "error" in attributes:
                     claude_error = attributes.get("error", "Unknown error")
+                    raw_response = attributes.get("raw_response", "")
+
+                    # Show detailed error with raw response if available
+                    error_details = f"{claude_error}"
+                    if raw_response:
+                        error_details += f"\n\n{raw_response}"
 
                     # Try GPT-4 fallback if enabled
                     if use_fallback:
@@ -343,10 +349,10 @@ class AIListerGUI(ctk.CTk):
                             self.after(0, lambda: self.update_status(f"❌ Both AIs failed"))
                             return
                     else:
-                        # No fallback - show Claude error
-                        self.after(0, lambda: messagebox.showerror(
+                        # No fallback - show Claude error with details
+                        self.after(0, lambda ed=error_details: messagebox.showerror(
                             "Claude AI Error",
-                            f"Claude could not analyze the photos:\n\n{claude_error}\n\nPlease check:\n- ANTHROPIC_API_KEY is set in .env\n- Photos are valid images\n- Internet connection\n\nTip: Enable 'GPT-4 fallback' checkbox if you want to try GPT-4 when Claude fails."
+                            f"Claude could not analyze the photos:\n\n{ed}\n\nPlease check:\n- ANTHROPIC_API_KEY is set in .env\n- Photos are valid images\n- Internet connection\n\nTip: Enable 'GPT-4 fallback' checkbox if you want to try GPT-4 when Claude fails."
                         ))
                         self.after(0, lambda: self.update_status(f"❌ Claude failed: {claude_error}"))
                         return

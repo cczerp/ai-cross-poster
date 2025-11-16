@@ -247,17 +247,28 @@ Format as JSON:
                 content_text = result["content"][0]["text"]
 
                 try:
+                    # Try to extract JSON from markdown code blocks
+                    original_text = content_text
                     if "```json" in content_text:
                         content_text = content_text.split("```json")[1].split("```")[0].strip()
                     elif "```" in content_text:
                         content_text = content_text.split("```")[1].split("```")[0].strip()
+
+                    # Try to parse JSON
+                    if not content_text.strip():
+                        return {
+                            "error": f"Claude returned empty response. Raw response: {original_text[:500]}"
+                        }
 
                     attributes = json.loads(content_text)
                     attributes["ai_provider"] = "claude"
                     return attributes
 
                 except json.JSONDecodeError as e:
-                    return {"error": f"JSON parse error: {str(e)}", "raw": content_text}
+                    return {
+                        "error": f"JSON parse error: {str(e)}",
+                        "raw_response": f"First 1000 chars: {original_text[:1000]}"
+                    }
             else:
                 # Show detailed error including status code
                 try:

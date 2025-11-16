@@ -196,8 +196,11 @@ If NOT a collectible, return:
         content = [{"type": "text", "text": prompt}]
         content.extend(image_contents)
 
+        # Use configurable model
+        model = os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
+
         payload = {
-            "model": "claude-3-5-sonnet-20241022",
+            "model": model,
             "max_tokens": 3000,
             "messages": [
                 {
@@ -238,10 +241,19 @@ If NOT a collectible, return:
                         "raw_response": content_text
                     }
             else:
-                return {
-                    "is_collectible": False,
-                    "error": f"Claude API error: {response.text}"
-                }
+                # Show detailed error including status code
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get("error", {}).get("message", response.text)
+                    return {
+                        "is_collectible": False,
+                        "error": f"Claude API error ({response.status_code}): {error_msg}"
+                    }
+                except:
+                    return {
+                        "is_collectible": False,
+                        "error": f"Claude API error ({response.status_code}): {response.text[:500]}"
+                    }
 
         except Exception as e:
             return {

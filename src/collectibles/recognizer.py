@@ -190,6 +190,11 @@ Grading scale:
 ⚠️ CRITICAL: You MUST respond with ONLY valid JSON. No explanations, no markdown formatting, no other text.
 Start your response with { and end with }. Do not wrap in ```json blocks.
 
+⚠️ REQUIRED FIELDS - DO NOT SKIP:
+- price_reasons: Array of EXACTLY 3 strings explaining the price (include signature analysis here if autographed)
+- has_signature: boolean (true if item has a signature visible)
+- signature_analysis: object with signature authentication details (if has_signature is true)
+
 Provide detailed analysis:
 
 1. **Is this a collectible?** (yes/no)
@@ -409,7 +414,7 @@ REMEMBER: Respond with ONLY the JSON object. No other text before or after.
 
         payload = {
             "model": model,
-            "max_tokens": 3000,
+            "max_tokens": 4096,  # Increased to ensure Claude has space for all required fields
             "messages": [
                 {
                     "role": "user",

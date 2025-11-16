@@ -91,9 +91,24 @@ class CollectibleRecognizer:
         # Build comprehensive collectibles analysis prompt
         prompt = """Analyze these images to determine if this is a COLLECTIBLE item.
 
-IMPORTANT: Trading cards and sports cards are ALWAYS collectibles, even common ones.
+⚠️ CRITICAL RULES:
+1. ANY trading card (sports, Pokemon, Magic, etc.) = COLLECTIBLE (even commons!)
+2. ANY item with official sports team logos (MLB, NBA, NFL, NHL, etc.) = COLLECTIBLE
+3. ANY item with team names (Cubs, Yankees, Lakers, etc.) = COLLECTIBLE
+4. Cards in protective cases/sleeves = COLLECTIBLE
+5. Vintage sports apparel/jerseys = COLLECTIBLE
+6. Pokemon/Magic/Yu-Gi-Oh cards = COLLECTIBLE
 
-Collectibles include:
+SPORTS ITEMS ARE ALWAYS COLLECTIBLES:
+- MLB logos (Chicago Cubs, New York Yankees, etc.) = COLLECTIBLE
+- NBA logos (Lakers, Bulls, etc.) = COLLECTIBLE
+- NFL logos (Cowboys, Patriots, etc.) = COLLECTIBLE
+- NHL logos = COLLECTIBLE
+- College sports logos = COLLECTIBLE
+- Vintage team apparel = COLLECTIBLE
+- Autographed items = COLLECTIBLE
+
+Other Collectibles:
 - Trading cards (sports cards - baseball, basketball, football, hockey, soccer, Pokemon, Magic, Yu-Gi-Oh, etc.)
   * Even if in a protective case or sleeve, these are collectibles
   * Look for player names, card brands (Topps, Panini, Upper Deck, etc.)

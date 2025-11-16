@@ -1015,9 +1015,24 @@ Return ONLY the description text, no JSON, no formatting, just the description."
         """Display collectible identification results"""
         self.collectible_results.delete("1.0", tk.END)
 
+        # Check for errors first
+        if "error" in analysis:
+            self.collectible_results.insert("1.0", "❌ AI ERROR\n\n")
+            self.collectible_results.insert(tk.END, f"Error: {analysis.get('error')}\n\n")
+            self.collectible_results.insert(tk.END, "This might mean:\n")
+            self.collectible_results.insert(tk.END, "- Claude Sonnet model not available on your API tier\n")
+            self.collectible_results.insert(tk.END, "- API key issue\n")
+            self.collectible_results.insert(tk.END, "- Network problem\n\n")
+            self.collectible_results.insert(tk.END, "Try adding to your .env file:\n")
+            self.collectible_results.insert(tk.END, "CLAUDE_COLLECTIBLE_MODEL=claude-3-haiku-20240307")
+            self.update_status(f"❌ Error: {analysis.get('error')}")
+            return
+
         if not is_collectible:
             self.collectible_results.insert("1.0", "❌ NOT A COLLECTIBLE\n\n")
-            self.collectible_results.insert(tk.END, f"Reasoning: {analysis.get('reasoning', 'Standard item')}")
+            self.collectible_results.insert(tk.END, f"Reasoning: {analysis.get('reasoning', 'Standard item')}\n\n")
+            self.collectible_results.insert(tk.END, "⚠️ If this seems wrong (e.g., sports cards, team logos), there may be an AI error.\n")
+            self.collectible_results.insert(tk.END, "Try using a different Claude model in your .env file.")
             self.update_status("Not a collectible")
             return
 

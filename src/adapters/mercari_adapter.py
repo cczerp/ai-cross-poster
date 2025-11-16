@@ -254,23 +254,93 @@ class MercariAutomationAdapter:
 
     def _login(self):
         """Login to Mercari with human-like behavior"""
-        # Navigate to login page
-        self.page.goto("https://www.mercari.com/login/")
-        self._human_delay(1000, 2000)  # Wait like a human would
+        import time
 
-        # Type email slowly (human-like)
-        self._human_type('input[name="email"]', self.email)
-        self._human_delay(300, 800)
+        try:
+            print("📍 Navigating to Mercari login page...")
+            # Navigate to login page
+            self.page.goto("https://www.mercari.com/login/", wait_until="networkidle", timeout=60000)
+            self._human_delay(1000, 2000)  # Wait like a human would
 
-        # Type password slowly
-        self._human_type('input[name="password"]', self.password)
-        self._human_delay(500, 1000)
+            print("✍️  Entering email...")
+            # Wait for email field and type email slowly (human-like)
+            try:
+                self.page.wait_for_selector('input[name="email"]', timeout=10000)
+            except:
+                # Try alternative selectors
+                self.page.wait_for_selector('input[type="email"]', timeout=10000)
 
-        # Click submit
-        self.page.click('button[type="submit"]')
-        # Increased timeout to 60 seconds for slow connections
-        self.page.wait_for_url("https://www.mercari.com/", timeout=60000)
-        self._human_delay(1000, 2000)
+            self._human_type('input[name="email"], input[type="email"]', self.email)
+            self._human_delay(300, 800)
+
+            print("🔒 Entering password...")
+            # Type password slowly
+            try:
+                self.page.wait_for_selector('input[name="password"]', timeout=10000)
+            except:
+                # Try alternative selectors
+                self.page.wait_for_selector('input[type="password"]', timeout=10000)
+
+            self._human_type('input[name="password"], input[type="password"]', self.password)
+            self._human_delay(500, 1000)
+
+            print("🔘 Clicking submit button...")
+            # Click submit - try multiple selectors
+            submit_clicked = False
+            for selector in ['button[type="submit"]', 'button:has-text("Sign in")', 'button:has-text("Log in")', 'input[type="submit"]']:
+                try:
+                    self.page.click(selector, timeout=5000)
+                    submit_clicked = True
+                    break
+                except:
+                    continue
+
+            if not submit_clicked:
+                raise Exception("Could not find submit button")
+
+            print("⏳ Waiting for login to complete (max 60 seconds)...")
+            # Wait for redirect to homepage or dashboard
+            try:
+                # Increased timeout to 60 seconds for slow connections
+                self.page.wait_for_url("https://www.mercari.com/", timeout=60000)
+                print("✅ Login successful!")
+                self._human_delay(1000, 2000)
+            except Exception as e:
+                # Login failed - take screenshot for debugging
+                screenshot_path = f"mercari_login_error_{int(time.time())}.png"
+                self.page.screenshot(path=screenshot_path)
+                current_url = self.page.url
+
+                print(f"📸 Screenshot saved to: {screenshot_path}")
+                print(f"❌ Login timeout. Current URL: {current_url}")
+
+                raise Exception(
+                    f"Login failed - timeout waiting for redirect to homepage.\n"
+                    f"Current URL: {current_url}\n"
+                    f"Screenshot saved to: {screenshot_path}\n\n"
+                    f"Possible causes:\n"
+                    f"1. Invalid email/password credentials\n"
+                    f"2. Mercari requires 2FA/verification (not supported in headless mode)\n"
+                    f"3. Mercari detected automation and blocked login\n"
+                    f"4. Network is slow or Mercari is down\n\n"
+                    f"Solutions:\n"
+                    f"- Verify MERCARI_EMAIL and MERCARI_PASSWORD in .env are correct\n"
+                    f"- Check the screenshot to see what page appeared\n"
+                    f"- Try logging in manually at mercari.com to check for verification prompts"
+                )
+
+        except Exception as e:
+            # Re-raise with context
+            if "Login failed" in str(e):
+                raise
+            else:
+                screenshot_path = f"mercari_login_error_{int(time.time())}.png"
+                try:
+                    self.page.screenshot(path=screenshot_path)
+                    print(f"📸 Screenshot saved to: {screenshot_path}")
+                except:
+                    pass
+                raise Exception(f"Login error: {str(e)}")
 
     def publish_listing(self, listing: UnifiedListing) -> Dict[str, str]:
         """
@@ -285,37 +355,71 @@ class MercariAutomationAdapter:
         sync_playwright = self._ensure_playwright()
 
         with sync_playwright() as p:
-            # Launch browser with anti-detection settings
+            # Launch browser with enhanced anti-detection settings
             self.browser = p.chromium.launch(
                 headless=self.headless,
                 args=[
                     '--disable-blink-features=AutomationControlled',  # Hide automation
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    '--disable-site-isolation-trials',
                     '--no-sandbox',
                     '--disable-dev-shm-usage',
-                    '--disable-web-security',
+                    '--disable-setuid-sandbox',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--single-process',  # Less detectable
+                    '--disable-gpu',
                 ]
             )
 
             # Create page with realistic context
             context = self.browser.new_context(
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
                 viewport={'width': 1920, 'height': 1080},
                 locale='en-US',
                 timezone_id='America/New_York',
+                # Add more realistic browser fingerprint
+                extra_http_headers={
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                }
             )
             self.page = context.new_page()
 
-            # Inject script to hide webdriver property
+            # Enhanced script to hide webdriver property and appear more human
             self.page.add_init_script("""
+                // Hide webdriver
                 Object.defineProperty(navigator, 'webdriver', {
                     get: () => undefined
                 });
+
+                // Add chrome object
                 window.navigator.chrome = {
                     runtime: {},
+                    loadTimes: function() {},
+                    csi: function() {},
+                    app: {},
                 };
+
+                // Mock plugins with realistic values
                 Object.defineProperty(navigator, 'plugins', {
                     get: () => [1, 2, 3, 4, 5],
                 });
+
+                // Mock languages
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['en-US', 'en'],
+                });
+
+                // Override permissions
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        originalQuery(parameters)
+                );
             """)
 
             # Login
@@ -383,9 +487,16 @@ class MercariAutomationAdapter:
         Expected variables:
             - MERCARI_EMAIL
             - MERCARI_PASSWORD
+            - MERCARI_HEADLESS (optional: "false" to see browser, default "true")
         """
         email = os.getenv("MERCARI_EMAIL")
         password = os.getenv("MERCARI_PASSWORD")
+
+        # Check if headless mode should be disabled (for debugging)
+        headless_env = os.getenv("MERCARI_HEADLESS", "true").lower()
+        if headless_env in ["false", "0", "no"]:
+            headless = False
+            print("🔍 Running browser in VISIBLE mode (MERCARI_HEADLESS=false)")
 
         if not all([email, password]):
             raise ValueError(

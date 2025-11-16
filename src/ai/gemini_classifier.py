@@ -40,10 +40,14 @@ class GeminiClassifier:
             raise ValueError("GOOGLE_AI_API_KEY or GEMINI_API_KEY must be set")
 
         # Use Gemini 1.5 Flash for speed and cost-efficiency
-        # Note: Must use '-latest' suffix or specific version for v1beta API
-        # Options: gemini-1.5-flash-latest, gemini-1.5-pro-latest, gemini-pro-vision
-        self.model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash-latest")
-        self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
+        # Image-capable models (v1 API endpoint):
+        # - gemini-1.5-flash (recommended for speed/cost)
+        # - gemini-1.5-flash-latest
+        # - gemini-1.5-pro
+        # - gemini-1.5-pro-latest
+        self.model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        # CRITICAL: Use v1 endpoint (NOT v1beta) for Gemini 1.5 models
+        self.api_url = f"https://generativelanguage.googleapis.com/v1/models/{self.model}:generateContent"
 
     def _encode_image_to_base64(self, image_path: str) -> str:
         """Encode local image to base64"""

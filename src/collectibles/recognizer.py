@@ -206,6 +206,11 @@ Provide detailed analysis:
 5. **Market Value Estimation:**
    - Estimated Low ($)
    - Estimated High ($)
+   - **3 REASONS for this price estimate** (REQUIRED):
+     * Explain exactly why this item is worth this price
+     * Include signature authenticity if autographed (e.g., "Real signature adds $X value" or "Fake signature means card-only value")
+     * Include rarity, condition, demand factors
+     * Be specific (e.g., "Rookie card of Hall of Famer", "1st Edition rare variant", "Mint condition increases value 3x")
    - Recent selling prices if you know them
    - Market trend (increasing, stable, decreasing)
 
@@ -243,6 +248,11 @@ Response format (respond with ONLY this JSON, no markdown):
   "rarity": "ultra rare",
   "estimated_value_low": 5000,
   "estimated_value_high": 15000,
+  "price_reasons": [
+    "1st Edition Charizard from Base Set is the most iconic Pokemon card, highly sought after by collectors worldwide",
+    "Near Mint condition significantly increases value - PSA 8-9 grade cards sell for $8,000-$12,000",
+    "Holographic variant with shadowless printing increases rarity and collector demand"
+  ],
   "market_trend": "increasing",
   "recent_sales": [
     {"price": 8000, "condition": "PSA 8", "date": "2024-01"},
@@ -267,7 +277,7 @@ Response format (respond with ONLY this JSON, no markdown):
   "reasoning": "Identified by distinctive Base Set artwork, 1st edition stamp visible"
 }
 
-Example with AUTOGRAPH (include signature analysis):
+Example with AUTOGRAPH (include signature in price_reasons):
 {
   "is_collectible": true,
   "confidence_score": 0.85,
@@ -279,6 +289,11 @@ Example with AUTOGRAPH (include signature analysis):
   "rarity": "ultra rare",
   "estimated_value_low": 5000,
   "estimated_value_high": 15000,
+  "price_reasons": [
+    "Michael Jordan rookie card is one of the most valuable basketball cards - unsigned versions sell for $500-$1,500",
+    "AUTHENTIC SIGNATURE adds $3,500-$13,500 in value - signature shows ink bleeding, pressure variation, and correct placement (lower right corner) matching known MJ autographs",
+    "Near Mint condition with PSA/JSA certification potential could push this to $15,000+ at auction"
+  ],
   "authentication": {
     "key_identifiers": ["Upper Deck hologram", "card stock quality", "signature placement"],
     "red_flags": ["Verify signature authenticity with PSA/JSA"],
@@ -312,7 +327,7 @@ Example with AUTOGRAPH (include signature analysis):
   "reasoning": "Autographed rookie card with strong signature authenticity indicators"
 }
 
-Example with FAKE/STAMPED signature:
+Example with FAKE/STAMPED signature (include fake_indicators):
 {
   "is_collectible": true,
   "confidence_score": 0.95,
@@ -324,6 +339,16 @@ Example with FAKE/STAMPED signature:
   "rarity": "common",
   "estimated_value_low": 5,
   "estimated_value_high": 15,
+  "price_reasons": [
+    "This is a mass-produced 2010 Topps card - common print run means low base value ($3-$10)",
+    "FAKE/STAMPED SIGNATURE adds NO value - signature is printed facsimile, not hand-signed (perfect uniformity, no ink bleeding)",
+    "Card is valued for the card itself only, not as an autograph. Real Jeter autograph would be $200-$500"
+  ],
+  "fake_indicators": [
+    "Signature shows perfect uniformity in all strokes - real signatures have natural variation from hand pressure",
+    "No ink bleeding or feathering at edges - printed signatures have sharp edges, real ink bleeds into card stock",
+    "Signature is perfectly horizontal in center - unnatural placement, Jeter typically signs at angle in lower right"
+  ],
   "authentication": {
     "key_identifiers": ["Topps logo", "card number"],
     "red_flags": ["Signature is stamped/printed, not hand-signed"],

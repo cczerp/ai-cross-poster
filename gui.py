@@ -885,8 +885,23 @@ Return ONLY the description text, no JSON, no formatting, just the description."
             desc_parts.append(
                 f"💰 ESTIMATED VALUE: ${analysis['estimated_value_low']} - ${analysis['estimated_value_high']}"
             )
+
+            # Price Reasons (3 reasons explaining the price)
+            if analysis.get("price_reasons"):
+                desc_parts.append("")
+                desc_parts.append("WHY THIS PRICE:")
+                for i, reason in enumerate(analysis["price_reasons"][:3], 1):
+                    desc_parts.append(f"{i}. {reason}")
+
             if analysis.get("market_trend"):
                 desc_parts.append(f"📈 Market Trend: {analysis['market_trend']}")
+            desc_parts.append("")
+
+        # Fake Indicators (if item has fake/counterfeit markers)
+        if analysis.get("fake_indicators"):
+            desc_parts.append("⚠️ FAKE/COUNTERFEIT INDICATORS:")
+            for i, indicator in enumerate(analysis["fake_indicators"][:3], 1):
+                desc_parts.append(f"{i}. {indicator}")
             desc_parts.append("")
 
         # What collectors want

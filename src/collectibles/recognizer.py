@@ -91,6 +91,10 @@ class CollectibleRecognizer:
         # Build comprehensive collectibles analysis prompt
         prompt = """🔍 EXPERT COLLECTIBLE AUTHENTICATION & GRADING
 
+⚠️ MANDATORY OUTPUT REQUIREMENT:
+Your JSON response MUST include "price_reasons": an array of EXACTLY 3 strings explaining why this item is worth the estimated price.
+DO NOT use "why_valuable" field - use "price_reasons" array instead.
+
 You are an expert collectibles authenticator and grader. Your job is to:
 1. Verify if this is a genuine collectible
 2. Authenticate it (check for counterfeits)
@@ -276,7 +280,6 @@ Response format (respond with ONLY this JSON, no markdown):
     "has_signature": false,
     "signature_analysis": null
   },
-  "why_valuable": "First edition Charizard is one of the most iconic Pokemon cards",
   "what_collectors_want": "PSA graded, shadowless, centering",
   "best_platforms": ["eBay", "PWCC", "Heritage Auctions"],
   "reasoning": "Identified by distinctive Base Set artwork, 1st edition stamp visible"

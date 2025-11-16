@@ -297,7 +297,7 @@ class AIListerGUI(ctk.CTk):
 
                 # Create photo objects
                 photo_objects = [
-                    Photo(local_path=p, order=i, is_primary=(i == 0))
+                    Photo(url="", local_path=p, order=i, is_primary=(i == 0))
                     for i, p in enumerate(self.photos)
                 ]
 
@@ -448,7 +448,7 @@ class AIListerGUI(ctk.CTk):
             try:
                 # Create listing object
                 photo_objects = [
-                    Photo(local_path=p, order=i, is_primary=(i == 0))
+                    Photo(url="", local_path=p, order=i, is_primary=(i == 0))
                     for i, p in enumerate(self.photos)
                 ]
 
@@ -590,7 +590,7 @@ class AIListerGUI(ctk.CTk):
         def identify():
             try:
                 photo_objects = [
-                    Photo(local_path=p, order=i, is_primary=(i == 0))
+                    Photo(url="", local_path=p, order=i, is_primary=(i == 0))
                     for i, p in enumerate(self.collectible_photos)
                 ]
 

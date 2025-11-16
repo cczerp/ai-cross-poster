@@ -163,6 +163,9 @@ Grading scale:
 - Fair (2-3.5): Heavy wear, possible damage
 - Poor (1): Severe damage
 
+⚠️ CRITICAL: You MUST respond with ONLY valid JSON. No explanations, no markdown formatting, no other text.
+Start your response with { and end with }. Do not wrap in ```json blocks.
+
 Provide detailed analysis:
 
 1. **Is this a collectible?** (yes/no)
@@ -196,10 +199,9 @@ Provide detailed analysis:
    - What collectors look for
    - Best platforms to sell on
 
-Format as JSON:
-```json
+Response format (respond with ONLY this JSON, no markdown):
 {
-  "is_collectible": true/false,
+  "is_collectible": true,
   "confidence_score": 0.95,
   "category": "trading_cards",
   "name": "Pokemon Charizard 1st Edition",
@@ -231,17 +233,16 @@ Format as JSON:
   "best_platforms": ["eBay", "PWCC", "Heritage Auctions"],
   "reasoning": "Identified by distinctive Base Set artwork, 1st edition stamp visible"
 }
-```
 
 If NOT a collectible, return:
-```json
 {
   "is_collectible": false,
   "confidence_score": 0.9,
   "item_type": "regular clothing",
   "reasoning": "Standard mass-produced item with no collectible value"
 }
-```
+
+REMEMBER: Respond with ONLY the JSON object. No other text before or after.
 """
 
         headers = {
@@ -283,11 +284,36 @@ If NOT a collectible, return:
 
                 # Parse JSON response
                 try:
+                    # Debug: Check if content_text is empty first
+                    if not content_text or content_text.strip() == "":
+                        return {
+                            "is_collectible": False,
+                            "error": "Claude returned empty response",
+                            "raw_response": f"Full API response: {result}",
+                            "debug_info": "content_text was empty"
+                        }
+
                     # Extract JSON from markdown code blocks if present
                     if "```json" in content_text:
                         content_text = content_text.split("```json")[1].split("```")[0].strip()
                     elif "```" in content_text:
                         content_text = content_text.split("```")[1].split("```")[0].strip()
+
+                    # Remove any leading/trailing whitespace or text before/after JSON
+                    content_text = content_text.strip()
+
+                    # Try to find JSON object if there's extra text
+                    if not content_text.startswith("{"):
+                        # Try to find the start of JSON
+                        start_idx = content_text.find("{")
+                        if start_idx != -1:
+                            content_text = content_text[start_idx:]
+
+                    if not content_text.endswith("}"):
+                        # Try to find the end of JSON
+                        end_idx = content_text.rfind("}")
+                        if end_idx != -1:
+                            content_text = content_text[:end_idx + 1]
 
                     analysis = json.loads(content_text)
                     analysis["ai_provider"] = "claude"
@@ -297,7 +323,8 @@ If NOT a collectible, return:
                     return {
                         "is_collectible": False,
                         "error": f"JSON parse error: {str(e)}",
-                        "raw_response": content_text
+                        "raw_response": content_text[:1000] if content_text else "EMPTY RESPONSE",
+                        "debug_info": f"Response length: {len(content_text) if content_text else 0} chars"
                     }
             else:
                 # Show detailed error including status code

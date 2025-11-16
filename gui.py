@@ -738,9 +738,20 @@ Return ONLY the description text, no JSON, no formatting, just the description."
                 # Check for errors
                 if "error" in analysis:
                     error_msg = analysis.get("error", "Unknown error")
-                    self.after(0, lambda: messagebox.showerror(
+                    raw_response = analysis.get("raw_response", "No raw response available")
+                    debug_info = analysis.get("debug_info", "")
+
+                    # Build detailed error message
+                    full_error = f"Claude could not complete deep analysis:\n\n{error_msg}"
+                    if debug_info:
+                        full_error += f"\n\nDebug: {debug_info}"
+                    if raw_response and raw_response != "No raw response available":
+                        full_error += f"\n\nRaw Response:\n{raw_response[:500]}"
+                    full_error += "\n\nPlease check:\n- ANTHROPIC_API_KEY is set in .env\n- Photos are clear and show item details\n- Internet connection"
+
+                    self.after(0, lambda msg=full_error: messagebox.showerror(
                         "Deep Analysis Error",
-                        f"Claude could not complete deep analysis:\n\n{error_msg}\n\nPlease check:\n- ANTHROPIC_API_KEY is set in .env\n- Photos are clear and show item details\n- Internet connection"
+                        msg
                     ))
                     self.after(0, lambda: self.update_status(f"❌ Deep analysis failed: {error_msg}"))
                     return

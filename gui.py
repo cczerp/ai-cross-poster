@@ -1415,8 +1415,35 @@ Return ONLY the description text, no JSON, no formatting, just the description."
 
         result_text += f"\nMarket Trend: {analysis.get('market_trend', 'N/A')}\n\n"
 
-        # Additional info
-        if analysis.get('why_valuable'):
+        # Price Reasons (3 reasons explaining the price)
+        if analysis.get('price_reasons'):
+            result_text += "💰 WHY THIS PRICE:\n"
+            for i, reason in enumerate(analysis['price_reasons'][:3], 1):
+                result_text += f"   {i}. {reason}\n"
+            result_text += "\n"
+
+        # Signature Analysis (if item has autograph)
+        if analysis.get('authentication', {}).get('has_signature'):
+            sig = analysis['authentication'].get('signature_analysis', {})
+            if sig:
+                auth_status = "AUTHENTIC" if sig.get('is_authentic') else "FAKE/STAMPED"
+                conf = int(sig.get('confidence', 0) * 100)
+                result_text += f"✍️  Signature: {auth_status} ({conf}% confidence)\n"
+                if sig.get('authenticity_reasoning'):
+                    result_text += f"   {sig['authenticity_reasoning']}\n"
+                if sig.get('recommendation'):
+                    result_text += f"   💡 {sig['recommendation']}\n"
+                result_text += "\n"
+
+        # Fake Indicators (if item has fake/counterfeit markers)
+        if analysis.get('fake_indicators'):
+            result_text += "⚠️  FAKE/COUNTERFEIT INDICATORS:\n"
+            for i, indicator in enumerate(analysis['fake_indicators'][:3], 1):
+                result_text += f"   {i}. {indicator}\n"
+            result_text += "\n"
+
+        # Fallback: show why_valuable if price_reasons not available
+        if not analysis.get('price_reasons') and analysis.get('why_valuable'):
             result_text += f"Why Valuable:\n{analysis['why_valuable']}\n\n"
 
         if analysis.get('best_platforms'):

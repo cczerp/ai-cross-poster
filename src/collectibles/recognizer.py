@@ -196,8 +196,9 @@ If NOT a collectible, return:
         content = [{"type": "text", "text": prompt}]
         content.extend(image_contents)
 
-        # Use configurable model
-        model = os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
+        # Use Claude 3 Haiku by default (faster, cheaper, widely available)
+        # Change to claude-3-opus-20240229 for better quality but higher cost
+        model = os.getenv("CLAUDE_MODEL", "claude-3-haiku-20240307")
 
         payload = {
             "model": model,

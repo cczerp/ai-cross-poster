@@ -465,6 +465,12 @@ REMEMBER: Respond with ONLY the JSON object. No other text before or after.
 
                     analysis = json.loads(content_text)
                     analysis["ai_provider"] = "claude"
+
+                    # Debug: Check if price_reasons is in the response
+                    if not analysis.get("price_reasons"):
+                        print(f"⚠️  WARNING: Claude did not return 'price_reasons' field")
+                        print(f"   Response keys: {list(analysis.keys())}")
+
                     return analysis
 
                 except json.JSONDecodeError as e:
@@ -621,6 +627,26 @@ REMEMBER: Respond with ONLY the JSON object. No other text before or after.
         print(f"   Category: {analysis.get('category', 'Unknown')}")
         print(f"   Estimated Value: ${analysis.get('estimated_value_low', 0)} - ${analysis.get('estimated_value_high', 0)}")
         print(f"   Confidence: {analysis.get('confidence_score', 0):.0%}")
+
+        # Show price reasons
+        if analysis.get("price_reasons"):
+            print("\n   💰 WHY THIS PRICE:")
+            for i, reason in enumerate(analysis["price_reasons"][:3], 1):
+                print(f"      {i}. {reason}")
+
+        # Show signature analysis if present
+        if analysis.get("authentication", {}).get("has_signature"):
+            sig = analysis["authentication"].get("signature_analysis", {})
+            if sig:
+                print(f"\n   ✍️  Signature: {'AUTHENTIC' if sig.get('is_authentic') else 'FAKE/STAMPED'} ({int(sig.get('confidence', 0)*100)}% confidence)")
+                if sig.get("recommendation"):
+                    print(f"      {sig['recommendation']}")
+
+        # Show fake indicators if present
+        if analysis.get("fake_indicators"):
+            print("\n   ⚠️  FAKE INDICATORS:")
+            for i, indicator in enumerate(analysis["fake_indicators"][:3], 1):
+                print(f"      {i}. {indicator}")
 
         # Step 4: Check if we've seen this collectible before
         existing = self.db.find_collectible(

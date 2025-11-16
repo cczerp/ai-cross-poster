@@ -93,6 +93,7 @@ class AIListerGUI(ctk.CTk):
 
         # Create tabs
         self.tabview.add("📦 Create Listing")
+        self.tabview.add("💾 Drafts")
         self.tabview.add("🔍 Identify Collectible")
         self.tabview.add("🛒 Shopping Mode")
         self.tabview.add("📋 My Listings")
@@ -100,6 +101,7 @@ class AIListerGUI(ctk.CTk):
 
         # Build each tab
         self.build_create_listing_tab()
+        self.build_drafts_tab()
         self.build_identify_collectible_tab()
         self.build_shopping_mode_tab()
         self.build_my_listings_tab()
@@ -256,16 +258,33 @@ class AIListerGUI(ctk.CTk):
         ctk.CTkCheckBox(platform_frame, text="eBay", variable=self.ebay_var).pack(side="left", padx=10)
         ctk.CTkCheckBox(platform_frame, text="Mercari", variable=self.mercari_var).pack(side="left", padx=10)
 
-        # Post button
+        # Action buttons frame
+        action_frame = ctk.CTkFrame(scroll_frame)
+        action_frame.pack(pady=20)
+
+        # Save as Draft button
         ctk.CTkButton(
-            scroll_frame,
-            text="🚀 Post to All Platforms",
+            action_frame,
+            text="💾 Save as Draft",
+            command=self.save_as_draft,
+            fg_color="gray",
+            hover_color="darkgray",
+            height=50,
+            width=200,
+            font=("Arial Bold", 14),
+        ).pack(side="left", padx=10)
+
+        # Post Now button
+        ctk.CTkButton(
+            action_frame,
+            text="🚀 Post Now",
             command=self.post_listing,
             fg_color="green",
             hover_color="darkgreen",
             height=50,
-            font=("Arial Bold", 16),
-        ).pack(pady=20)
+            width=200,
+            font=("Arial Bold", 14),
+        ).pack(side="left", padx=10)
 
     def add_photos(self):
         """Add photos to listing"""
@@ -566,6 +585,225 @@ class AIListerGUI(ctk.CTk):
         self.color_entry.delete(0, tk.END)
         self.shipping_entry.delete(0, tk.END)
         self.collectible_data = None
+
+    def save_as_draft(self):
+        """Save listing as draft for later posting"""
+        if not self.photos:
+            messagebox.showwarning("No Photos", "Please add photos first!")
+            return
+
+        if not self.title_entry.get():
+            messagebox.showwarning("No Title", "Please enter a title!")
+            return
+
+        self.update_status("💾 Saving draft...")
+
+        def save():
+            try:
+                import uuid
+
+                # Create UUID for listing
+                listing_uuid = str(uuid.uuid4())
+
+                # Save to database
+                listing_id = self.db.create_listing(
+                    listing_uuid=listing_uuid,
+                    title=self.title_entry.get(),
+                    description=self.description_text.get("1.0", tk.END).strip(),
+                    price=float(self.price_entry.get()) if self.price_entry.get() else 0.0,
+                    condition=self.condition_var.get(),
+                    photos=self.photos,
+                    collectible_id=self.collectible_data.get("id") if self.collectible_data else None,
+                    cost=float(self.cost_entry.get()) if self.cost_entry.get() else None,
+                    attributes={
+                        "brand": self.brand_entry.get(),
+                        "size": self.size_entry.get(),
+                        "color": self.color_entry.get(),
+                        "shipping_cost": float(self.shipping_entry.get()) if self.shipping_entry.get() else 0.0,
+                    }
+                )
+
+                self.after(0, lambda: self.update_status(f"✅ Draft saved (ID: {listing_id})"))
+                self.after(0, lambda: messagebox.showinfo(
+                    "Draft Saved!",
+                    f"Listing saved as draft!\n\nDraft ID: {listing_id}\n\nYou can find it in the 'Drafts' tab."
+                ))
+
+                # Clear form
+                self.after(0, self.clear_listing_form)
+
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Error", f"Failed to save draft: {e}"))
+                self.after(0, lambda: self.update_status(f"❌ Save failed: {e}"))
+
+        threading.Thread(target=save, daemon=True).start()
+
+    # ========================================================================
+    # DRAFTS TAB
+    # ========================================================================
+
+    def build_drafts_tab(self):
+        """Build the drafts tab"""
+        tab = self.tabview.tab("💾 Drafts")
+
+        # Header with refresh and export buttons
+        header_frame = ctk.CTkFrame(tab)
+        header_frame.pack(pady=10, fill="x", padx=20)
+
+        ctk.CTkLabel(
+            header_frame,
+            text="Saved Drafts",
+            font=("Arial Bold", 18),
+        ).pack(side="left", padx=10)
+
+        ctk.CTkButton(
+            header_frame,
+            text="🔄 Refresh",
+            command=self.refresh_drafts,
+            width=100,
+        ).pack(side="right", padx=5)
+
+        ctk.CTkButton(
+            header_frame,
+            text="📤 Export to CSV",
+            command=self.export_drafts_to_csv,
+            width=120,
+        ).pack(side="right", padx=5)
+
+        # Drafts list
+        self.drafts_text = ctk.CTkTextbox(tab, width=1000, height=600)
+        self.drafts_text.pack(pady=10, padx=20)
+
+    def refresh_drafts(self):
+        """Refresh drafts from database"""
+        self.update_status("Loading drafts...")
+
+        def refresh():
+            try:
+                drafts = self.db.get_drafts(limit=100)
+                self.after(0, lambda: self.display_drafts(drafts))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Error", f"Failed to load drafts: {e}"))
+
+        threading.Thread(target=refresh, daemon=True).start()
+
+    def display_drafts(self, drafts):
+        """Display drafts"""
+        self.drafts_text.delete("1.0", tk.END)
+
+        if not drafts:
+            self.drafts_text.insert("1.0", "No drafts found.\n\nCreate a listing and click '💾 Save as Draft' to save it for later.")
+            return
+
+        text = f"Saved Drafts ({len(drafts)}):\n\n"
+
+        for draft in drafts:
+            text += f"{'='*80}\n"
+            text += f"📦 {draft['title']}\n"
+            text += f"ID: {draft['id']} | Price: ${draft['price']:.2f}\n"
+
+            if draft.get('cost'):
+                profit = draft['price'] - draft['cost']
+                text += f"Cost: ${draft['cost']:.2f} | Expected Profit: ${profit:.2f}\n"
+
+            # Parse attributes if available
+            if draft.get('attributes'):
+                try:
+                    attrs = json.loads(draft['attributes'])
+                    details = []
+                    if attrs.get('brand'):
+                        details.append(f"Brand: {attrs['brand']}")
+                    if attrs.get('size'):
+                        details.append(f"Size: {attrs['size']}")
+                    if attrs.get('color'):
+                        details.append(f"Color: {attrs['color']}")
+                    if details:
+                        text += " | ".join(details) + "\n"
+                except:
+                    pass
+
+            text += f"Condition: {draft['condition']}\n"
+
+            # Show photo count
+            if draft.get('photos'):
+                try:
+                    photos = json.loads(draft['photos'])
+                    text += f"Photos: {len(photos)}\n"
+                except:
+                    pass
+
+            text += f"Created: {draft['created_at']}\n"
+            text += f"\nDescription: {draft['description'][:200]}...\n\n"
+
+        self.drafts_text.insert("1.0", text)
+        self.update_status(f"Loaded {len(drafts)} draft(s)")
+
+    def export_drafts_to_csv(self):
+        """Export drafts to CSV for manual posting"""
+        import csv
+        from tkinter import filedialog
+
+        # Get drafts
+        drafts = self.db.get_drafts(limit=1000)
+
+        if not drafts:
+            messagebox.showinfo("No Drafts", "No drafts to export!")
+            return
+
+        # Ask where to save
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            title="Export Drafts to CSV"
+        )
+
+        if not file_path:
+            return
+
+        try:
+            with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
+                fieldnames = ['ID', 'Title', 'Description', 'Price', 'Cost', 'Condition', 'Brand', 'Size', 'Color', 'Shipping', 'Photos', 'Created']
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+
+                for draft in drafts:
+                    # Parse attributes
+                    attrs = {}
+                    if draft.get('attributes'):
+                        try:
+                            attrs = json.loads(draft['attributes'])
+                        except:
+                            pass
+
+                    # Get photo paths
+                    photo_paths = ""
+                    if draft.get('photos'):
+                        try:
+                            photos = json.loads(draft['photos'])
+                            photo_paths = "; ".join(photos)
+                        except:
+                            pass
+
+                    writer.writerow({
+                        'ID': draft['id'],
+                        'Title': draft['title'],
+                        'Description': draft['description'],
+                        'Price': draft['price'],
+                        'Cost': draft.get('cost', ''),
+                        'Condition': draft['condition'],
+                        'Brand': attrs.get('brand', ''),
+                        'Size': attrs.get('size', ''),
+                        'Color': attrs.get('color', ''),
+                        'Shipping': attrs.get('shipping_cost', ''),
+                        'Photos': photo_paths,
+                        'Created': draft['created_at']
+                    })
+
+            messagebox.showinfo("Success", f"Exported {len(drafts)} drafts to:\n{file_path}")
+            self.update_status(f"✅ Exported {len(drafts)} drafts")
+
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Failed to export: {e}")
 
     # ========================================================================
     # IDENTIFY COLLECTIBLE TAB

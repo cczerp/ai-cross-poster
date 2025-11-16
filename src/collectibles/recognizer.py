@@ -91,8 +91,13 @@ class CollectibleRecognizer:
         # Build comprehensive collectibles analysis prompt
         prompt = """Analyze these images to determine if this is a COLLECTIBLE item.
 
+IMPORTANT: Trading cards and sports cards are ALWAYS collectibles, even common ones.
+
 Collectibles include:
-- Trading cards (sports, Pokemon, Magic, Yu-Gi-Oh, etc.)
+- Trading cards (sports cards - baseball, basketball, football, hockey, soccer, Pokemon, Magic, Yu-Gi-Oh, etc.)
+  * Even if in a protective case or sleeve, these are collectibles
+  * Look for player names, card brands (Topps, Panini, Upper Deck, etc.)
+  * Check for rookie cards, autographs, special editions
 - Action figures and toys (vintage, limited edition)
 - Coins and currency
 - Stamps
@@ -196,9 +201,10 @@ If NOT a collectible, return:
         content = [{"type": "text", "text": prompt}]
         content.extend(image_contents)
 
-        # Use Claude 3 Haiku by default (faster, cheaper, widely available)
-        # Change to claude-3-opus-20240229 for better quality but higher cost
-        model = os.getenv("CLAUDE_MODEL", "claude-3-haiku-20240307")
+        # Use Claude Sonnet for collectible identification (needs better accuracy)
+        # Haiku struggles with identifying collectibles accurately
+        # This is worth the extra cost since collectible ID is critical
+        model = os.getenv("CLAUDE_COLLECTIBLE_MODEL", "claude-3-sonnet-20240229")
 
         payload = {
             "model": model,

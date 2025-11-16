@@ -1139,9 +1139,9 @@ Return ONLY the description text, no JSON, no formatting, just the description."
             width=120,
         ).pack(side="right", padx=5)
 
-        # Drafts list
-        self.drafts_text = ctk.CTkTextbox(tab, width=1000, height=600)
-        self.drafts_text.pack(pady=10, padx=20)
+        # Scrollable frame for draft cards
+        self.drafts_scroll = ctk.CTkScrollableFrame(tab, width=1000, height=600)
+        self.drafts_scroll.pack(pady=10, padx=20, fill="both", expand=True)
 
     def refresh_drafts(self):
         """Refresh drafts from database"""
@@ -1157,55 +1157,329 @@ Return ONLY the description text, no JSON, no formatting, just the description."
         threading.Thread(target=refresh, daemon=True).start()
 
     def display_drafts(self, drafts):
-        """Display drafts"""
-        self.drafts_text.delete("1.0", tk.END)
+        """Display drafts as interactive cards"""
+        # Clear existing draft cards
+        for widget in self.drafts_scroll.winfo_children():
+            widget.destroy()
 
         if not drafts:
-            self.drafts_text.insert("1.0", "No drafts found.\n\nCreate a listing and click '💾 Save as Draft' to save it for later.")
+            ctk.CTkLabel(
+                self.drafts_scroll,
+                text="No drafts found.\n\nCreate a listing and click '💾 Save as Draft' to save it for later.",
+                font=("Arial", 14)
+            ).pack(pady=20)
             return
 
-        text = f"Saved Drafts ({len(drafts)}):\n\n"
-
+        # Create a card for each draft
         for draft in drafts:
-            text += f"{'='*80}\n"
-            text += f"📦 {draft['title']}\n"
-            text += f"ID: {draft['id']} | Price: ${draft['price']:.2f}\n"
+            # Draft card frame
+            card = ctk.CTkFrame(self.drafts_scroll, fg_color="gray20", corner_radius=10)
+            card.pack(pady=10, padx=10, fill="x")
 
+            # Left side: Draft info
+            info_frame = ctk.CTkFrame(card, fg_color="transparent")
+            info_frame.pack(side="left", fill="both", expand=True, padx=15, pady=15)
+
+            # Title
+            ctk.CTkLabel(
+                info_frame,
+                text=f"📦 {draft['title']}",
+                font=("Arial Bold", 16),
+                anchor="w"
+            ).pack(fill="x")
+
+            # Price and ID
+            price_text = f"💰 ${draft['price']:.2f}"
             if draft.get('cost'):
                 profit = draft['price'] - draft['cost']
-                text += f"Cost: ${draft['cost']:.2f} | Expected Profit: ${profit:.2f}\n"
+                price_text += f" (Cost: ${draft['cost']:.2f}, Profit: ${profit:.2f})"
 
-            # Parse attributes if available
+            ctk.CTkLabel(
+                info_frame,
+                text=price_text,
+                font=("Arial", 12),
+                anchor="w",
+                text_color="lightgreen"
+            ).pack(fill="x")
+
+            # Details
+            details = []
+
+            # Parse attributes
             if draft.get('attributes'):
                 try:
                     attrs = json.loads(draft['attributes'])
-                    details = []
                     if attrs.get('brand'):
                         details.append(f"Brand: {attrs['brand']}")
                     if attrs.get('size'):
                         details.append(f"Size: {attrs['size']}")
                     if attrs.get('color'):
                         details.append(f"Color: {attrs['color']}")
-                    if details:
-                        text += " | ".join(details) + "\n"
                 except:
                     pass
 
-            text += f"Condition: {draft['condition']}\n"
+            details.append(f"Condition: {draft['condition']}")
 
-            # Show photo count
+            # Photo count
             if draft.get('photos'):
                 try:
                     photos = json.loads(draft['photos'])
-                    text += f"Photos: {len(photos)}\n"
+                    details.append(f"📷 {len(photos)} photos")
                 except:
                     pass
 
-            text += f"Created: {draft['created_at']}\n"
-            text += f"\nDescription: {draft['description'][:200]}...\n\n"
+            ctk.CTkLabel(
+                info_frame,
+                text=" | ".join(details),
+                font=("Arial", 11),
+                anchor="w",
+                text_color="gray70"
+            ).pack(fill="x", pady=(5, 0))
 
-        self.drafts_text.insert("1.0", text)
+            # Description preview
+            desc_preview = draft['description'][:150]
+            if len(draft['description']) > 150:
+                desc_preview += "..."
+
+            ctk.CTkLabel(
+                info_frame,
+                text=desc_preview,
+                font=("Arial", 10),
+                anchor="w",
+                text_color="gray60",
+                wraplength=600
+            ).pack(fill="x", pady=(5, 0))
+
+            # Created date
+            ctk.CTkLabel(
+                info_frame,
+                text=f"Created: {draft['created_at']}",
+                font=("Arial", 9),
+                anchor="w",
+                text_color="gray50"
+            ).pack(fill="x", pady=(5, 0))
+
+            # Right side: Action buttons
+            button_frame = ctk.CTkFrame(card, fg_color="transparent")
+            button_frame.pack(side="right", padx=15, pady=15)
+
+            # Load Draft button
+            ctk.CTkButton(
+                button_frame,
+                text="📝 Load Draft",
+                command=lambda d=draft: self.load_draft_to_form(d),
+                width=140,
+                height=35,
+                fg_color="gray30",
+                hover_color="gray40"
+            ).pack(pady=5)
+
+            # Post Draft button
+            ctk.CTkButton(
+                button_frame,
+                text="🚀 Post Now",
+                command=lambda d=draft: self.post_draft_directly(d),
+                width=140,
+                height=35,
+                fg_color="green",
+                hover_color="darkgreen"
+            ).pack(pady=5)
+
+            # Delete Draft button
+            ctk.CTkButton(
+                button_frame,
+                text="🗑️ Delete",
+                command=lambda d=draft: self.delete_draft(d),
+                width=140,
+                height=35,
+                fg_color="red",
+                hover_color="darkred"
+            ).pack(pady=5)
+
         self.update_status(f"Loaded {len(drafts)} draft(s)")
+
+    def load_draft_to_form(self, draft):
+        """Load a draft into the Create Listing form"""
+        try:
+            # Switch to Create Listing tab
+            self.tabview.set("📦 Create Listing")
+
+            # Clear existing form data
+            self.title_entry.delete(0, tk.END)
+            self.description_text.delete("1.0", tk.END)
+            self.price_entry.delete(0, tk.END)
+            self.cost_entry.delete(0, tk.END)
+            self.shipping_entry.delete(0, tk.END)
+
+            # Fill in draft data
+            self.title_entry.insert(0, draft['title'])
+            self.description_text.insert("1.0", draft['description'])
+            self.price_entry.insert(0, str(draft['price']))
+
+            if draft.get('cost'):
+                self.cost_entry.insert(0, str(draft['cost']))
+
+            if draft.get('shipping_cost'):
+                self.shipping_entry.insert(0, str(draft['shipping_cost']))
+
+            # Set condition
+            self.condition_menu.set(draft.get('condition', 'Used - Good'))
+
+            # Parse and set attributes
+            if draft.get('attributes'):
+                try:
+                    attrs = json.loads(draft['attributes'])
+                    if attrs.get('brand'):
+                        self.brand_entry.delete(0, tk.END)
+                        self.brand_entry.insert(0, attrs['brand'])
+                    if attrs.get('size'):
+                        self.size_entry.delete(0, tk.END)
+                        self.size_entry.insert(0, attrs['size'])
+                    if attrs.get('color'):
+                        self.color_entry.delete(0, tk.END)
+                        self.color_entry.insert(0, attrs['color'])
+                except:
+                    pass
+
+            # Load photos
+            if draft.get('photos'):
+                try:
+                    photo_paths = json.loads(draft['photos'])
+                    self.photos = []
+                    self.photo_listbox.delete(0, tk.END)
+
+                    for path in photo_paths:
+                        photo = Photo(local_path=path)
+                        self.photos.append(photo)
+                        self.photo_listbox.insert(tk.END, os.path.basename(path))
+
+                except Exception as e:
+                    print(f"Error loading draft photos: {e}")
+
+            # Store draft ID so we can mark it as posted later
+            self.current_draft_id = draft['id']
+
+            self.update_status(f"✅ Loaded draft: {draft['title']}")
+            messagebox.showinfo("Draft Loaded", f"Draft loaded into form!\n\nYou can now edit it and click 'Post Listing' to publish it.")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load draft: {e}")
+
+    def post_draft_directly(self, draft):
+        """Post a draft directly to selected platforms"""
+        # Confirm with user
+        if not messagebox.askyesno("Post Draft?", f"Post this listing now?\n\n{draft['title']}\n\nPrice: ${draft['price']:.2f}"):
+            return
+
+        # Parse photos
+        photo_paths = []
+        if draft.get('photos'):
+            try:
+                photo_paths = json.loads(draft['photos'])
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to parse draft photos: {e}")
+                return
+
+        if not photo_paths:
+            messagebox.showerror("Error", "Draft has no photos!")
+            return
+
+        # Parse attributes
+        attributes = {}
+        if draft.get('attributes'):
+            try:
+                attributes = json.loads(draft['attributes'])
+            except:
+                pass
+
+        # Get selected platforms from checkboxes
+        selected_platforms = []
+        if self.ebay_var.get():
+            selected_platforms.append('ebay')
+        if self.mercari_var.get():
+            selected_platforms.append('mercari')
+
+        if not selected_platforms:
+            messagebox.showwarning("No Platforms", "Please select at least one platform to post to!")
+            return
+
+        # Post listing
+        self.update_status(f"📤 Posting draft to {', '.join(selected_platforms)}...")
+
+        def post():
+            try:
+                # Create Photo objects
+                photo_objects = [
+                    Photo(url="", local_path=p, order=i, is_primary=(i == 0))
+                    for i, p in enumerate(photo_paths)
+                ]
+
+                # Create UnifiedListing object
+                listing = UnifiedListing(
+                    title=draft['title'],
+                    description=draft['description'],
+                    price=Price(amount=float(draft['price'])),
+                    condition=ListingCondition(draft.get('condition', 'Used - Good')),
+                    photos=photo_objects,
+                    item_specifics=ItemSpecifics(
+                        brand=attributes.get('brand') or None,
+                        size=attributes.get('size') or None,
+                        color=attributes.get('color') or None,
+                    ),
+                    shipping=Shipping(
+                        cost=float(draft.get('shipping_cost', 0))
+                    ),
+                )
+
+                # Post to all selected platforms
+                result = self.sync_manager.post_to_all_platforms(
+                    listing,
+                    platforms=selected_platforms,
+                    collectible_id=None,
+                    cost=draft.get('cost'),
+                )
+
+                # Update database - mark draft as posted
+                self.db.update_listing_status(draft['id'], 'posted')
+
+                # Show results
+                success_count = result["success_count"]
+                total = result["total_platforms"]
+
+                self.after(0, lambda: self.update_status(f"✅ Posted to {success_count}/{total} platforms"))
+                self.after(0, lambda: messagebox.showinfo(
+                    "Success!",
+                    f"Posted draft to {success_count}/{total} platforms!\n\nListing ID: {result['listing_id']}"
+                ))
+
+                # Refresh drafts list
+                self.after(0, self.refresh_drafts)
+
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Error", f"Failed to post draft: {e}"))
+                self.after(0, lambda: self.update_status("❌ Failed to post draft"))
+
+        threading.Thread(target=post, daemon=True).start()
+
+    def delete_draft(self, draft):
+        """Delete a draft from the database"""
+        if not messagebox.askyesno("Delete Draft?", f"Are you sure you want to delete this draft?\n\n{draft['title']}\n\nThis cannot be undone."):
+            return
+
+        try:
+            # Delete from database
+            cursor = self.db.conn.cursor()
+            cursor.execute("DELETE FROM listings WHERE id = ?", (draft['id'],))
+            self.db.conn.commit()
+
+            self.update_status(f"🗑️ Deleted draft: {draft['title']}")
+            messagebox.showinfo("Draft Deleted", "Draft has been deleted.")
+
+            # Refresh drafts list
+            self.refresh_drafts()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to delete draft: {e}")
 
     def export_drafts_to_csv(self):
         """Export drafts to CSV for manual posting"""

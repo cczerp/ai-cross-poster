@@ -223,6 +223,18 @@ class AIListerGUI(ctk.CTk):
         self.shipping_entry = ctk.CTkEntry(scroll_frame, width=100, placeholder_text="0.00 for free")
         self.shipping_entry.pack(anchor="w", pady=5)
 
+        # AI options
+        ai_options_frame = ctk.CTkFrame(scroll_frame)
+        ai_options_frame.pack(pady=10)
+
+        # GPT-4 fallback checkbox (disabled by default to save quota)
+        self.enable_gpt4_fallback = tk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            ai_options_frame,
+            text="Enable GPT-4 fallback (uses OpenAI quota)",
+            variable=self.enable_gpt4_fallback,
+        ).pack(pady=5)
+
         # AI Re-analyze button (auto-runs when photos added)
         ctk.CTkButton(
             scroll_frame,
@@ -231,7 +243,7 @@ class AIListerGUI(ctk.CTk):
             fg_color="purple",
             hover_color="darkviolet",
             height=40,
-        ).pack(pady=15)
+        ).pack(pady=10)
 
         # Platform selection
         ctk.CTkLabel(scroll_frame, text="Post to Platforms:").pack(anchor="w", pady=(10, 0))
@@ -302,17 +314,42 @@ class AIListerGUI(ctk.CTk):
                 ]
 
                 # Detect attributes
-                attributes = detect_attributes(photo_objects)
+                from src.collectibles.attribute_detector import AttributeDetector
+                detector = AttributeDetector.from_env()
 
-                # Check for errors in response
+                # Check if GPT-4 fallback is enabled
+                use_fallback = self.enable_gpt4_fallback.get()
+
+                # Try Claude first
+                self.after(0, lambda: self.update_status("🤖 Using Claude AI..."))
+                attributes = detector.detect_attributes_claude(photo_objects)
+
+                # Check for errors in Claude response
                 if "error" in attributes:
-                    error_msg = attributes.get("error", "Unknown error")
-                    self.after(0, lambda: messagebox.showerror(
-                        "AI Analysis Error",
-                        f"AI could not analyze the photos:\n\n{error_msg}\n\nPlease check:\n- API keys are set in .env\n- Photos are valid images\n- Internet connection"
-                    ))
-                    self.after(0, lambda: self.update_status(f"❌ AI failed: {error_msg}"))
-                    return
+                    claude_error = attributes.get("error", "Unknown error")
+
+                    # Try GPT-4 fallback if enabled
+                    if use_fallback:
+                        self.after(0, lambda: self.update_status("🔄 Claude failed, trying GPT-4..."))
+                        attributes = detector.detect_attributes_openai(photo_objects)
+
+                        # Check if GPT-4 also failed
+                        if "error" in attributes:
+                            gpt4_error = attributes.get("error", "Unknown error")
+                            self.after(0, lambda: messagebox.showerror(
+                                "AI Analysis Error",
+                                f"Both AIs failed:\n\nClaude: {claude_error}\nGPT-4: {gpt4_error}\n\nPlease check your API keys in .env"
+                            ))
+                            self.after(0, lambda: self.update_status(f"❌ Both AIs failed"))
+                            return
+                    else:
+                        # No fallback - show Claude error
+                        self.after(0, lambda: messagebox.showerror(
+                            "Claude AI Error",
+                            f"Claude could not analyze the photos:\n\n{claude_error}\n\nPlease check:\n- ANTHROPIC_API_KEY is set in .env\n- Photos are valid images\n- Internet connection\n\nTip: Enable 'GPT-4 fallback' checkbox if you want to try GPT-4 when Claude fails."
+                        ))
+                        self.after(0, lambda: self.update_status(f"❌ Claude failed: {claude_error}"))
+                        return
 
                 # Update UI on main thread
                 self.after(0, lambda: self.apply_ai_attributes(attributes))
@@ -425,8 +462,10 @@ class AIListerGUI(ctk.CTk):
             if condition in ["new", "like_new", "excellent", "good", "fair", "poor"]:
                 self.condition_var.set(condition)
 
-        self.update_status("✅ AI enhancement complete!")
-        messagebox.showinfo("Success", "Listing enhanced with AI-detected attributes!")
+        # Show which AI was used
+        ai_used = attributes.get("ai_provider", "unknown").upper()
+        self.update_status(f"✅ AI enhancement complete! (Used {ai_used})")
+        messagebox.showinfo("Success", f"Listing enhanced with AI-detected attributes!\n\nAI Provider: {ai_used}")
 
     def post_listing(self):
         """Post listing to selected platforms"""

@@ -216,10 +216,10 @@ If NOT a collectible, return:
         content = [{"type": "text", "text": prompt}]
         content.extend(image_contents)
 
-        # Use Claude Sonnet for collectible identification (needs better accuracy)
-        # Haiku struggles with identifying collectibles accurately
-        # This is worth the extra cost since collectible ID is critical
-        model = os.getenv("CLAUDE_COLLECTIBLE_MODEL", "claude-3-sonnet-20240229")
+        # Use Claude Haiku for collectible identification
+        # Sonnet would be better but isn't available on all API tiers (causes 404)
+        # The aggressive prompt rules help Haiku identify sports collectibles better
+        model = os.getenv("CLAUDE_COLLECTIBLE_MODEL", "claude-3-haiku-20240307")
 
         payload = {
             "model": model,

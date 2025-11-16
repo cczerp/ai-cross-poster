@@ -12,6 +12,8 @@ Note: Regular Mercari does not have a public API, so automation is required.
 
 import os
 import json
+import time
+import random
 from typing import Dict, Any, Optional, List
 import requests
 from datetime import datetime
@@ -223,14 +225,38 @@ class MercariAutomationAdapter:
                 "Install with: pip install playwright && playwright install"
             )
 
+    def _human_delay(self, min_ms: int = 100, max_ms: int = 500):
+        """Add random human-like delay"""
+        delay = random.uniform(min_ms, max_ms) / 1000
+        time.sleep(delay)
+
+    def _human_type(self, selector: str, text: str):
+        """Type text with human-like delays between characters"""
+        self.page.click(selector)
+        for char in text:
+            self.page.type(selector, char, delay=random.uniform(50, 150))
+            # Occasionally pause (like humans do)
+            if random.random() < 0.1:  # 10% chance
+                time.sleep(random.uniform(0.2, 0.5))
+
     def _login(self):
-        """Login to Mercari"""
-        # This is a placeholder - actual implementation would navigate and login
+        """Login to Mercari with human-like behavior"""
+        # Navigate to login page
         self.page.goto("https://www.mercari.com/login/")
-        self.page.fill('input[name="email"]', self.email)
-        self.page.fill('input[name="password"]', self.password)
+        self._human_delay(1000, 2000)  # Wait like a human would
+
+        # Type email slowly (human-like)
+        self._human_type('input[name="email"]', self.email)
+        self._human_delay(300, 800)
+
+        # Type password slowly
+        self._human_type('input[name="password"]', self.password)
+        self._human_delay(500, 1000)
+
+        # Click submit
         self.page.click('button[type="submit"]')
         self.page.wait_for_url("https://www.mercari.com/", timeout=10000)
+        self._human_delay(1000, 2000)
 
     def publish_listing(self, listing: UnifiedListing) -> Dict[str, str]:
         """
@@ -245,41 +271,80 @@ class MercariAutomationAdapter:
         sync_playwright = self._ensure_playwright()
 
         with sync_playwright() as p:
-            # Launch browser
-            self.browser = p.chromium.launch(headless=self.headless)
-            self.page = self.browser.new_page()
+            # Launch browser with anti-detection settings
+            self.browser = p.chromium.launch(
+                headless=self.headless,
+                args=[
+                    '--disable-blink-features=AutomationControlled',  # Hide automation
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-web-security',
+                ]
+            )
+
+            # Create page with realistic context
+            context = self.browser.new_context(
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                viewport={'width': 1920, 'height': 1080},
+                locale='en-US',
+                timezone_id='America/New_York',
+            )
+            self.page = context.new_page()
+
+            # Inject script to hide webdriver property
+            self.page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+                window.navigator.chrome = {
+                    runtime: {},
+                };
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5],
+                });
+            """)
 
             # Login
             self._login()
 
-            # Navigate to sell page
+            # Navigate to sell page (with human delay)
             self.page.goto("https://www.mercari.com/sell/")
+            self._human_delay(1500, 2500)
 
-            # Fill in listing details
-            title = listing.get_platform_title("mercari")
-            self.page.fill('input[placeholder*="title"]', title)
-            self.page.fill('textarea[placeholder*="description"]', listing.description)
-
-            # Upload photos
+            # Upload photos first (more human-like order)
             photos = listing.get_platform_photos("mercari")
             for photo in photos:
                 if photo.local_path:
                     self.page.set_input_files('input[type="file"]', photo.local_path)
+                    self._human_delay(800, 1500)  # Wait for upload
 
-            # Set price
-            self.page.fill('input[placeholder*="price"]', str(int(listing.price.amount)))
+            # Fill in title (human-like typing)
+            title = listing.get_platform_title("mercari")
+            self._human_type('input[placeholder*="title"]', title)
+            self._human_delay(500, 1000)
+
+            # Fill description (slower for longer text)
+            self._human_type('textarea[placeholder*="description"]', listing.description)
+            self._human_delay(700, 1200)
 
             # Select condition
             condition_text = self.CONDITION_MAP.get(
                 listing.condition, "good"
             ).replace("_", " ").title()
             self.page.click(f'text="{condition_text}"')
+            self._human_delay(400, 800)
 
             # Set category (if available)
             if listing.category:
                 self.page.click(f'text="{listing.category.primary}"')
+                self._human_delay(400, 800)
 
-            # Submit listing
+            # Set price (type it like a human)
+            self._human_type('input[placeholder*="price"]', str(int(listing.price.amount)))
+            self._human_delay(800, 1500)
+
+            # Submit listing (hesitate a bit before clicking)
+            self._human_delay(1000, 2000)
             self.page.click('button:has-text("List")')
 
             # Wait for success and get listing URL

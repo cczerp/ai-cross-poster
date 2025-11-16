@@ -35,18 +35,23 @@ class GeminiClassifier:
 
     def __init__(self, api_key: Optional[str] = None):
         """Initialize Gemini classifier"""
-        self.api_key = api_key or os.getenv("GOOGLE_AI_API_KEY") or os.getenv("GEMINI_API_KEY")
+        # Check multiple env var names (including common typo GEMENI_API_KEY)
+        self.api_key = (
+            api_key or
+            os.getenv("GOOGLE_AI_API_KEY") or
+            os.getenv("GEMINI_API_KEY") or
+            os.getenv("GEMENI_API_KEY")  # Common typo
+        )
         if not self.api_key:
-            raise ValueError("GOOGLE_AI_API_KEY or GEMINI_API_KEY must be set")
+            raise ValueError("GOOGLE_AI_API_KEY, GEMINI_API_KEY, or GEMENI_API_KEY must be set")
 
-        # Use Gemini 1.5 Flash for speed and cost-efficiency
-        # Image-capable models (v1 API endpoint):
-        # - gemini-1.5-flash (recommended for speed/cost)
-        # - gemini-1.5-flash-latest
-        # - gemini-1.5-pro
-        # - gemini-1.5-pro-latest
-        self.model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-        # CRITICAL: Use v1 endpoint (NOT v1beta) for Gemini 1.5 models
+        # Use Gemini 2.5 Flash for speed and cost-efficiency
+        # Current image-capable models (v1 API endpoint):
+        # - gemini-2.5-flash (DEFAULT - fastest, cheapest, great for classification)
+        # - gemini-2.5-pro (better quality, more expensive)
+        # - gemini-2.0-flash (older but still supported)
+        self.model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        # Use v1 endpoint for Gemini models
         self.api_url = f"https://generativelanguage.googleapis.com/v1/models/{self.model}:generateContent"
 
     def _encode_image_to_base64(self, image_path: str) -> str:

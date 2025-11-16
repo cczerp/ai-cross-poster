@@ -167,8 +167,8 @@ class AIListerGUI(ctk.CTk):
             font=("Arial Bold", 18),
         ).pack(pady=10)
 
-        # Scrollable frame for form
-        scroll_frame = ctk.CTkScrollableFrame(right_frame, width=600, height=450)
+        # Scrollable frame for form (auto-sizes to window)
+        scroll_frame = ctk.CTkScrollableFrame(right_frame, width=600)
         scroll_frame.pack(fill="both", expand=True, padx=10)
 
         # Title

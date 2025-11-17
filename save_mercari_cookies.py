@@ -46,7 +46,12 @@ def save_mercari_cookies():
 
         # Navigate to Mercari login
         print("\n📍 Opening Mercari login page...")
-        page.goto("https://www.mercari.com/login/", wait_until="networkidle")
+        print("⏳ This may take a moment...")
+        page.goto("https://www.mercari.com/login/", wait_until="domcontentloaded", timeout=120000)
+        print("✅ Page loaded!")
+
+        # Wait a bit for the page to fully render
+        time.sleep(3)
 
         print("\n" + "=" * 70)
         print("👉 Please log in to Mercari in the browser window")

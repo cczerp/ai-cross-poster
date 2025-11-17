@@ -263,7 +263,7 @@ class MercariAutomationAdapter:
             print("📍 Navigating to Mercari login page...")
             # Navigate to login page - use domcontentloaded instead of networkidle
             # networkidle is too strict and can timeout on pages with constant activity
-            self.page.goto("https://www.mercari.com/login/", wait_until="domcontentloaded", timeout=60000)
+            self.page.goto("https://www.mercari.com/login/", wait_until="domcontentloaded", timeout=120000)
             print("📄 Page loaded, waiting for form elements...")
             self._human_delay(2000, 3000)  # Wait for page to fully render
 
@@ -321,11 +321,11 @@ class MercariAutomationAdapter:
             if not submit_clicked:
                 raise Exception("Could not find submit button")
 
-            print("⏳ Waiting for login to complete (max 60 seconds)...")
+            print("⏳ Waiting for login to complete (max 2 minutes)...")
             # Wait for redirect to homepage or dashboard
             try:
-                # Increased timeout to 60 seconds for slow connections
-                self.page.wait_for_url("https://www.mercari.com/", timeout=60000)
+                # Increased timeout to 2 minutes for slow connections
+                self.page.wait_for_url("https://www.mercari.com/", timeout=120000)
                 print("✅ Login successful!")
                 self._human_delay(1000, 2000)
             except Exception as e:
@@ -483,7 +483,7 @@ class MercariAutomationAdapter:
                 self._load_cookies()
                 # Navigate to homepage to verify cookies work
                 print("📍 Navigating to Mercari to verify cookies...")
-                self.page.goto("https://www.mercari.com/", wait_until="domcontentloaded", timeout=60000)
+                self.page.goto("https://www.mercari.com/", wait_until="domcontentloaded", timeout=120000)
                 self._human_delay(2000, 3000)
 
                 # Check if we're logged in by looking at URL (if redirected to login, cookies failed)
@@ -541,8 +541,8 @@ class MercariAutomationAdapter:
             self._human_delay(1000, 2000)
             self.page.click('button:has-text("List")')
 
-            # Wait for success and get listing URL (increased timeout to 60 seconds)
-            self.page.wait_for_url("**/item/**", timeout=60000)
+            # Wait for success and get listing URL (increased timeout to 2 minutes)
+            self.page.wait_for_url("**/item/**", timeout=120000)
             listing_url = self.page.url
 
             # Extract listing ID from URL

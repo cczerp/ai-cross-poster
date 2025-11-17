@@ -164,6 +164,7 @@ class UnifiedListing:
     # Optional metadata
     sku: Optional[str] = None
     location: Optional[str] = None
+    storage_location: Optional[str] = None  # Physical storage location (e.g., "A1", "B2")
     returns_accepted: bool = True
     return_period_days: int = 30
 
@@ -263,6 +264,7 @@ class UnifiedListing:
             "listing_format": self.listing_format.value,
             "quantity": self.quantity,
             "sku": self.sku,
+            "storage_location": self.storage_location,
             "published_to_ebay": self.published_to_ebay,
             "published_to_mercari": self.published_to_mercari,
         }

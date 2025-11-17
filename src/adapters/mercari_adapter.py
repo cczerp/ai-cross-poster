@@ -321,11 +321,11 @@ class MercariAutomationAdapter:
             if not submit_clicked:
                 raise Exception("Could not find submit button")
 
-            print("⏳ Waiting for login to complete (max 2 minutes)...")
+            print("⏳ Waiting for login to complete (max 5 minutes for 2FA)...")
             # Wait for redirect to homepage or dashboard
             try:
-                # Increased timeout to 2 minutes for slow connections
-                self.page.wait_for_url("https://www.mercari.com/", timeout=120000)
+                # Increased timeout to 5 minutes for 2FA verification code entry
+                self.page.wait_for_url("https://www.mercari.com/", timeout=300000)
                 print("✅ Login successful!")
                 self._human_delay(1000, 2000)
             except Exception as e:

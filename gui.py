@@ -1386,8 +1386,8 @@ Return ONLY the description text, no JSON, no formatting, just the description."
                     self.photo_listbox.delete(0, tk.END)
 
                     for path in photo_paths:
-                        photo = Photo(local_path=path)
-                        self.photos.append(photo)
+                        # Store just the path string (not Photo objects) in the GUI
+                        self.photos.append(path)
                         self.photo_listbox.insert(tk.END, os.path.basename(path))
 
                 except Exception as e:

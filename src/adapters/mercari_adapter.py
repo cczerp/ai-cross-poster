@@ -194,11 +194,25 @@ class MercariAutomationAdapter:
     This is a fallback for regular Mercari sellers without Shops API access.
     """
 
+    # Mercari condition mappings (same as Shops adapter)
+    CONDITION_MAP = {
+        ListingCondition.NEW: "new",
+        ListingCondition.NEW_WITH_TAGS: "new",
+        ListingCondition.NEW_WITHOUT_TAGS: "new",
+        ListingCondition.LIKE_NEW: "like_new",
+        ListingCondition.EXCELLENT: "excellent",
+        ListingCondition.GOOD: "good",
+        ListingCondition.FAIR: "fair",
+        ListingCondition.POOR: "poor",
+        ListingCondition.FOR_PARTS: "poor",
+    }
+
     def __init__(
         self,
         email: str,
         password: str,
         headless: bool = True,
+        cookies_file: Optional[str] = None,
     ):
         """
         Initialize Mercari automation adapter.
@@ -207,10 +221,12 @@ class MercariAutomationAdapter:
             email: Mercari account email
             password: Mercari account password
             headless: Run browser in headless mode
+            cookies_file: Path to saved cookies file (bypasses login)
         """
         self.email = email
         self.password = password
         self.headless = headless
+        self.cookies_file = cookies_file
         self.browser = None
         self.page = None
 
@@ -241,22 +257,142 @@ class MercariAutomationAdapter:
 
     def _login(self):
         """Login to Mercari with human-like behavior"""
-        # Navigate to login page
-        self.page.goto("https://www.mercari.com/login/")
-        self._human_delay(1000, 2000)  # Wait like a human would
+        import time
 
-        # Type email slowly (human-like)
-        self._human_type('input[name="email"]', self.email)
-        self._human_delay(300, 800)
+        try:
+            print("📍 Navigating to Mercari login page...")
+            # Navigate to login page - use domcontentloaded instead of networkidle
+            # networkidle is too strict and can timeout on pages with constant activity
+            self.page.goto("https://www.mercari.com/login/", wait_until="domcontentloaded", timeout=120000)
+            print("📄 Page loaded, waiting for form elements...")
+            self._human_delay(2000, 3000)  # Wait for page to fully render
 
-        # Type password slowly
-        self._human_type('input[name="password"]', self.password)
-        self._human_delay(500, 1000)
+            print("✍️  Entering email...")
+            # Wait for email field and type email slowly (human-like)
+            email_selector = None
+            for selector in ['input[name="email"]', 'input[type="email"]', '#email', 'input[placeholder*="mail" i]']:
+                try:
+                    self.page.wait_for_selector(selector, timeout=5000, state="visible")
+                    email_selector = selector
+                    print(f"✅ Found email field using: {selector}")
+                    break
+                except:
+                    continue
 
-        # Click submit
-        self.page.click('button[type="submit"]')
-        self.page.wait_for_url("https://www.mercari.com/", timeout=10000)
-        self._human_delay(1000, 2000)
+            if not email_selector:
+                screenshot_path = f"mercari_no_email_field_{int(time.time())}.png"
+                self.page.screenshot(path=screenshot_path)
+                raise Exception(f"Could not find email input field. Screenshot: {screenshot_path}")
+
+            self._human_type(email_selector, self.email)
+            self._human_delay(300, 800)
+
+            print("🔒 Entering password...")
+            # Wait for password field
+            password_selector = None
+            for selector in ['input[name="password"]', 'input[type="password"]', '#password', 'input[placeholder*="password" i]']:
+                try:
+                    self.page.wait_for_selector(selector, timeout=5000, state="visible")
+                    password_selector = selector
+                    print(f"✅ Found password field using: {selector}")
+                    break
+                except:
+                    continue
+
+            if not password_selector:
+                screenshot_path = f"mercari_no_password_field_{int(time.time())}.png"
+                self.page.screenshot(path=screenshot_path)
+                raise Exception(f"Could not find password input field. Screenshot: {screenshot_path}")
+
+            self._human_type(password_selector, self.password)
+            self._human_delay(500, 1000)
+
+            print("🔘 Clicking submit button...")
+            # Click submit - try multiple selectors
+            submit_clicked = False
+            for selector in ['button[type="submit"]', 'button:has-text("Sign in")', 'button:has-text("Log in")', 'input[type="submit"]']:
+                try:
+                    self.page.click(selector, timeout=5000)
+                    submit_clicked = True
+                    break
+                except:
+                    continue
+
+            if not submit_clicked:
+                raise Exception("Could not find submit button")
+
+            print("⏳ Waiting for login to complete (max 5 minutes for 2FA)...")
+            # Wait for redirect to homepage or dashboard
+            try:
+                # Increased timeout to 5 minutes for 2FA verification code entry
+                self.page.wait_for_url("https://www.mercari.com/", timeout=300000)
+                print("✅ Login successful!")
+                self._human_delay(1000, 2000)
+            except Exception as e:
+                # Login failed - take screenshot for debugging
+                screenshot_path = f"mercari_login_error_{int(time.time())}.png"
+                self.page.screenshot(path=screenshot_path)
+                current_url = self.page.url
+
+                print(f"📸 Screenshot saved to: {screenshot_path}")
+                print(f"❌ Login timeout. Current URL: {current_url}")
+
+                raise Exception(
+                    f"Login failed - timeout waiting for redirect to homepage.\n"
+                    f"Current URL: {current_url}\n"
+                    f"Screenshot saved to: {screenshot_path}\n\n"
+                    f"Possible causes:\n"
+                    f"1. Invalid email/password credentials\n"
+                    f"2. Mercari requires 2FA/verification (not supported in headless mode)\n"
+                    f"3. Mercari detected automation and blocked login\n"
+                    f"4. Network is slow or Mercari is down\n\n"
+                    f"Solutions:\n"
+                    f"- Verify MERCARI_EMAIL and MERCARI_PASSWORD in .env are correct\n"
+                    f"- Check the screenshot to see what page appeared\n"
+                    f"- Try logging in manually at mercari.com to check for verification prompts"
+                )
+
+        except Exception as e:
+            # Re-raise with context
+            if "Login failed" in str(e):
+                raise
+            else:
+                screenshot_path = f"mercari_login_error_{int(time.time())}.png"
+                try:
+                    self.page.screenshot(path=screenshot_path)
+                    print(f"📸 Screenshot saved to: {screenshot_path}")
+                except:
+                    pass
+                raise Exception(f"Login error: {str(e)}")
+
+    def _save_cookies(self):
+        """Save browser cookies to file for future sessions"""
+        if not self.cookies_file:
+            self.cookies_file = "data/mercari_cookies.json"
+
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(self.cookies_file), exist_ok=True)
+
+        # Get cookies from browser context
+        cookies = self.page.context.cookies()
+
+        # Save to file
+        with open(self.cookies_file, 'w') as f:
+            json.dump(cookies, f)
+
+        print(f"💾 Saved cookies to {self.cookies_file}")
+
+    def _load_cookies(self):
+        """Load cookies from file"""
+        if not os.path.exists(self.cookies_file):
+            return
+
+        with open(self.cookies_file, 'r') as f:
+            cookies = json.load(f)
+
+        # Add cookies to browser context
+        self.page.context.add_cookies(cookies)
+        print(f"✅ Loaded {len(cookies)} cookies")
 
     def publish_listing(self, listing: UnifiedListing) -> Dict[str, str]:
         """
@@ -272,40 +408,98 @@ class MercariAutomationAdapter:
 
         with sync_playwright() as p:
             # Launch browser with anti-detection settings
+            launch_args = [
+                '--disable-blink-features=AutomationControlled',  # Hide automation
+                '--no-sandbox',
+                '--disable-dev-shm-usage',
+            ]
+
+            # Only add headless-specific flags when in headless mode
+            if self.headless:
+                launch_args.extend([
+                    '--disable-gpu',
+                    '--disable-software-rasterizer',
+                ])
+
             self.browser = p.chromium.launch(
                 headless=self.headless,
-                args=[
-                    '--disable-blink-features=AutomationControlled',  # Hide automation
-                    '--no-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-web-security',
-                ]
+                args=launch_args,
+                # Enable downloads and other features to appear more normal
+                downloads_path='./downloads',
             )
 
             # Create page with realistic context
             context = self.browser.new_context(
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
                 viewport={'width': 1920, 'height': 1080},
                 locale='en-US',
                 timezone_id='America/New_York',
+                # Add more realistic browser fingerprint
+                extra_http_headers={
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                }
             )
             self.page = context.new_page()
 
-            # Inject script to hide webdriver property
+            # Enhanced script to hide webdriver property and appear more human
             self.page.add_init_script("""
+                // Hide webdriver
                 Object.defineProperty(navigator, 'webdriver', {
                     get: () => undefined
                 });
+
+                // Add chrome object
                 window.navigator.chrome = {
                     runtime: {},
+                    loadTimes: function() {},
+                    csi: function() {},
+                    app: {},
                 };
+
+                // Mock plugins with realistic values
                 Object.defineProperty(navigator, 'plugins', {
                     get: () => [1, 2, 3, 4, 5],
                 });
+
+                // Mock languages
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['en-US', 'en'],
+                });
+
+                // Override permissions
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        originalQuery(parameters)
+                );
             """)
 
-            # Login
-            self._login()
+            # Load cookies if available, otherwise login
+            if self.cookies_file and os.path.exists(self.cookies_file):
+                print(f"🍪 Loading saved cookies from {self.cookies_file}")
+                self._load_cookies()
+                # Navigate to homepage to verify cookies work
+                print("📍 Navigating to Mercari to verify cookies...")
+                self.page.goto("https://www.mercari.com/", wait_until="domcontentloaded", timeout=120000)
+                self._human_delay(2000, 3000)
+
+                # Check if we're logged in by looking at URL (if redirected to login, cookies failed)
+                current_url = self.page.url
+                print(f"📍 Current URL: {current_url}")
+
+                if "login" in current_url.lower():
+                    print("⚠️  Cookies expired or invalid (redirected to login), falling back to login...")
+                    self._login()
+                    self._save_cookies()
+                else:
+                    print("✅ Logged in successfully using cookies!")
+            else:
+                print("🔐 No cookies found, performing login...")
+                self._login()
+                self._save_cookies()
 
             # Navigate to sell page (with human delay)
             self.page.goto("https://www.mercari.com/sell/")
@@ -347,8 +541,8 @@ class MercariAutomationAdapter:
             self._human_delay(1000, 2000)
             self.page.click('button:has-text("List")')
 
-            # Wait for success and get listing URL
-            self.page.wait_for_url("**/item/**", timeout=15000)
+            # Wait for success and get listing URL (increased timeout to 2 minutes)
+            self.page.wait_for_url("**/item/**", timeout=120000)
             listing_url = self.page.url
 
             # Extract listing ID from URL
@@ -369,9 +563,18 @@ class MercariAutomationAdapter:
         Expected variables:
             - MERCARI_EMAIL
             - MERCARI_PASSWORD
+            - MERCARI_HEADLESS (optional: "false" to see browser, default "true")
+            - MERCARI_COOKIES_FILE (optional: path to cookies file)
         """
         email = os.getenv("MERCARI_EMAIL")
         password = os.getenv("MERCARI_PASSWORD")
+        cookies_file = os.getenv("MERCARI_COOKIES_FILE", "data/mercari_cookies.json")
+
+        # Check if headless mode should be disabled (for debugging)
+        headless_env = os.getenv("MERCARI_HEADLESS", "true").lower()
+        if headless_env in ["false", "0", "no"]:
+            headless = False
+            print("🔍 Running browser in VISIBLE mode (MERCARI_HEADLESS=false)")
 
         if not all([email, password]):
             raise ValueError(
@@ -379,7 +582,7 @@ class MercariAutomationAdapter:
                 "Required: MERCARI_EMAIL, MERCARI_PASSWORD"
             )
 
-        return cls(email, password, headless)
+        return cls(email, password, headless, cookies_file)
 
 
 class MercariAdapter:
@@ -421,9 +624,8 @@ class MercariAdapter:
                 shop_id=os.getenv("MERCARI_SHOP_ID"),
             )
         else:
-            # Use automation
-            return cls(
-                use_shops_api=False,
-                email=os.getenv("MERCARI_EMAIL"),
-                password=os.getenv("MERCARI_PASSWORD"),
-            )
+            # Use automation - create adapter using from_env to read MERCARI_HEADLESS
+            automation_adapter = MercariAutomationAdapter.from_env()
+            adapter_instance = cls.__new__(cls)
+            adapter_instance.adapter = automation_adapter
+            return adapter_instance

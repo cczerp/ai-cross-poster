@@ -111,6 +111,7 @@ class MultiPlatformSyncManager:
             cost=cost,
             category=listing.category.primary if listing.category else None,
             attributes=listing.item_specifics.to_dict() if listing.item_specifics else None,
+            storage_location=listing.storage_location,
         )
 
         print(f"Database Listing ID: {listing_id}\n")

@@ -169,7 +169,22 @@ class Database:
             ON notifications(is_read)
         """)
 
+        # Run migrations
+        self._run_migrations()
+
         self.conn.commit()
+
+    def _run_migrations(self):
+        """Run database migrations for schema updates"""
+        cursor = self.conn.cursor()
+
+        # Migration: Add storage_location column to listings table
+        try:
+            cursor.execute("SELECT storage_location FROM listings LIMIT 1")
+        except sqlite3.OperationalError:
+            # Column doesn't exist, add it
+            cursor.execute("ALTER TABLE listings ADD COLUMN storage_location TEXT")
+            self.conn.commit()
 
     # ========================================================================
     # COLLECTIBLES METHODS
@@ -309,6 +324,7 @@ class Database:
         cost: Optional[float] = None,
         category: Optional[str] = None,
         attributes: Optional[Dict] = None,
+        storage_location: Optional[str] = None,
     ) -> int:
         """Create a new listing"""
         cursor = self.conn.cursor()
@@ -316,13 +332,14 @@ class Database:
         cursor.execute("""
             INSERT INTO listings (
                 listing_uuid, collectible_id, title, description, price,
-                cost, condition, category, attributes, photos, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
+                cost, condition, category, attributes, photos, status, storage_location
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)
         """, (
             listing_uuid, collectible_id, title, description, price,
             cost, condition, category,
             json.dumps(attributes) if attributes else None,
             json.dumps(photos),
+            storage_location,
         ))
 
         self.conn.commit()

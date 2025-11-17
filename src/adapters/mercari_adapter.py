@@ -261,30 +261,50 @@ class MercariAutomationAdapter:
 
         try:
             print("📍 Navigating to Mercari login page...")
-            # Navigate to login page
-            self.page.goto("https://www.mercari.com/login/", wait_until="networkidle", timeout=60000)
-            self._human_delay(1000, 2000)  # Wait like a human would
+            # Navigate to login page - use domcontentloaded instead of networkidle
+            # networkidle is too strict and can timeout on pages with constant activity
+            self.page.goto("https://www.mercari.com/login/", wait_until="domcontentloaded", timeout=60000)
+            print("📄 Page loaded, waiting for form elements...")
+            self._human_delay(2000, 3000)  # Wait for page to fully render
 
             print("✍️  Entering email...")
             # Wait for email field and type email slowly (human-like)
-            try:
-                self.page.wait_for_selector('input[name="email"]', timeout=10000)
-            except:
-                # Try alternative selectors
-                self.page.wait_for_selector('input[type="email"]', timeout=10000)
+            email_selector = None
+            for selector in ['input[name="email"]', 'input[type="email"]', '#email', 'input[placeholder*="mail" i]']:
+                try:
+                    self.page.wait_for_selector(selector, timeout=5000, state="visible")
+                    email_selector = selector
+                    print(f"✅ Found email field using: {selector}")
+                    break
+                except:
+                    continue
 
-            self._human_type('input[name="email"], input[type="email"]', self.email)
+            if not email_selector:
+                screenshot_path = f"mercari_no_email_field_{int(time.time())}.png"
+                self.page.screenshot(path=screenshot_path)
+                raise Exception(f"Could not find email input field. Screenshot: {screenshot_path}")
+
+            self._human_type(email_selector, self.email)
             self._human_delay(300, 800)
 
             print("🔒 Entering password...")
-            # Type password slowly
-            try:
-                self.page.wait_for_selector('input[name="password"]', timeout=10000)
-            except:
-                # Try alternative selectors
-                self.page.wait_for_selector('input[type="password"]', timeout=10000)
+            # Wait for password field
+            password_selector = None
+            for selector in ['input[name="password"]', 'input[type="password"]', '#password', 'input[placeholder*="password" i]']:
+                try:
+                    self.page.wait_for_selector(selector, timeout=5000, state="visible")
+                    password_selector = selector
+                    print(f"✅ Found password field using: {selector}")
+                    break
+                except:
+                    continue
 
-            self._human_type('input[name="password"], input[type="password"]', self.password)
+            if not password_selector:
+                screenshot_path = f"mercari_no_password_field_{int(time.time())}.png"
+                self.page.screenshot(path=screenshot_path)
+                raise Exception(f"Could not find password input field. Screenshot: {screenshot_path}")
+
+            self._human_type(password_selector, self.password)
             self._human_delay(500, 1000)
 
             print("🔘 Clicking submit button...")
@@ -462,12 +482,16 @@ class MercariAutomationAdapter:
                 print(f"🍪 Loading saved cookies from {self.cookies_file}")
                 self._load_cookies()
                 # Navigate to homepage to verify cookies work
-                self.page.goto("https://www.mercari.com/", wait_until="networkidle", timeout=60000)
-                self._human_delay(1000, 2000)
+                print("📍 Navigating to Mercari to verify cookies...")
+                self.page.goto("https://www.mercari.com/", wait_until="domcontentloaded", timeout=60000)
+                self._human_delay(2000, 3000)
 
-                # Check if we're logged in by looking for user-specific elements
-                if self.page.url != "https://www.mercari.com/":
-                    print("⚠️  Cookies expired or invalid, falling back to login...")
+                # Check if we're logged in by looking at URL (if redirected to login, cookies failed)
+                current_url = self.page.url
+                print(f"📍 Current URL: {current_url}")
+
+                if "login" in current_url.lower():
+                    print("⚠️  Cookies expired or invalid (redirected to login), falling back to login...")
                     self._login()
                     self._save_cookies()
                 else:

@@ -546,9 +546,8 @@ class MercariAdapter:
                 shop_id=os.getenv("MERCARI_SHOP_ID"),
             )
         else:
-            # Use automation
-            return cls(
-                use_shops_api=False,
-                email=os.getenv("MERCARI_EMAIL"),
-                password=os.getenv("MERCARI_PASSWORD"),
-            )
+            # Use automation - create adapter using from_env to read MERCARI_HEADLESS
+            automation_adapter = MercariAutomationAdapter.from_env()
+            adapter_instance = cls.__new__(cls)
+            adapter_instance.adapter = automation_adapter
+            return adapter_instance

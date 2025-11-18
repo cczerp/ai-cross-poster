@@ -1,0 +1,9 @@
+# Web App Requirements
+# Install with: pip install -r requirements-web.txt
+
+flask>=3.0.0
+werkzeug>=3.0.0
+python-dotenv>=1.0.0
+
+# Existing dependencies (from main app)
+# Add any other dependencies from your main requirements.txt here

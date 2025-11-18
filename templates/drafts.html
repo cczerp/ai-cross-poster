@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Drafts{% endblock %}
+
+{% block content %}
+<h2 class="mb-4"><i class="fas fa-folder"></i> Saved Drafts</h2>
+
+{% if drafts %}
+    {% for draft in drafts %}
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5 class="card-title">{{ draft.title }}</h5>
+
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-success fw-bold">${{ "%.2f"|format(draft.price) }}</span>
+                {% if draft.storage_location %}
+                <span class="storage-badge">
+                    <i class="fas fa-map-marker-alt"></i> {{ draft.storage_location }}
+                </span>
+                {% endif %}
+            </div>
+
+            <p class="card-text text-muted small">
+                {% if draft.description %}
+                    {{ draft.description[:100] }}{% if draft.description|length > 100 %}...{% endif %}
+                {% endif %}
+            </p>
+
+            <div class="d-flex justify-content-between align-items-center">
+                <small class="text-muted">
+                    <i class="far fa-clock"></i> {{ draft.created_at }}
+                </small>
+                <div class="btn-group btn-group-sm">
+                    <a href="{{ url_for('create_listing') }}" class="btn btn-outline-primary">
+                        <i class="fas fa-edit"></i> Edit
+                    </a>
+                    <button class="btn btn-outline-danger" onclick="deleteDraft({{ draft.id }})">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="text-center py-5">
+        <i class="fas fa-folder-open fa-4x text-muted mb-3"></i>
+        <h5>No Drafts Yet</h5>
+        <p class="text-muted">Create a listing and save it as a draft</p>
+        <a href="{{ url_for('create_listing') }}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Create Listing
+        </a>
+    </div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function deleteDraft(id) {
+    if (!confirm('Delete this draft?')) return;
+
+    showLoading();
+
+    try {
+        const response = await fetch(`/api/delete-draft/${id}`, {
+            method: 'DELETE'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert('Draft deleted', 'success');
+            location.reload();
+        } else {
+            showAlert(data.error, 'danger');
+        }
+    } catch (error) {
+        showAlert('Delete failed: ' + error, 'danger');
+    } finally {
+        hideLoading();
+    }
+}
+</script>
+{% endblock %}

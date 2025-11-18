@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - AI Lister{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+    <h2><i class="fas fa-cog"></i> Settings</h2>
+    <p class="text-muted">Manage your account and marketplace connections</p>
+</div>
+
+<!-- Account Information -->
+<div class="card mb-3">
+    <div class="card-body">
+        <h5 class="card-title"><i class="fas fa-user"></i> Account Information</h5>
+        <div class="mb-2">
+            <strong>Username:</strong> {{ user['username'] }}
+        </div>
+        <div class="mb-2">
+            <strong>Email:</strong> {{ user['email'] }}
+        </div>
+        <div class="mb-2">
+            <strong>Member Since:</strong> {{ user['created_at'][:10] }}
+        </div>
+    </div>
+</div>
+
+<!-- Notification Email -->
+<div class="card mb-3">
+    <div class="card-body">
+        <h5 class="card-title"><i class="fas fa-bell"></i> Notification Email</h5>
+        <p class="text-muted small">Where you want to receive sale alerts and notifications</p>
+
+        <form id="notificationEmailForm">
+            <div class="mb-3">
+                <label for="notificationEmail" class="form-label">Email Address</label>
+                <input type="email" class="form-control" id="notificationEmail"
+                       value="{{ user['notification_email'] if user['notification_email'] else user['email'] }}"
+                       placeholder="your@email.com" required>
+                <small class="form-text text-muted">
+                    You'll receive notifications when items sell, offers arrive, etc.
+                </small>
+            </div>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save"></i> Save Notification Email
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Marketplace Credentials -->
+<div class="card mb-3">
+    <div class="card-body">
+        <h5 class="card-title"><i class="fas fa-store"></i> Marketplace Connections</h5>
+        <p class="text-muted small">
+            Add your marketplace login credentials to enable posting automation.
+            <strong>Your credentials are stored securely and never shared.</strong>
+        </p>
+
+        <!-- Poshmark -->
+        <div class="border rounded p-3 mb-3">
+            <h6 class="d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-shopping-bag text-primary"></i> Poshmark</span>
+                {% if credentials.get('poshmark') %}
+                <span class="badge bg-success">Connected</span>
+                {% else %}
+                <span class="badge bg-secondary">Not Connected</span>
+                {% endif %}
+            </h6>
+
+            <form class="marketplace-form mt-2" data-platform="poshmark">
+                <div class="mb-2">
+                    <input type="email" class="form-control form-control-sm"
+                           name="username" placeholder="Poshmark Email"
+                           value="{{ credentials.get('poshmark')['username'] if credentials.get('poshmark') else '' }}">
+                </div>
+                <div class="mb-2">
+                    <input type="password" class="form-control form-control-sm"
+                           name="password" placeholder="Poshmark Password"
+                           value="{{ credentials.get('poshmark')['password'] if credentials.get('poshmark') else '' }}">
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-sm btn-primary">
+                        <i class="fas fa-save"></i> Save
+                    </button>
+                    {% if credentials.get('poshmark') %}
+                    <button type="button" class="btn btn-sm btn-danger delete-creds" data-platform="poshmark">
+                        <i class="fas fa-trash"></i> Remove
+                    </button>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+
+        <!-- Depop -->
+        <div class="border rounded p-3 mb-3">
+            <h6 class="d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-tshirt text-info"></i> Depop</span>
+                {% if credentials.get('depop') %}
+                <span class="badge bg-success">Connected</span>
+                {% else %}
+                <span class="badge bg-secondary">Not Connected</span>
+                {% endif %}
+            </h6>
+
+            <form class="marketplace-form mt-2" data-platform="depop">
+                <div class="mb-2">
+                    <input type="text" class="form-control form-control-sm"
+                           name="username" placeholder="Depop Username"
+                           value="{{ credentials.get('depop')['username'] if credentials.get('depop') else '' }}">
+                </div>
+                <div class="mb-2">
+                    <input type="password" class="form-control form-control-sm"
+                           name="password" placeholder="Depop Password"
+                           value="{{ credentials.get('depop')['password'] if credentials.get('depop') else '' }}">
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-sm btn-primary">
+                        <i class="fas fa-save"></i> Save
+                    </button>
+                    {% if credentials.get('depop') %}
+                    <button type="button" class="btn btn-sm btn-danger delete-creds" data-platform="depop">
+                        <i class="fas fa-trash"></i> Remove
+                    </button>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+
+        <!-- Mercari -->
+        <div class="border rounded p-3 mb-3">
+            <h6 class="d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-box text-warning"></i> Mercari</span>
+                {% if credentials.get('mercari') %}
+                <span class="badge bg-success">Connected</span>
+                {% else %}
+                <span class="badge bg-secondary">Not Connected</span>
+                {% endif %}
+            </h6>
+
+            <form class="marketplace-form mt-2" data-platform="mercari">
+                <div class="mb-2">
+                    <input type="email" class="form-control form-control-sm"
+                           name="username" placeholder="Mercari Email"
+                           value="{{ credentials.get('mercari')['username'] if credentials.get('mercari') else '' }}">
+                </div>
+                <div class="mb-2">
+                    <input type="password" class="form-control form-control-sm"
+                           name="password" placeholder="Mercari Password"
+                           value="{{ credentials.get('mercari')['password'] if credentials.get('mercari') else '' }}">
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-sm btn-primary">
+                        <i class="fas fa-save"></i> Save
+                    </button>
+                    {% if credentials.get('mercari') %}
+                    <button type="button" class="btn btn-sm btn-danger delete-creds" data-platform="mercari">
+                        <i class="fas fa-trash"></i> Remove
+                    </button>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+
+        <!-- Facebook Marketplace -->
+        <div class="border rounded p-3 mb-3">
+            <h6 class="d-flex justify-content-between align-items-center">
+                <span><i class="fab fa-facebook text-primary"></i> Facebook Marketplace</span>
+                {% if credentials.get('facebook') %}
+                <span class="badge bg-success">Connected</span>
+                {% else %}
+                <span class="badge bg-secondary">Not Connected</span>
+                {% endif %}
+            </h6>
+
+            <form class="marketplace-form mt-2" data-platform="facebook">
+                <div class="mb-2">
+                    <input type="email" class="form-control form-control-sm"
+                           name="username" placeholder="Facebook Email/Phone"
+                           value="{{ credentials.get('facebook')['username'] if credentials.get('facebook') else '' }}">
+                </div>
+                <div class="mb-2">
+                    <input type="password" class="form-control form-control-sm"
+                           name="password" placeholder="Facebook Password"
+                           value="{{ credentials.get('facebook')['password'] if credentials.get('facebook') else '' }}">
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-sm btn-primary">
+                        <i class="fas fa-save"></i> Save
+                    </button>
+                    {% if credentials.get('facebook') %}
+                    <button type="button" class="btn btn-sm btn-danger delete-creds" data-platform="facebook">
+                        <i class="fas fa-trash"></i> Remove
+                    </button>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+
+        <div class="alert alert-warning mt-3">
+            <i class="fas fa-exclamation-triangle"></i> <strong>Security Note:</strong>
+            Your marketplace credentials are stored in the database. For maximum security in production,
+            consider using encrypted storage or OAuth authentication where available.
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Notification email form
+document.getElementById('notificationEmailForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    showLoading();
+
+    const email = document.getElementById('notificationEmail').value;
+
+    try {
+        const response = await fetch('/api/settings/notification-email', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ notification_email: email })
+        });
+
+        const data = await response.json();
+        hideLoading();
+
+        if (data.success) {
+            showAlert('Notification email updated successfully!', 'success');
+        } else {
+            showAlert(data.error || 'Failed to update email', 'danger');
+        }
+    } catch (error) {
+        hideLoading();
+        showAlert('Error: ' + error.message, 'danger');
+    }
+});
+
+// Marketplace credentials forms
+document.querySelectorAll('.marketplace-form').forEach(form => {
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        showLoading();
+
+        const platform = this.dataset.platform;
+        const username = this.querySelector('[name="username"]').value;
+        const password = this.querySelector('[name="password"]').value;
+
+        if (!username || !password) {
+            hideLoading();
+            showAlert('Please enter both username and password', 'warning');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/settings/marketplace-credentials', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ platform, username, password })
+            });
+
+            const data = await response.json();
+            hideLoading();
+
+            if (data.success) {
+                showAlert(`${platform.charAt(0).toUpperCase() + platform.slice(1)} credentials saved!`, 'success');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showAlert(data.error || 'Failed to save credentials', 'danger');
+            }
+        } catch (error) {
+            hideLoading();
+            showAlert('Error: ' + error.message, 'danger');
+        }
+    });
+});
+
+// Delete credentials
+document.querySelectorAll('.delete-creds').forEach(btn => {
+    btn.addEventListener('click', async function() {
+        const platform = this.dataset.platform;
+
+        if (!confirm(`Remove ${platform} credentials?`)) {
+            return;
+        }
+
+        showLoading();
+
+        try {
+            const response = await fetch(`/api/settings/marketplace-credentials/${platform}`, {
+                method: 'DELETE'
+            });
+
+            const data = await response.json();
+            hideLoading();
+
+            if (data.success) {
+                showAlert(`${platform.charAt(0).toUpperCase() + platform.slice(1)} credentials removed!`, 'success');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showAlert(data.error || 'Failed to remove credentials', 'danger');
+            }
+        } catch (error) {
+            hideLoading();
+            showAlert('Error: ' + error.message, 'danger');
+        }
+    });
+});
+</script>
+{% endblock %}

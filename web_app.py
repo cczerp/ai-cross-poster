@@ -44,6 +44,30 @@ Path(app.config['UPLOAD_FOLDER']).mkdir(parents=True, exist_ok=True)
 # Initialize services
 db = get_db()
 
+# Create default admin account if no users exist
+def create_default_admin():
+    """Create default admin account (admin/admin) if no users exist"""
+    cursor = db.conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM users")
+    user_count = cursor.fetchone()[0]
+
+    if user_count == 0:
+        print("\n" + "="*60)
+        print("No users found. Creating default admin account...")
+        print("Username: admin")
+        print("Password: admin")
+        print("IMPORTANT: Please change this password after first login!")
+        print("="*60 + "\n")
+
+        password_hash = generate_password_hash('admin')
+        cursor.execute("""
+            INSERT INTO users (username, email, password_hash, is_admin, is_active, email_verified)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, ('admin', 'admin@resellgenius.local', password_hash, 1, 1, 1))
+        db.conn.commit()
+
+create_default_admin()
+
 # Initialize notification manager (optional)
 notification_manager = None
 try:
@@ -334,10 +358,10 @@ def index():
 
 
 @app.route('/create')
-@login_required
 def create_listing():
-    """Create new listing page"""
-    return render_template('create.html')
+    """Create new listing page - accessible to guests for AI demo"""
+    is_guest = not current_user.is_authenticated
+    return render_template('create.html', is_guest=is_guest)
 
 
 @app.route('/drafts')
@@ -569,9 +593,8 @@ def admin_delete_user(user_id):
 # ============================================================================
 
 @app.route('/api/upload-photos', methods=['POST'])
-@login_required
 def upload_photos():
-    """Handle photo uploads"""
+    """Handle photo uploads - accessible to guests"""
     if 'photos' not in request.files:
         return jsonify({'error': 'No photos provided'}), 400
 
@@ -599,9 +622,8 @@ def upload_photos():
 
 
 @app.route('/api/analyze', methods=['POST'])
-@login_required
 def analyze_photos():
-    """Analyze photos with AI"""
+    """Analyze photos with AI - accessible to guests"""
     photo_paths = session.get('photo_paths', [])
 
     if not photo_paths:

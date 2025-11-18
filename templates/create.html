@@ -3,6 +3,13 @@
 {% block title %}Create Listing{% endblock %}
 
 {% block content %}
+{% if is_guest %}
+<div class="alert alert-success mb-4">
+    <h5 class="alert-heading"><i class="fas fa-magic"></i> Try ResellGenius AI FREE!</h5>
+    <p class="mb-0">Upload a photo and watch AI create your listing instantly. No sign-up required to test!</p>
+</div>
+{% endif %}
+
 <h2 class="mb-4"><i class="fas fa-plus-circle"></i> Create New Listing</h2>
 
 <form id="listingForm">
@@ -148,12 +155,24 @@
 
     <!-- Actions -->
     <div class="d-grid gap-2">
+        {% if is_guest %}
+        <div class="alert alert-info mb-3">
+            <i class="fas fa-info-circle"></i> <strong>Try the AI for free!</strong> Sign up (free) to save your listings and track inventory.
+        </div>
+        <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg">
+            <i class="fas fa-user-plus"></i> Sign Up Free to Save Listing
+        </a>
+        <small class="text-muted text-center mt-2">
+            You can test the AI photo analysis above without signing up!
+        </small>
+        {% else %}
         <button type="button" class="btn btn-primary btn-lg" id="saveDraftBtn">
             <i class="fas fa-save"></i> Save Listing
         </button>
         <small class="text-muted text-center mt-2">
             Listing will be saved. You can manually post to any platform you want!
         </small>
+        {% endif %}
     </div>
 </form>
 {% endblock %}

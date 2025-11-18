@@ -20,10 +20,11 @@ import json
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
-from src.schema import UnifiedListing, Photo, Price, ListingCondition, Shipping, ItemSpecifics
 from src.database import get_db
 import csv
 from io import StringIO, BytesIO
@@ -43,31 +44,303 @@ Path(app.config['UPLOAD_FOLDER']).mkdir(parents=True, exist_ok=True)
 # Initialize services
 db = get_db()
 
+# Initialize notification manager (optional)
+notification_manager = None
+try:
+    from src.notifications import NotificationManager
+    notification_manager = NotificationManager.from_env()
+except Exception:
+    # Notifications are optional, app will work without them
+    pass
+
+# Initialize Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+login_manager.login_message = 'Please log in to access this page.'
+
+
+# ============================================================================
+# USER MODEL
+# ============================================================================
+
+class User(UserMixin):
+    """User model for Flask-Login"""
+
+    def __init__(self, user_id, username, email, is_admin=False, is_active=True):
+        self.id = user_id
+        self.username = username
+        self.email = email
+        self.is_admin = is_admin
+        self.is_active = is_active
+
+    @staticmethod
+    def get(user_id):
+        """Get user by ID"""
+        user_data = db.get_user_by_id(user_id)
+        if user_data:
+            return User(
+                user_data['id'],
+                user_data['username'],
+                user_data['email'],
+                user_data.get('is_admin', False),
+                user_data.get('is_active', True)
+            )
+        return None
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    """Load user for Flask-Login"""
+    return User.get(int(user_id))
+
+
+# ============================================================================
+# ADMIN DECORATOR
+# ============================================================================
+
+from functools import wraps
+
+def admin_required(f):
+    """Decorator to require admin access"""
+    @wraps(f)
+    @login_required
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_admin:
+            flash('You need administrator privileges to access this page.', 'error')
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+# ============================================================================
+# AUTHENTICATION ROUTES
+# ============================================================================
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """User login"""
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        data = request.json if request.is_json else request.form
+        username = data.get('username')
+        password = data.get('password')
+
+        user_data = db.get_user_by_username(username)
+
+        if user_data and check_password_hash(user_data['password_hash'], password):
+            # Check if account is active
+            if not user_data.get('is_active', True):
+                error_msg = 'Your account has been deactivated. Please contact an administrator.'
+                if request.is_json:
+                    return jsonify({'error': error_msg}), 401
+                flash(error_msg, 'error')
+                return render_template('login.html')
+
+            user = User(
+                user_data['id'],
+                user_data['username'],
+                user_data['email'],
+                user_data.get('is_admin', False),
+                user_data.get('is_active', True)
+            )
+            login_user(user, remember=True)
+            db.update_last_login(user_data['id'])
+
+            # Log activity
+            db.log_activity(
+                action='login',
+                user_id=user_data['id'],
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get('User-Agent')
+            )
+
+            if request.is_json:
+                return jsonify({'success': True, 'redirect': url_for('index')})
+            return redirect(url_for('index'))
+        else:
+            error_msg = 'Invalid username or password'
+            if request.is_json:
+                return jsonify({'error': error_msg}), 401
+            flash(error_msg, 'error')
+
+    return render_template('login.html')
+
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    """User registration"""
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        data = request.json if request.is_json else request.form
+        username = data.get('username')
+        email = data.get('email')
+        password = data.get('password')
+
+        # Validation
+        if not username or not email or not password:
+            error_msg = 'All fields are required'
+            if request.is_json:
+                return jsonify({'error': error_msg}), 400
+            flash(error_msg, 'error')
+            return render_template('register.html')
+
+        if len(password) < 6:
+            error_msg = 'Password must be at least 6 characters'
+            if request.is_json:
+                return jsonify({'error': error_msg}), 400
+            flash(error_msg, 'error')
+            return render_template('register.html')
+
+        # Check if user exists
+        if db.get_user_by_username(username):
+            error_msg = 'Username already exists'
+            if request.is_json:
+                return jsonify({'error': error_msg}), 400
+            flash(error_msg, 'error')
+            return render_template('register.html')
+
+        if db.get_user_by_email(email):
+            error_msg = 'Email already registered'
+            if request.is_json:
+                return jsonify({'error': error_msg}), 400
+            flash(error_msg, 'error')
+            return render_template('register.html')
+
+        # Create user
+        password_hash = generate_password_hash(password)
+        user_id = db.create_user(username, email, password_hash)
+
+        # Log activity
+        db.log_activity(
+            action='register',
+            user_id=user_id,
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get('User-Agent')
+        )
+
+        # Auto-login
+        user = User(user_id, username, email, is_admin=False, is_active=True)
+        login_user(user, remember=True)
+
+        if request.is_json:
+            return jsonify({'success': True, 'redirect': url_for('index')})
+        flash('Account created successfully!', 'success')
+        return redirect(url_for('index'))
+
+    return render_template('register.html')
+
+
+@app.route('/logout')
+@login_required
+def logout():
+    """User logout"""
+    # Log activity before logout
+    db.log_activity(
+        action='logout',
+        user_id=current_user.id,
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get('User-Agent')
+    )
+    logout_user()
+    flash('Logged out successfully', 'info')
+    return redirect(url_for('login'))
+
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    """Forgot password"""
+    if request.method == 'POST':
+        email = request.form.get('email')
+
+        user = db.get_user_by_email(email)
+        if user:
+            # Generate reset token
+            import secrets
+            token = secrets.token_urlsafe(32)
+            db.set_reset_token(user['id'], token, expiry_hours=24)
+
+            # In production, send email here
+            # For now, print to console
+            reset_link = url_for('reset_password', token=token, _external=True)
+            print(f"\n{'='*60}")
+            print(f"PASSWORD RESET LINK FOR {email}:")
+            print(f"{reset_link}")
+            print(f"{'='*60}\n")
+
+            flash('If that email exists, a password reset link has been sent.', 'info')
+        else:
+            # Don't reveal if email exists
+            flash('If that email exists, a password reset link has been sent.', 'info')
+
+        return redirect(url_for('login'))
+
+    return render_template('forgot_password.html')
+
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    """Reset password with token"""
+    user = db.verify_reset_token(token)
+
+    if not user:
+        flash('Invalid or expired reset link', 'error')
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+
+        if not password or len(password) < 6:
+            flash('Password must be at least 6 characters', 'error')
+            return render_template('reset_password.html', token=token)
+
+        if password != confirm_password:
+            flash('Passwords do not match', 'error')
+            return render_template('reset_password.html', token=token)
+
+        # Update password
+        password_hash = generate_password_hash(password)
+        db.update_password(user['id'], password_hash)
+
+        flash('Password reset successfully! You can now log in.', 'success')
+        return redirect(url_for('login'))
+
+    return render_template('reset_password.html', token=token)
+
 
 # ============================================================================
 # ROUTES
 # ============================================================================
 
 @app.route('/')
+@login_required
 def index():
     """Home page"""
     return render_template('index.html')
 
 
 @app.route('/create')
+@login_required
 def create_listing():
     """Create new listing page"""
     return render_template('create.html')
 
 
 @app.route('/drafts')
+@login_required
 def drafts():
     """View saved drafts"""
-    drafts_list = db.get_drafts(limit=100)
+    drafts_list = db.get_drafts(limit=100, user_id=current_user.id)
     return render_template('drafts.html', drafts=drafts_list)
 
 
 @app.route('/listings')
+@login_required
 def listings():
     """View active listings"""
     cursor = db.conn.cursor()
@@ -75,16 +348,17 @@ def listings():
         SELECT l.*, GROUP_CONCAT(pl.platform || ':' || pl.status) as platform_statuses
         FROM listings l
         LEFT JOIN platform_listings pl ON l.id = pl.listing_id
-        WHERE l.status != 'draft'
+        WHERE l.status != 'draft' AND l.user_id = ?
         GROUP BY l.id
         ORDER BY l.created_at DESC
         LIMIT 50
-    """)
+    """, (current_user.id,))
     listings_list = [dict(row) for row in cursor.fetchall()]
     return render_template('listings.html', listings=listings_list)
 
 
 @app.route('/notifications')
+@login_required
 def notifications():
     """View notifications"""
     if notification_manager:
@@ -94,11 +368,199 @@ def notifications():
     return render_template('notifications.html', notifications=notifs)
 
 
+@app.route('/settings')
+@login_required
+def settings():
+    """User settings page"""
+    user = db.get_user_by_id(current_user.id)
+    marketplace_creds = db.get_all_marketplace_credentials(current_user.id)
+
+    # Convert to dict for easier template access
+    creds_dict = {cred['platform']: cred for cred in marketplace_creds}
+
+    # All supported platforms with icons and display names
+    platforms = [
+        {'id': 'etsy', 'name': 'Etsy', 'icon': 'fas fa-shopping-cart', 'color': 'text-warning'},
+        {'id': 'poshmark', 'name': 'Poshmark', 'icon': 'fas fa-shopping-bag', 'color': 'text-primary'},
+        {'id': 'depop', 'name': 'Depop', 'icon': 'fas fa-tshirt', 'color': 'text-info'},
+        {'id': 'offerup', 'name': 'OfferUp', 'icon': 'fas fa-handshake', 'color': 'text-success'},
+        {'id': 'shopify', 'name': 'Shopify', 'icon': 'fas fa-store', 'color': 'text-success'},
+        {'id': 'craigslist', 'name': 'Craigslist', 'icon': 'fas fa-list', 'color': 'text-secondary'},
+        {'id': 'facebook', 'name': 'Facebook Marketplace', 'icon': 'fab fa-facebook', 'color': 'text-primary'},
+        {'id': 'tiktok_shop', 'name': 'TikTok Shop', 'icon': 'fab fa-tiktok', 'color': 'text-dark'},
+        {'id': 'woocommerce', 'name': 'WooCommerce', 'icon': 'fab fa-wordpress', 'color': 'text-purple'},
+        {'id': 'nextdoor', 'name': 'Nextdoor', 'icon': 'fas fa-home', 'color': 'text-success'},
+        {'id': 'varagesale', 'name': 'VarageSale', 'icon': 'fas fa-store-alt', 'color': 'text-warning'},
+        {'id': 'ruby_lane', 'name': 'Ruby Lane', 'icon': 'fas fa-gem', 'color': 'text-danger'},
+        {'id': 'ecrater', 'name': 'eCRATER', 'icon': 'fas fa-box', 'color': 'text-info'},
+        {'id': 'bonanza', 'name': 'Bonanza', 'icon': 'fas fa-star', 'color': 'text-warning'},
+        {'id': 'kijiji', 'name': 'Kijiji', 'icon': 'fas fa-newspaper', 'color': 'text-danger'},
+        {'id': 'mercari', 'name': 'Mercari', 'icon': 'fas fa-box', 'color': 'text-warning'},
+        {'id': 'ebay', 'name': 'eBay', 'icon': 'fab fa-ebay', 'color': 'text-primary'},
+        {'id': 'grailed', 'name': 'Grailed', 'icon': 'fas fa-user-tie', 'color': 'text-dark'},
+        {'id': 'vinted', 'name': 'Vinted', 'icon': 'fas fa-recycle', 'color': 'text-success'},
+        {'id': 'mercado_libre', 'name': 'Mercado Libre', 'icon': 'fas fa-globe-americas', 'color': 'text-warning'},
+        {'id': 'tradesy', 'name': 'Tradesy', 'icon': 'fas fa-exchange-alt', 'color': 'text-info'},
+        {'id': 'vestiaire', 'name': 'Vestiaire Collective', 'icon': 'fas fa-crown', 'color': 'text-purple'},
+        {'id': 'rebag', 'name': 'Rebag', 'icon': 'fas fa-shopping-bag', 'color': 'text-danger'},
+        {'id': 'thredup', 'name': 'ThredUp', 'icon': 'fas fa-tshirt', 'color': 'text-primary'},
+        {'id': 'personal_website', 'name': 'Personal Website', 'icon': 'fas fa-globe', 'color': 'text-secondary'},
+        {'id': 'other', 'name': 'Other Platform', 'icon': 'fas fa-ellipsis-h', 'color': 'text-muted'},
+    ]
+
+    return render_template('settings.html', user=user, credentials=creds_dict, platforms=platforms)
+
+
+# ============================================================================
+# ADMIN ROUTES
+# ============================================================================
+
+@app.route('/admin')
+@admin_required
+def admin_dashboard():
+    """Admin dashboard"""
+    stats = db.get_system_stats()
+    users = db.get_all_users(include_inactive=True)
+    recent_activity = db.get_activity_logs(limit=20)
+    return render_template('admin/dashboard.html', stats=stats, users=users, recent_activity=recent_activity)
+
+
+@app.route('/admin/users')
+@admin_required
+def admin_users():
+    """Admin user management"""
+    users = db.get_all_users(include_inactive=True)
+    return render_template('admin/users.html', users=users)
+
+
+@app.route('/admin/activity')
+@admin_required
+def admin_activity():
+    """Admin activity logs"""
+    page = request.args.get('page', 1, type=int)
+    limit = 50
+    offset = (page - 1) * limit
+
+    user_id = request.args.get('user_id', type=int)
+    action = request.args.get('action')
+
+    logs = db.get_activity_logs(user_id=user_id, action=action, limit=limit, offset=offset)
+
+    return render_template('admin/activity.html', logs=logs, page=page)
+
+
+@app.route('/admin/user/<int:user_id>')
+@admin_required
+def admin_user_detail(user_id):
+    """Admin user detail view"""
+    user = db.get_user_by_id(user_id)
+    if not user:
+        flash('User not found', 'error')
+        return redirect(url_for('admin_users'))
+
+    # Get user's listings
+    cursor = db.conn.cursor()
+    cursor.execute("SELECT * FROM listings WHERE user_id = ? ORDER BY created_at DESC LIMIT 50", (user_id,))
+    listings = [dict(row) for row in cursor.fetchall()]
+
+    # Get user's activity
+    activity = db.get_activity_logs(user_id=user_id, limit=50)
+
+    return render_template('admin/user_detail.html', user=user, listings=listings, activity=activity)
+
+
+# ============================================================================
+# ADMIN API ENDPOINTS
+# ============================================================================
+
+@app.route('/api/admin/user/<int:user_id>/toggle-admin', methods=['POST'])
+@admin_required
+def admin_toggle_user_admin(user_id):
+    """Toggle user admin status"""
+    try:
+        # Prevent self-demotion
+        if user_id == current_user.id:
+            return jsonify({'error': 'You cannot change your own admin status'}), 400
+
+        success = db.toggle_user_admin(user_id)
+
+        if success:
+            # Log activity
+            db.log_activity(
+                action='toggle_admin',
+                user_id=current_user.id,
+                resource_type='user',
+                resource_id=user_id,
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get('User-Agent')
+            )
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'User not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/user/<int:user_id>/toggle-active', methods=['POST'])
+@admin_required
+def admin_toggle_user_active(user_id):
+    """Toggle user active status"""
+    try:
+        # Prevent self-deactivation
+        if user_id == current_user.id:
+            return jsonify({'error': 'You cannot deactivate your own account'}), 400
+
+        success = db.toggle_user_active(user_id)
+
+        if success:
+            # Log activity
+            db.log_activity(
+                action='toggle_active',
+                user_id=current_user.id,
+                resource_type='user',
+                resource_id=user_id,
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get('User-Agent')
+            )
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'User not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/user/<int:user_id>/delete', methods=['DELETE'])
+@admin_required
+def admin_delete_user(user_id):
+    """Delete a user (admin)"""
+    try:
+        # Prevent self-deletion
+        if user_id == current_user.id:
+            return jsonify({'error': 'You cannot delete your own account'}), 400
+
+        # Log activity before deletion
+        db.log_activity(
+            action='delete_user',
+            user_id=current_user.id,
+            resource_type='user',
+            resource_id=user_id,
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get('User-Agent')
+        )
+
+        db.delete_user(user_id)
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 # ============================================================================
 # API ENDPOINTS
 # ============================================================================
 
 @app.route('/api/upload-photos', methods=['POST'])
+@login_required
 def upload_photos():
     """Handle photo uploads"""
     if 'photos' not in request.files:
@@ -128,6 +590,7 @@ def upload_photos():
 
 
 @app.route('/api/analyze', methods=['POST'])
+@login_required
 def analyze_photos():
     """Analyze photos with AI"""
     photo_paths = session.get('photo_paths', [])
@@ -137,6 +600,7 @@ def analyze_photos():
 
     try:
         from src.ai.gemini_classifier import GeminiClassifier
+        from src.schema import Photo
 
         # Create photo objects
         photo_objects = [
@@ -161,6 +625,7 @@ def analyze_photos():
 
 
 @app.route('/api/save-draft', methods=['POST'])
+@login_required
 def save_draft():
     """Save listing as draft"""
     data = request.json
@@ -195,9 +660,13 @@ def save_draft():
             price=float(data.get('price', 0)),
             condition=data.get('condition', 'good'),
             photos=permanent_photo_paths,
+            user_id=current_user.id,  # Add user_id
             cost=float(data.get('cost')) if data.get('cost') else None,
+            item_type=data.get('item_type', 'general'),
             quantity=int(data.get('quantity', 1)),
             storage_location=data.get('storage_location'),
+            sku=data.get('sku'),
+            upc=data.get('upc'),
             attributes={
                 'brand': data.get('brand'),
                 'size': data.get('size'),
@@ -219,10 +688,11 @@ def save_draft():
 
 
 @app.route('/api/export-csv', methods=['GET'])
+@login_required
 def export_csv():
     """Export all drafts to CSV"""
     try:
-        drafts = db.get_drafts(limit=1000)
+        drafts = db.get_drafts(limit=1000, user_id=current_user.id)
 
         # Create CSV in memory
         output = StringIO()
@@ -273,6 +743,7 @@ def export_csv():
 
 
 @app.route('/api/import-csv', methods=['POST'])
+@login_required
 def import_csv():
     """Import CSV to update storage locations"""
     if 'file' not in request.files:
@@ -293,13 +764,13 @@ def import_csv():
             storage_location = row.get('Storage Location')
 
             if listing_id and storage_location:
-                # Update storage location
+                # Update storage location (only for user's own listings)
                 cursor = db.conn.cursor()
                 cursor.execute("""
                     UPDATE listings
                     SET storage_location = ?
-                    WHERE id = ?
-                """, (storage_location, listing_id))
+                    WHERE id = ? AND user_id = ?
+                """, (storage_location, listing_id, current_user.id))
                 db.conn.commit()
                 updated += 1
 
@@ -313,6 +784,7 @@ def import_csv():
 
 
 @app.route('/api/mark-sold', methods=['POST'])
+@login_required
 def mark_sold():
     """Mark listing as sold"""
     data = request.json
@@ -327,6 +799,10 @@ def mark_sold():
         if not listing:
             return jsonify({'error': 'Listing not found'}), 404
 
+        # Verify ownership
+        if listing.get('user_id') != current_user.id:
+            return jsonify({'error': 'Unauthorized'}), 403
+
         # Update quantity
         current_quantity = listing.get('quantity', 1)
         remaining_quantity = max(0, current_quantity - quantity_sold)
@@ -340,15 +816,15 @@ def mark_sold():
                     quantity = 0,
                     sold_price = ?,
                     sold_date = CURRENT_TIMESTAMP
-                WHERE id = ?
-            """, (sold_price, listing_id))
+                WHERE id = ? AND user_id = ?
+            """, (sold_price, listing_id, current_user.id))
         else:
             # Just reduce quantity
             cursor.execute("""
                 UPDATE listings
                 SET quantity = ?
-                WHERE id = ?
-            """, (remaining_quantity, listing_id))
+                WHERE id = ? AND user_id = ?
+            """, (remaining_quantity, listing_id, current_user.id))
 
         db.conn.commit()
 
@@ -363,21 +839,95 @@ def mark_sold():
 
 
 @app.route('/api/delete-draft/<int:listing_id>', methods=['DELETE'])
+@login_required
 def delete_draft(listing_id):
     """Delete a draft"""
     try:
         listing = db.get_listing(listing_id)
 
-        if listing:
-            # Delete photos directory
-            import shutil
-            if listing.get('listing_uuid'):
-                draft_photos_dir = Path("data/draft_photos") / listing['listing_uuid']
-                if draft_photos_dir.exists():
-                    shutil.rmtree(draft_photos_dir)
+        if not listing:
+            return jsonify({'error': 'Listing not found'}), 404
+
+        # Verify ownership
+        if listing.get('user_id') != current_user.id:
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        # Delete photos directory
+        import shutil
+        if listing.get('listing_uuid'):
+            draft_photos_dir = Path("data/draft_photos") / listing['listing_uuid']
+            if draft_photos_dir.exists():
+                shutil.rmtree(draft_photos_dir)
 
         db.delete_listing(listing_id)
 
+        return jsonify({'success': True})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/settings/notification-email', methods=['POST'])
+@login_required
+def update_notification_email():
+    """Update user's notification email"""
+    try:
+        data = request.json
+        notification_email = data.get('notification_email')
+
+        if not notification_email:
+            return jsonify({'error': 'Notification email is required'}), 400
+
+        db.update_notification_email(current_user.id, notification_email)
+
+        return jsonify({'success': True})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/settings/marketplace-credentials', methods=['POST'])
+@login_required
+def save_marketplace_credentials():
+    """Save marketplace credentials"""
+    try:
+        data = request.json
+        platform = data.get('platform')
+        username = data.get('username')
+        password = data.get('password')
+
+        if not platform:
+            return jsonify({'error': 'Platform is required'}), 400
+
+        if not username or not password:
+            return jsonify({'error': 'Username and password are required'}), 400
+
+        # Validate platform - All 27+ supported platforms
+        valid_platforms = [
+            'etsy', 'poshmark', 'depop', 'offerup', 'shopify', 'craigslist',
+            'facebook', 'tiktok_shop', 'woocommerce', 'nextdoor', 'varagesale',
+            'ruby_lane', 'ecrater', 'bonanza', 'kijiji', 'mercari', 'ebay',
+            'personal_website', 'grailed', 'vinted', 'mercado_libre',
+            'tradesy', 'vestiaire', 'rebag', 'thredup', 'poshmark_ca',
+            'ebay_uk', 'other'
+        ]
+        if platform.lower() not in valid_platforms:
+            return jsonify({'error': 'Invalid platform'}), 400
+
+        db.save_marketplace_credentials(current_user.id, platform.lower(), username, password)
+
+        return jsonify({'success': True})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/settings/marketplace-credentials/<platform>', methods=['DELETE'])
+@login_required
+def delete_marketplace_credentials(platform):
+    """Delete marketplace credentials"""
+    try:
+        db.delete_marketplace_credentials(current_user.id, platform.lower())
         return jsonify({'success': True})
 
     except Exception as e:

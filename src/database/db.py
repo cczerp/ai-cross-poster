@@ -32,6 +32,40 @@ class Database:
         """Create all database tables"""
         cursor = self.conn.cursor()
 
+        # Users table - for authentication
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                is_admin BOOLEAN DEFAULT 0,  -- Admin role flag
+                is_active BOOLEAN DEFAULT 1,  -- Account active status
+                notification_email TEXT,  -- Where to send sale notifications
+                email_verified BOOLEAN DEFAULT 0,  -- Email verification status
+                verification_token TEXT,  -- Token for email verification
+                reset_token TEXT,  -- Token for password reset
+                reset_token_expiry TIMESTAMP,  -- When reset token expires
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP
+            )
+        """)
+
+        # Marketplace credentials - per user
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS marketplace_credentials (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                platform TEXT NOT NULL,  -- 'poshmark', 'depop', 'varagesale', etc.
+                username TEXT,
+                password TEXT,  -- Encrypted or use secure storage in production
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                UNIQUE(user_id, platform)
+            )
+        """)
+
         # Collectibles database table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS collectibles (
@@ -62,6 +96,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS listings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 listing_uuid TEXT UNIQUE NOT NULL,  -- Internal unique ID
+                user_id INTEGER NOT NULL,  -- FK to users (owner of listing)
                 collectible_id INTEGER,  -- FK to collectibles
                 title TEXT NOT NULL,
                 description TEXT,
@@ -69,17 +104,21 @@ class Database:
                 cost REAL,  -- What you paid for it
                 condition TEXT,
                 category TEXT,
+                item_type TEXT,  -- trading_card, clothing, electronics, collectible, general
                 attributes TEXT,  -- JSON blob
                 photos TEXT,  -- JSON array of photo paths
                 quantity INTEGER DEFAULT 1,  -- Quantity available
                 storage_location TEXT,  -- Physical location (B1, C2, etc.)
+                sku TEXT,  -- Stock keeping unit / custom ID
+                upc TEXT,  -- UPC / barcode
                 status TEXT DEFAULT 'draft',  -- draft, active, sold, canceled
                 sold_platform TEXT,  -- Which platform it sold on
                 sold_date TIMESTAMP,
                 sold_price REAL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (collectible_id) REFERENCES collectibles(id)
+                FOREIGN KEY (collectible_id) REFERENCES collectibles(id),
+                FOREIGN KEY (user_id) REFERENCES users(id)
             )
         """)
 
@@ -146,6 +185,22 @@ class Database:
             )
         """)
 
+        # Activity logs - track user actions for security and debugging
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS activity_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                action TEXT NOT NULL,  -- login, logout, create_listing, delete_listing, etc.
+                resource_type TEXT,  -- listing, user, credential, etc.
+                resource_id INTEGER,
+                details TEXT,  -- JSON blob with additional details
+                ip_address TEXT,
+                user_agent TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+
         # Create indexes for better performance
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_listings_uuid
@@ -172,13 +227,35 @@ class Database:
             ON notifications(is_read)
         """)
 
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id
+            ON activity_logs(user_id)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_activity_logs_action
+            ON activity_logs(action)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_users_is_admin
+            ON users(is_admin)
+        """)
+
         # Run migrations
         self._run_migrations()
 
         self.conn.commit()
 
-        # Run migrations for existing databases
+        # Run migrations for existing databases (must run before user_id index)
         self._run_migrations()
+
+        # Create user_id index after migration (in case column didn't exist)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_listings_user_id
+            ON listings(user_id)
+        """)
+        self.conn.commit()
 
     def _run_migrations(self):
         """Run database migrations for existing databases"""
@@ -210,6 +287,68 @@ class Database:
             cursor.execute("ALTER TABLE platform_listings ADD COLUMN cancel_scheduled_at TIMESTAMP")
             self.conn.commit()
 
+        # Migration: Add user_id to listings table
+        try:
+            cursor.execute("SELECT user_id FROM listings LIMIT 1")
+        except sqlite3.OperationalError:
+            # Column doesn't exist, add it
+            print("Running migration: Adding user_id column to listings table")
+            # Add column with default value 1 (for existing listings, assume first user)
+            cursor.execute("ALTER TABLE listings ADD COLUMN user_id INTEGER DEFAULT 1")
+            self.conn.commit()
+            # Create a default admin user if no users exist
+            cursor.execute("SELECT COUNT(*) FROM users")
+            if cursor.fetchone()[0] == 0:
+                print("Creating default user for existing listings")
+                # Create default user with a secure random password (user should change this)
+                import secrets
+                default_password = secrets.token_urlsafe(16)
+                from werkzeug.security import generate_password_hash
+                cursor.execute("""
+                    INSERT INTO users (id, username, email, password_hash)
+                    VALUES (1, 'admin', 'admin@localhost', ?)
+                """, (generate_password_hash(default_password),))
+                self.conn.commit()
+                print(f"Default user created: username='admin', password='{default_password}'")
+                print("IMPORTANT: Please change this password after first login!")
+
+        # Migration: Add notification_email to users table
+        try:
+            cursor.execute("SELECT notification_email FROM users LIMIT 1")
+        except sqlite3.OperationalError:
+            # Column doesn't exist, add it
+            print("Running migration: Adding notification_email column to users table")
+            cursor.execute("ALTER TABLE users ADD COLUMN notification_email TEXT")
+            self.conn.commit()
+
+        # Migration: Add admin and security columns to users table
+        for col_name, col_def, default_msg in [
+            ("is_admin", "BOOLEAN DEFAULT 0", "is_admin"),
+            ("is_active", "BOOLEAN DEFAULT 1", "is_active"),
+            ("email_verified", "BOOLEAN DEFAULT 0", "email_verified"),
+            ("verification_token", "TEXT", "verification_token"),
+            ("reset_token", "TEXT", "reset_token"),
+            ("reset_token_expiry", "TIMESTAMP", "reset_token_expiry"),
+        ]:
+            try:
+                cursor.execute(f"SELECT {col_name} FROM users LIMIT 1")
+            except sqlite3.OperationalError:
+                print(f"Running migration: Adding {default_msg} column to users table")
+                cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
+                self.conn.commit()
+
+        # Migration: Add SKU, UPC, and item_type to listings table
+        for col_name, col_def, default_msg in [
+            ("sku", "TEXT", "sku"),
+            ("upc", "TEXT", "upc"),
+            ("item_type", "TEXT", "item_type"),
+        ]:
+            try:
+                cursor.execute(f"SELECT {col_name} FROM listings LIMIT 1")
+            except sqlite3.OperationalError:
+                print(f"Running migration: Adding {default_msg} column to listings table")
+                cursor.execute(f"ALTER TABLE listings ADD COLUMN {col_name} {col_def}")
+                self.conn.commit()
 
     # ========================================================================
     # COLLECTIBLES METHODS
@@ -345,28 +484,35 @@ class Database:
         price: float,
         condition: str,
         photos: List[str],
+        user_id: int,
         collectible_id: Optional[int] = None,
         cost: Optional[float] = None,
         category: Optional[str] = None,
+        item_type: Optional[str] = None,
         attributes: Optional[Dict] = None,
         quantity: int = 1,
         storage_location: Optional[str] = None,
+        sku: Optional[str] = None,
+        upc: Optional[str] = None,
     ) -> int:
         """Create a new listing"""
         cursor = self.conn.cursor()
 
         cursor.execute("""
             INSERT INTO listings (
-                listing_uuid, collectible_id, title, description, price,
-                cost, condition, category, attributes, photos, quantity, storage_location, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
+                listing_uuid, user_id, collectible_id, title, description, price,
+                cost, condition, category, item_type, attributes, photos, quantity,
+                storage_location, sku, upc, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
         """, (
-            listing_uuid, collectible_id, title, description, price,
-            cost, condition, category,
+            listing_uuid, user_id, collectible_id, title, description, price,
+            cost, condition, category, item_type,
             json.dumps(attributes) if attributes else None,
             json.dumps(photos),
             quantity,
             storage_location,
+            sku,
+            upc,
         ))
 
         self.conn.commit()
@@ -386,15 +532,23 @@ class Database:
         row = cursor.fetchone()
         return dict(row) if row else None
 
-    def get_drafts(self, limit: int = 100) -> List[Dict]:
-        """Get all draft listings"""
+    def get_drafts(self, limit: int = 100, user_id: Optional[int] = None) -> List[Dict]:
+        """Get all draft listings, optionally filtered by user"""
         cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT * FROM listings
-            WHERE status = 'draft'
-            ORDER BY created_at DESC
-            LIMIT ?
-        """, (limit,))
+        if user_id is not None:
+            cursor.execute("""
+                SELECT * FROM listings
+                WHERE status = 'draft' AND user_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (user_id, limit))
+        else:
+            cursor.execute("""
+                SELECT * FROM listings
+                WHERE status = 'draft'
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (limit,))
         return [dict(row) for row in cursor.fetchall()]
 
     def update_listing_status(self, listing_id: int, status: str):
@@ -619,6 +773,314 @@ class Database:
             WHERE pa.is_active = 1
         """)
         return [dict(row) for row in cursor.fetchall()]
+
+    # ========================================================================
+    # USER AUTHENTICATION METHODS
+    # ========================================================================
+
+    def create_user(self, username: str, email: str, password_hash: str) -> int:
+        """Create a new user"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT INTO users (username, email, password_hash)
+            VALUES (?, ?, ?)
+        """, (username, email, password_hash))
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_user_by_username(self, username: str) -> Optional[Dict]:
+        """Get user by username"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def get_user_by_email(self, email: str) -> Optional[Dict]:
+        """Get user by email"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def get_user_by_id(self, user_id: int) -> Optional[Dict]:
+        """Get user by ID"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def update_last_login(self, user_id: int):
+        """Update user's last login timestamp"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE users
+            SET last_login = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (user_id,))
+        self.conn.commit()
+
+    def update_notification_email(self, user_id: int, notification_email: str):
+        """Update user's notification email"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE users
+            SET notification_email = ?
+            WHERE id = ?
+        """, (notification_email, user_id))
+        self.conn.commit()
+
+    # ========================================================================
+    # MARKETPLACE CREDENTIALS METHODS
+    # ========================================================================
+
+    def save_marketplace_credentials(self, user_id: int, platform: str, username: str, password: str):
+        """Save or update marketplace credentials for a user"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO marketplace_credentials
+            (user_id, platform, username, password, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (user_id, platform, username, password))
+        self.conn.commit()
+
+    def get_marketplace_credentials(self, user_id: int, platform: str) -> Optional[Dict]:
+        """Get marketplace credentials for a specific platform"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT * FROM marketplace_credentials
+            WHERE user_id = ? AND platform = ?
+        """, (user_id, platform))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def get_all_marketplace_credentials(self, user_id: int) -> List[Dict]:
+        """Get all marketplace credentials for a user"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT * FROM marketplace_credentials
+            WHERE user_id = ?
+            ORDER BY platform
+        """, (user_id,))
+        return [dict(row) for row in cursor.fetchall()]
+
+    def delete_marketplace_credentials(self, user_id: int, platform: str):
+        """Delete marketplace credentials for a platform"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            DELETE FROM marketplace_credentials
+            WHERE user_id = ? AND platform = ?
+        """, (user_id, platform))
+        self.conn.commit()
+
+    # ========================================================================
+    # ACTIVITY LOG METHODS
+    # ========================================================================
+
+    def log_activity(
+        self,
+        action: str,
+        user_id: Optional[int] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[int] = None,
+        details: Optional[Dict] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ):
+        """Log a user activity"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT INTO activity_logs (
+                user_id, action, resource_type, resource_id, details,
+                ip_address, user_agent
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            user_id, action, resource_type, resource_id,
+            json.dumps(details) if details else None,
+            ip_address, user_agent
+        ))
+        self.conn.commit()
+
+    def get_activity_logs(
+        self,
+        user_id: Optional[int] = None,
+        action: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[Dict]:
+        """Get activity logs with optional filters"""
+        cursor = self.conn.cursor()
+        sql = "SELECT * FROM activity_logs WHERE 1=1"
+        params = []
+
+        if user_id is not None:
+            sql += " AND user_id = ?"
+            params.append(user_id)
+
+        if action:
+            sql += " AND action = ?"
+            params.append(action)
+
+        sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
+        cursor.execute(sql, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_user_activity_count(self, user_id: int) -> int:
+        """Get total activity count for a user"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) FROM activity_logs WHERE user_id = ?
+        """, (user_id,))
+        return cursor.fetchone()[0]
+
+    # ========================================================================
+    # ADMIN METHODS
+    # ========================================================================
+
+    def get_all_users(self, include_inactive: bool = False) -> List[Dict]:
+        """Get all users (admin function)"""
+        cursor = self.conn.cursor()
+        if include_inactive:
+            cursor.execute("SELECT * FROM users ORDER BY created_at DESC")
+        else:
+            cursor.execute("SELECT * FROM users WHERE is_active = 1 ORDER BY created_at DESC")
+        return [dict(row) for row in cursor.fetchall()]
+
+    def toggle_user_admin(self, user_id: int) -> bool:
+        """Toggle admin status for a user"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT is_admin FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        if not row:
+            return False
+
+        new_status = 0 if row[0] else 1
+        cursor.execute("UPDATE users SET is_admin = ? WHERE id = ?", (new_status, user_id))
+        self.conn.commit()
+        return True
+
+    def toggle_user_active(self, user_id: int) -> bool:
+        """Toggle active status for a user"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT is_active FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        if not row:
+            return False
+
+        new_status = 0 if row[0] else 1
+        cursor.execute("UPDATE users SET is_active = ? WHERE id = ?", (new_status, user_id))
+        self.conn.commit()
+        return True
+
+    def delete_user(self, user_id: int):
+        """Delete a user and all their data (admin function)"""
+        cursor = self.conn.cursor()
+
+        # Delete user's marketplace credentials
+        cursor.execute("DELETE FROM marketplace_credentials WHERE user_id = ?", (user_id,))
+
+        # Delete user's listings
+        cursor.execute("DELETE FROM listings WHERE user_id = ?", (user_id,))
+
+        # Delete user's activity logs
+        cursor.execute("DELETE FROM activity_logs WHERE user_id = ?", (user_id,))
+
+        # Delete the user
+        cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+        self.conn.commit()
+
+    def get_system_stats(self) -> Dict:
+        """Get system statistics (admin function)"""
+        cursor = self.conn.cursor()
+
+        stats = {}
+
+        # User counts
+        cursor.execute("SELECT COUNT(*) FROM users")
+        stats['total_users'] = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM users WHERE is_admin = 1")
+        stats['admin_users'] = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM users WHERE is_active = 1")
+        stats['active_users'] = cursor.fetchone()[0]
+
+        # Listing counts
+        cursor.execute("SELECT COUNT(*) FROM listings")
+        stats['total_listings'] = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM listings WHERE status = 'draft'")
+        stats['draft_listings'] = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM listings WHERE status = 'sold'")
+        stats['sold_listings'] = cursor.fetchone()[0]
+
+        # Activity count
+        cursor.execute("SELECT COUNT(*) FROM activity_logs WHERE created_at > datetime('now', '-7 days')")
+        stats['activity_last_7_days'] = cursor.fetchone()[0]
+
+        return stats
+
+    # ========================================================================
+    # EMAIL TOKEN METHODS
+    # ========================================================================
+
+    def set_verification_token(self, user_id: int, token: str):
+        """Set email verification token"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE users
+            SET verification_token = ?
+            WHERE id = ?
+        """, (token, user_id))
+        self.conn.commit()
+
+    def verify_email(self, token: str) -> bool:
+        """Verify email with token"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE users
+            SET email_verified = 1, verification_token = NULL
+            WHERE verification_token = ?
+        """, (token,))
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def set_reset_token(self, user_id: int, token: str, expiry_hours: int = 24):
+        """Set password reset token"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE users
+            SET reset_token = ?,
+                reset_token_expiry = datetime('now', '+' || ? || ' hours')
+            WHERE id = ?
+        """, (token, expiry_hours, user_id))
+        self.conn.commit()
+
+    def verify_reset_token(self, token: str) -> Optional[Dict]:
+        """Verify reset token and return user if valid"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT * FROM users
+            WHERE reset_token = ?
+            AND reset_token_expiry > datetime('now')
+        """, (token,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def update_password(self, user_id: int, new_password_hash: str):
+        """Update user password and clear reset token"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE users
+            SET password_hash = ?,
+                reset_token = NULL,
+                reset_token_expiry = NULL
+            WHERE id = ?
+        """, (new_password_hash, user_id))
+        self.conn.commit()
 
     def close(self):
         """Close database connection"""

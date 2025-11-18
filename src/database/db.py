@@ -71,6 +71,8 @@ class Database:
                 category TEXT,
                 attributes TEXT,  -- JSON blob
                 photos TEXT,  -- JSON array of photo paths
+                quantity INTEGER DEFAULT 1,  -- Quantity available
+                storage_location TEXT,  -- Physical location (B1, C2, etc.)
                 status TEXT DEFAULT 'draft',  -- draft, active, sold, canceled
                 sold_platform TEXT,  -- Which platform it sold on
                 sold_date TIMESTAMP,
@@ -89,9 +91,10 @@ class Database:
                 platform TEXT NOT NULL,  -- ebay, mercari, facebook, poshmark
                 platform_listing_id TEXT,  -- ID from the platform
                 platform_url TEXT,
-                status TEXT DEFAULT 'pending',  -- pending, active, sold, failed, canceled
+                status TEXT DEFAULT 'pending',  -- pending, active, sold, failed, canceled, pending_cancel
                 posted_at TIMESTAMP,
                 last_synced TIMESTAMP,
+                cancel_scheduled_at TIMESTAMP,  -- When to auto-cancel (15 min cooldown)
                 error_message TEXT,
                 retry_count INTEGER DEFAULT 0,
                 FOREIGN KEY (listing_id) REFERENCES listings(id),
@@ -170,6 +173,39 @@ class Database:
         """)
 
         self.conn.commit()
+
+        # Run migrations for existing databases
+        self._run_migrations()
+
+    def _run_migrations(self):
+        """Run database migrations for existing databases"""
+        cursor = self.conn.cursor()
+
+        # Migration: Add quantity and storage_location to listings table
+        try:
+            cursor.execute("SELECT quantity FROM listings LIMIT 1")
+        except sqlite3.OperationalError:
+            # Column doesn't exist, add it
+            print("Running migration: Adding quantity column to listings table")
+            cursor.execute("ALTER TABLE listings ADD COLUMN quantity INTEGER DEFAULT 1")
+            self.conn.commit()
+
+        try:
+            cursor.execute("SELECT storage_location FROM listings LIMIT 1")
+        except sqlite3.OperationalError:
+            # Column doesn't exist, add it
+            print("Running migration: Adding storage_location column to listings table")
+            cursor.execute("ALTER TABLE listings ADD COLUMN storage_location TEXT")
+            self.conn.commit()
+
+        # Migration: Add cancel_scheduled_at to platform_listings table
+        try:
+            cursor.execute("SELECT cancel_scheduled_at FROM platform_listings LIMIT 1")
+        except sqlite3.OperationalError:
+            # Column doesn't exist, add it
+            print("Running migration: Adding cancel_scheduled_at column to platform_listings table")
+            cursor.execute("ALTER TABLE platform_listings ADD COLUMN cancel_scheduled_at TIMESTAMP")
+            self.conn.commit()
 
     # ========================================================================
     # COLLECTIBLES METHODS
@@ -309,6 +345,8 @@ class Database:
         cost: Optional[float] = None,
         category: Optional[str] = None,
         attributes: Optional[Dict] = None,
+        quantity: int = 1,
+        storage_location: Optional[str] = None,
     ) -> int:
         """Create a new listing"""
         cursor = self.conn.cursor()
@@ -316,13 +354,15 @@ class Database:
         cursor.execute("""
             INSERT INTO listings (
                 listing_uuid, collectible_id, title, description, price,
-                cost, condition, category, attributes, photos, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
+                cost, condition, category, attributes, photos, quantity, storage_location, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
         """, (
             listing_uuid, collectible_id, title, description, price,
             cost, condition, category,
             json.dumps(attributes) if attributes else None,
             json.dumps(photos),
+            quantity,
+            storage_location,
         ))
 
         self.conn.commit()

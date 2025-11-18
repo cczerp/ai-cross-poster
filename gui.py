@@ -229,6 +229,44 @@ class AIListerGUI(ctk.CTk):
         self.shipping_entry = ctk.CTkEntry(scroll_frame, width=100, placeholder_text="0.00 for free")
         self.shipping_entry.pack(anchor="w", pady=5)
 
+        # Inventory Management Section
+        inventory_section = ctk.CTkFrame(scroll_frame)
+        inventory_section.pack(pady=15, fill="x")
+
+        ctk.CTkLabel(
+            inventory_section,
+            text="📦 Inventory Management",
+            font=("Arial Bold", 14),
+        ).pack(pady=(5, 10))
+
+        inventory_frame = ctk.CTkFrame(inventory_section)
+        inventory_frame.pack(fill="x", pady=5)
+
+        # Storage Location (primary for 1-to-1 sellers)
+        ctk.CTkLabel(inventory_frame, text="Storage Location:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        self.location_entry = ctk.CTkEntry(inventory_frame, width=150, placeholder_text="B1, C2, etc.")
+        self.location_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        ctk.CTkLabel(
+            inventory_frame,
+            text="(Where you put this item - e.g., Bin B1, Shelf C2)",
+            font=("Arial", 10),
+            text_color="gray60"
+        ).grid(row=0, column=2, sticky="w", padx=5, pady=5)
+
+        # Quantity
+        ctk.CTkLabel(inventory_frame, text="Quantity:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        self.quantity_entry = ctk.CTkEntry(inventory_frame, width=150, placeholder_text="1")
+        self.quantity_entry.insert(0, "1")  # Default to 1
+        self.quantity_entry.grid(row=1, column=1, padx=5, pady=5)
+
+        ctk.CTkLabel(
+            inventory_frame,
+            text="(1 for single items, >1 for multiples of same item)",
+            font=("Arial", 10),
+            text_color="gray60"
+        ).grid(row=1, column=2, sticky="w", padx=5, pady=5)
+
         # AI Analysis section
         ai_section = ctk.CTkFrame(scroll_frame)
         ai_section.pack(pady=15, fill="x")
@@ -999,6 +1037,8 @@ Return ONLY the description text, no JSON, no formatting, just the description."
                     shipping=Shipping(
                         cost=float(self.shipping_entry.get()) if self.shipping_entry.get() else 0.0
                     ),
+                    quantity=int(self.quantity_entry.get()) if self.quantity_entry.get() else 1,
+                    location=self.location_entry.get() if self.location_entry.get() else None,
                 )
 
                 # Selected platforms
@@ -1071,6 +1111,9 @@ Return ONLY the description text, no JSON, no formatting, just the description."
         self.size_entry.delete(0, tk.END)
         self.color_entry.delete(0, tk.END)
         self.shipping_entry.delete(0, tk.END)
+        self.quantity_entry.delete(0, tk.END)
+        self.quantity_entry.insert(0, "1")  # Reset to default
+        self.location_entry.delete(0, tk.END)
         self.collectible_data = None
 
     def save_as_draft(self):
@@ -1121,6 +1164,8 @@ Return ONLY the description text, no JSON, no formatting, just the description."
                     photos=permanent_photo_paths,
                     collectible_id=self.collectible_data.get("id") if self.collectible_data else None,
                     cost=float(self.cost_entry.get()) if self.cost_entry.get() else None,
+                    quantity=int(self.quantity_entry.get()) if self.quantity_entry.get() else 1,
+                    storage_location=self.location_entry.get() if self.location_entry.get() else None,
                     attributes={
                         "brand": self.brand_entry.get(),
                         "size": self.size_entry.get(),

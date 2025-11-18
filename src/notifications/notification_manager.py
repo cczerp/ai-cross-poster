@@ -169,6 +169,9 @@ class NotificationManager:
         profit = sale_price - cost
         profit_margin = (profit / sale_price * 100) if sale_price > 0 else 0
 
+        # Get storage location
+        storage_location = listing.get("storage_location")
+
         # Create in-app notification
         notification_data = {
             "platform": platform,
@@ -178,14 +181,20 @@ class NotificationManager:
             "profit_margin": profit_margin,
             "buyer_email": buyer_email,
             "tracking_number": tracking_number,
+            "storage_location": storage_location,
         }
+
+        # Build message with storage location prominently
+        message = f"{listing_title} sold for ${sale_price:.2f}"
+        if storage_location:
+            message += f" | 📍 Location: {storage_location}"
 
         notification_id = self.db.create_notification(
             type="sale",
             listing_id=listing_id,
             platform=platform,
             title=f"🎉 Item Sold on {platform}!",
-            message=f"{listing_title} sold for ${sale_price:.2f}",
+            message=message,
             data=notification_data,
         )
 
@@ -195,6 +204,12 @@ class NotificationManager:
         print(f"Item: {listing_title}")
         print(f"Platform: {platform}")
         print(f"Sale Price: ${sale_price:.2f}")
+
+        # Show storage location prominently
+        if storage_location:
+            print(f"\n📍 STORAGE LOCATION: {storage_location}")
+            print(f"   Go to {storage_location} to find and ship this item!\n")
+
         if cost > 0:
             print(f"Cost: ${cost:.2f}")
             print(f"Profit: ${profit:.2f} ({profit_margin:.1f}%)")

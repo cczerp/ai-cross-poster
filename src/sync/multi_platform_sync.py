@@ -111,6 +111,8 @@ class MultiPlatformSyncManager:
             cost=cost,
             category=listing.category.primary if listing.category else None,
             attributes=listing.item_specifics.to_dict() if listing.item_specifics else None,
+            quantity=listing.quantity,
+            storage_location=listing.location,
         )
 
         print(f"Database Listing ID: {listing_id}\n")
@@ -264,9 +266,14 @@ class MultiPlatformSyncManager:
         sold_price: Optional[float] = None,
         buyer_email: Optional[str] = None,
         tracking_number: Optional[str] = None,
+        quantity_sold: int = 1,
     ) -> Dict[str, Any]:
         """
-        Mark listing as sold and auto-cancel on other platforms.
+        Mark listing as sold and schedule cancellation on other platforms.
+
+        Two modes:
+        1. Single-item (quantity=1): Marks as sold immediately, schedules cancellation after 15 minutes
+        2. Multi-quantity (quantity>1): Reduces quantity by quantity_sold, only cancels when quantity reaches 0
 
         Args:
             listing_id: Database listing ID
@@ -274,10 +281,13 @@ class MultiPlatformSyncManager:
             sold_price: Final sale price
             buyer_email: Buyer email for shipping label
             tracking_number: Shipping tracking number
+            quantity_sold: How many units sold (default 1)
 
         Returns:
-            Dictionary with cancellation results
+            Dictionary with results
         """
+        from datetime import datetime, timedelta
+
         print(f"\n{'='*70}")
         print(f"💰 MARKING AS SOLD")
         print(f"{'='*70}")
@@ -292,42 +302,93 @@ class MultiPlatformSyncManager:
         if sold_price:
             print(f"Sale Price: ${sold_price}")
 
-        # Mark as sold in database
-        self.db.mark_listing_sold(
-            listing_id=listing_id,
-            platform=sold_platform,
-            sold_price=sold_price,
-        )
+        # Show storage location prominently
+        if listing.get('storage_location'):
+            print(f"\n📍 STORAGE LOCATION: {listing['storage_location']}")
+            print(f"   Go to {listing['storage_location']} to find and ship this item!")
 
-        # Get all platform listings
-        platform_listings = self.db.get_platform_listings(listing_id)
+        current_quantity = listing.get('quantity', 1)
+        remaining_quantity = max(0, current_quantity - quantity_sold)
 
-        # Cancel on other platforms
-        cancellation_results = {}
-        for pl in platform_listings:
-            if pl["platform"] != sold_platform and pl["status"] == "active":
-                print(f"\n🚫 Canceling on {pl['platform']}...")
+        print(f"\nQuantity: {current_quantity} → {remaining_quantity} (sold {quantity_sold})")
 
-                # TODO: Implement actual cancellation API calls
-                # For now, just mark as canceled in database
-                self.db.update_platform_listing_status(
-                    listing_id=listing_id,
-                    platform=pl["platform"],
-                    status="canceled",
-                )
+        # Update quantity in database
+        cursor = self.db.conn.cursor()
+        cursor.execute("""
+            UPDATE listings
+            SET quantity = ?
+            WHERE id = ?
+        """, (remaining_quantity, listing_id))
+        self.db.conn.commit()
 
-                self.db.log_sync(
-                    listing_id=listing_id,
-                    platform=pl["platform"],
-                    action="cancel",
-                    status="success",
-                    details={"reason": f"Sold on {sold_platform}"},
-                )
+        # Determine action based on remaining quantity
+        if remaining_quantity == 0:
+            # No items left - mark as sold and schedule cancellation
+            print("\n🚫 No quantity remaining - scheduling cancellation on other platforms")
 
-                cancellation_results[pl["platform"]] = "canceled"
-                print(f"✅ Canceled on {pl['platform']}")
+            # Mark main listing as sold
+            self.db.mark_listing_sold(
+                listing_id=listing_id,
+                platform=sold_platform,
+                sold_price=sold_price,
+            )
 
-        # Send sale notification with shipping label
+            # Get all platform listings
+            platform_listings = self.db.get_platform_listings(listing_id)
+
+            # Schedule cancellation with 15-minute cooldown
+            cancel_time = datetime.now() + timedelta(minutes=15)
+            cancellation_results = {}
+
+            for pl in platform_listings:
+                if pl["platform"] != sold_platform and pl["status"] == "active":
+                    print(f"\n⏰ Scheduling cancellation on {pl['platform']} at {cancel_time.strftime('%H:%M:%S')}")
+
+                    # Mark as pending_cancel and set schedule time
+                    cursor.execute("""
+                        UPDATE platform_listings
+                        SET status = 'pending_cancel',
+                            cancel_scheduled_at = ?
+                        WHERE listing_id = ? AND platform = ?
+                    """, (cancel_time.isoformat(), listing_id, pl["platform"]))
+                    self.db.conn.commit()
+
+                    self.db.log_sync(
+                        listing_id=listing_id,
+                        platform=pl["platform"],
+                        action="schedule_cancel",
+                        status="scheduled",
+                        details={"reason": f"Sold on {sold_platform}", "cancel_at": cancel_time.isoformat()},
+                    )
+
+                    cancellation_results[pl["platform"]] = "scheduled_for_cancel"
+                    print(f"✅ Cancellation scheduled for {pl['platform']} (15 min cooldown)")
+
+            print(f"\n⏰ COOLDOWN PERIOD: 15 minutes to find and verify item")
+            print(f"   Automatic cancellation at: {cancel_time.strftime('%H:%M:%S')}")
+
+        else:
+            # Items still remaining - just update quantity on platforms
+            print(f"\n✅ {remaining_quantity} item(s) still available - updating quantity on platforms")
+
+            # TODO: Update quantity on each platform via API
+            # For now, just log the update
+            platform_listings = self.db.get_platform_listings(listing_id)
+            cancellation_results = {}
+
+            for pl in platform_listings:
+                if pl["status"] == "active":
+                    self.db.log_sync(
+                        listing_id=listing_id,
+                        platform=pl["platform"],
+                        action="update_quantity",
+                        status="success",
+                        details={"new_quantity": remaining_quantity, "sold_quantity": quantity_sold},
+                    )
+                    cancellation_results[pl["platform"]] = "quantity_updated"
+                    print(f"✅ Updated quantity on {pl['platform']}")
+
+        # Send sale notification with storage location
         self.notifier.send_sale_notification(
             listing_id=listing_id,
             platform=sold_platform,
@@ -338,13 +399,16 @@ class MultiPlatformSyncManager:
         )
 
         print(f"\n{'='*70}")
-        print(f"✅ LISTING MARKED AS SOLD")
+        print(f"✅ SALE RECORDED")
         print(f"{'='*70}\n")
 
         return {
             "listing_id": listing_id,
             "sold_platform": sold_platform,
-            "canceled_platforms": list(cancellation_results.keys()),
+            "quantity_sold": quantity_sold,
+            "remaining_quantity": remaining_quantity,
+            "storage_location": listing.get('storage_location'),
+            "actions": cancellation_results,
             "notification_sent": True,
         }
 

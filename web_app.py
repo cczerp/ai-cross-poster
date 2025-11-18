@@ -379,7 +379,37 @@ def settings():
     # Convert to dict for easier template access
     creds_dict = {cred['platform']: cred for cred in marketplace_creds}
 
-    return render_template('settings.html', user=user, credentials=creds_dict)
+    # All supported platforms with icons and display names
+    platforms = [
+        {'id': 'etsy', 'name': 'Etsy', 'icon': 'fas fa-shopping-cart', 'color': 'text-warning'},
+        {'id': 'poshmark', 'name': 'Poshmark', 'icon': 'fas fa-shopping-bag', 'color': 'text-primary'},
+        {'id': 'depop', 'name': 'Depop', 'icon': 'fas fa-tshirt', 'color': 'text-info'},
+        {'id': 'offerup', 'name': 'OfferUp', 'icon': 'fas fa-handshake', 'color': 'text-success'},
+        {'id': 'shopify', 'name': 'Shopify', 'icon': 'fas fa-store', 'color': 'text-success'},
+        {'id': 'craigslist', 'name': 'Craigslist', 'icon': 'fas fa-list', 'color': 'text-secondary'},
+        {'id': 'facebook', 'name': 'Facebook Marketplace', 'icon': 'fab fa-facebook', 'color': 'text-primary'},
+        {'id': 'tiktok_shop', 'name': 'TikTok Shop', 'icon': 'fab fa-tiktok', 'color': 'text-dark'},
+        {'id': 'woocommerce', 'name': 'WooCommerce', 'icon': 'fab fa-wordpress', 'color': 'text-purple'},
+        {'id': 'nextdoor', 'name': 'Nextdoor', 'icon': 'fas fa-home', 'color': 'text-success'},
+        {'id': 'varagesale', 'name': 'VarageSale', 'icon': 'fas fa-store-alt', 'color': 'text-warning'},
+        {'id': 'ruby_lane', 'name': 'Ruby Lane', 'icon': 'fas fa-gem', 'color': 'text-danger'},
+        {'id': 'ecrater', 'name': 'eCRATER', 'icon': 'fas fa-box', 'color': 'text-info'},
+        {'id': 'bonanza', 'name': 'Bonanza', 'icon': 'fas fa-star', 'color': 'text-warning'},
+        {'id': 'kijiji', 'name': 'Kijiji', 'icon': 'fas fa-newspaper', 'color': 'text-danger'},
+        {'id': 'mercari', 'name': 'Mercari', 'icon': 'fas fa-box', 'color': 'text-warning'},
+        {'id': 'ebay', 'name': 'eBay', 'icon': 'fab fa-ebay', 'color': 'text-primary'},
+        {'id': 'grailed', 'name': 'Grailed', 'icon': 'fas fa-user-tie', 'color': 'text-dark'},
+        {'id': 'vinted', 'name': 'Vinted', 'icon': 'fas fa-recycle', 'color': 'text-success'},
+        {'id': 'mercado_libre', 'name': 'Mercado Libre', 'icon': 'fas fa-globe-americas', 'color': 'text-warning'},
+        {'id': 'tradesy', 'name': 'Tradesy', 'icon': 'fas fa-exchange-alt', 'color': 'text-info'},
+        {'id': 'vestiaire', 'name': 'Vestiaire Collective', 'icon': 'fas fa-crown', 'color': 'text-purple'},
+        {'id': 'rebag', 'name': 'Rebag', 'icon': 'fas fa-shopping-bag', 'color': 'text-danger'},
+        {'id': 'thredup', 'name': 'ThredUp', 'icon': 'fas fa-tshirt', 'color': 'text-primary'},
+        {'id': 'personal_website', 'name': 'Personal Website', 'icon': 'fas fa-globe', 'color': 'text-secondary'},
+        {'id': 'other', 'name': 'Other Platform', 'icon': 'fas fa-ellipsis-h', 'color': 'text-muted'},
+    ]
+
+    return render_template('settings.html', user=user, credentials=creds_dict, platforms=platforms)
 
 
 # ============================================================================
@@ -632,6 +662,7 @@ def save_draft():
             photos=permanent_photo_paths,
             user_id=current_user.id,  # Add user_id
             cost=float(data.get('cost')) if data.get('cost') else None,
+            item_type=data.get('item_type', 'general'),
             quantity=int(data.get('quantity', 1)),
             storage_location=data.get('storage_location'),
             sku=data.get('sku'),
@@ -871,8 +902,15 @@ def save_marketplace_credentials():
         if not username or not password:
             return jsonify({'error': 'Username and password are required'}), 400
 
-        # Validate platform
-        valid_platforms = ['poshmark', 'depop', 'varagesale', 'mercari', 'ebay', 'facebook', 'nextdoor']
+        # Validate platform - All 27+ supported platforms
+        valid_platforms = [
+            'etsy', 'poshmark', 'depop', 'offerup', 'shopify', 'craigslist',
+            'facebook', 'tiktok_shop', 'woocommerce', 'nextdoor', 'varagesale',
+            'ruby_lane', 'ecrater', 'bonanza', 'kijiji', 'mercari', 'ebay',
+            'personal_website', 'grailed', 'vinted', 'mercado_libre',
+            'tradesy', 'vestiaire', 'rebag', 'thredup', 'poshmark_ca',
+            'ebay_uk', 'other'
+        ]
         if platform.lower() not in valid_platforms:
             return jsonify({'error': 'Invalid platform'}), 400
 

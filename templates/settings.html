@@ -56,145 +56,42 @@
             <strong>Your credentials are stored securely and never shared.</strong>
         </p>
 
-        <!-- Poshmark -->
+        <!-- All Platforms - Dynamically Generated -->
+        {% for platform in platforms %}
         <div class="border rounded p-3 mb-3">
             <h6 class="d-flex justify-content-between align-items-center">
-                <span><i class="fas fa-shopping-bag text-primary"></i> Poshmark</span>
-                {% if credentials.get('poshmark') %}
+                <span><i class="{{ platform.icon }} {{ platform.color }}"></i> {{ platform.name }}</span>
+                {% if credentials.get(platform.id) %}
                 <span class="badge bg-success">Connected</span>
                 {% else %}
                 <span class="badge bg-secondary">Not Connected</span>
                 {% endif %}
             </h6>
 
-            <form class="marketplace-form mt-2" data-platform="poshmark">
-                <div class="mb-2">
-                    <input type="email" class="form-control form-control-sm"
-                           name="username" placeholder="Poshmark Email"
-                           value="{{ credentials.get('poshmark')['username'] if credentials.get('poshmark') else '' }}">
-                </div>
-                <div class="mb-2">
-                    <input type="password" class="form-control form-control-sm"
-                           name="password" placeholder="Poshmark Password"
-                           value="{{ credentials.get('poshmark')['password'] if credentials.get('poshmark') else '' }}">
-                </div>
-                <div class="d-flex gap-2">
-                    <button type="submit" class="btn btn-sm btn-primary">
-                        <i class="fas fa-save"></i> Save
-                    </button>
-                    {% if credentials.get('poshmark') %}
-                    <button type="button" class="btn btn-sm btn-danger delete-creds" data-platform="poshmark">
-                        <i class="fas fa-trash"></i> Remove
-                    </button>
-                    {% endif %}
-                </div>
-            </form>
-        </div>
-
-        <!-- Depop -->
-        <div class="border rounded p-3 mb-3">
-            <h6 class="d-flex justify-content-between align-items-center">
-                <span><i class="fas fa-tshirt text-info"></i> Depop</span>
-                {% if credentials.get('depop') %}
-                <span class="badge bg-success">Connected</span>
-                {% else %}
-                <span class="badge bg-secondary">Not Connected</span>
-                {% endif %}
-            </h6>
-
-            <form class="marketplace-form mt-2" data-platform="depop">
+            <form class="marketplace-form mt-2" data-platform="{{ platform.id }}">
                 <div class="mb-2">
                     <input type="text" class="form-control form-control-sm"
-                           name="username" placeholder="Depop Username"
-                           value="{{ credentials.get('depop')['username'] if credentials.get('depop') else '' }}">
+                           name="username" placeholder="{{ platform.name }} Username/Email"
+                           value="{{ credentials.get(platform.id)['username'] if credentials.get(platform.id) else '' }}">
                 </div>
                 <div class="mb-2">
                     <input type="password" class="form-control form-control-sm"
-                           name="password" placeholder="Depop Password"
-                           value="{{ credentials.get('depop')['password'] if credentials.get('depop') else '' }}">
+                           name="password" placeholder="{{ platform.name }} Password"
+                           value="{{ credentials.get(platform.id)['password'] if credentials.get(platform.id) else '' }}">
                 </div>
                 <div class="d-flex gap-2">
                     <button type="submit" class="btn btn-sm btn-primary">
                         <i class="fas fa-save"></i> Save
                     </button>
-                    {% if credentials.get('depop') %}
-                    <button type="button" class="btn btn-sm btn-danger delete-creds" data-platform="depop">
+                    {% if credentials.get(platform.id) %}
+                    <button type="button" class="btn btn-sm btn-danger delete-creds" data-platform="{{ platform.id }}">
                         <i class="fas fa-trash"></i> Remove
                     </button>
                     {% endif %}
                 </div>
             </form>
         </div>
-
-        <!-- Mercari -->
-        <div class="border rounded p-3 mb-3">
-            <h6 class="d-flex justify-content-between align-items-center">
-                <span><i class="fas fa-box text-warning"></i> Mercari</span>
-                {% if credentials.get('mercari') %}
-                <span class="badge bg-success">Connected</span>
-                {% else %}
-                <span class="badge bg-secondary">Not Connected</span>
-                {% endif %}
-            </h6>
-
-            <form class="marketplace-form mt-2" data-platform="mercari">
-                <div class="mb-2">
-                    <input type="email" class="form-control form-control-sm"
-                           name="username" placeholder="Mercari Email"
-                           value="{{ credentials.get('mercari')['username'] if credentials.get('mercari') else '' }}">
-                </div>
-                <div class="mb-2">
-                    <input type="password" class="form-control form-control-sm"
-                           name="password" placeholder="Mercari Password"
-                           value="{{ credentials.get('mercari')['password'] if credentials.get('mercari') else '' }}">
-                </div>
-                <div class="d-flex gap-2">
-                    <button type="submit" class="btn btn-sm btn-primary">
-                        <i class="fas fa-save"></i> Save
-                    </button>
-                    {% if credentials.get('mercari') %}
-                    <button type="button" class="btn btn-sm btn-danger delete-creds" data-platform="mercari">
-                        <i class="fas fa-trash"></i> Remove
-                    </button>
-                    {% endif %}
-                </div>
-            </form>
-        </div>
-
-        <!-- Facebook Marketplace -->
-        <div class="border rounded p-3 mb-3">
-            <h6 class="d-flex justify-content-between align-items-center">
-                <span><i class="fab fa-facebook text-primary"></i> Facebook Marketplace</span>
-                {% if credentials.get('facebook') %}
-                <span class="badge bg-success">Connected</span>
-                {% else %}
-                <span class="badge bg-secondary">Not Connected</span>
-                {% endif %}
-            </h6>
-
-            <form class="marketplace-form mt-2" data-platform="facebook">
-                <div class="mb-2">
-                    <input type="email" class="form-control form-control-sm"
-                           name="username" placeholder="Facebook Email/Phone"
-                           value="{{ credentials.get('facebook')['username'] if credentials.get('facebook') else '' }}">
-                </div>
-                <div class="mb-2">
-                    <input type="password" class="form-control form-control-sm"
-                           name="password" placeholder="Facebook Password"
-                           value="{{ credentials.get('facebook')['password'] if credentials.get('facebook') else '' }}">
-                </div>
-                <div class="d-flex gap-2">
-                    <button type="submit" class="btn btn-sm btn-primary">
-                        <i class="fas fa-save"></i> Save
-                    </button>
-                    {% if credentials.get('facebook') %}
-                    <button type="button" class="btn btn-sm btn-danger delete-creds" data-platform="facebook">
-                        <i class="fas fa-trash"></i> Remove
-                    </button>
-                    {% endif %}
-                </div>
-            </form>
-        </div>
+        {% endfor %}
 
         <div class="alert alert-warning mt-3">
             <i class="fas fa-exclamation-triangle"></i> <strong>Security Note:</strong>

@@ -237,24 +237,21 @@ class Database:
             ON activity_logs(action)
         """)
 
+        # Run migrations BEFORE creating indexes on migrated columns
+        self._run_migrations()
+
+        # Create indexes on migrated columns (after migrations complete)
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_users_is_admin
             ON users(is_admin)
         """)
-
-        # Run migrations
-        self._run_migrations()
-
-        self.conn.commit()
-
-        # Run migrations for existing databases (must run before user_id index)
-        self._run_migrations()
 
         # Create user_id index after migration (in case column didn't exist)
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_listings_user_id
             ON listings(user_id)
         """)
+
         self.conn.commit()
 
     def _run_migrations(self):

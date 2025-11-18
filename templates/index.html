@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Home - AI Cross-Poster{% endblock %}
+
+{% block content %}
+<div class="text-center py-4">
+    <h1 class="display-4">🚀 AI Cross-Poster</h1>
+    <p class="lead">List items across platforms with AI-powered inventory tracking</p>
+</div>
+
+<div class="row g-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body text-center">
+                <i class="fas fa-camera fa-3x text-primary mb-3"></i>
+                <h5 class="card-title">Create New Listing</h5>
+                <p class="card-text">Take photos and let AI do the rest</p>
+                <a href="{{ url_for('create_listing') }}" class="btn btn-primary btn-lg w-100">
+                    <i class="fas fa-plus"></i> Start Listing
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6">
+        <div class="card">
+            <div class="card-body text-center">
+                <i class="fas fa-folder fa-2x text-secondary mb-2"></i>
+                <h6 class="card-title">Drafts</h6>
+                <a href="{{ url_for('drafts') }}" class="btn btn-sm btn-outline-secondary w-100">View</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6">
+        <div class="card">
+            <div class="card-body text-center">
+                <i class="fas fa-list fa-2x text-success mb-2"></i>
+                <h6 class="card-title">Active</h6>
+                <a href="{{ url_for('listings') }}" class="btn btn-sm btn-outline-success w-100">View</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-body">
+        <h5 class="card-title"><i class="fas fa-info-circle"></i> How It Works</h5>
+        <ol class="mb-0">
+            <li>📸 Take photos of your item</li>
+            <li>🤖 AI analyzes and creates listing</li>
+            <li>📍 Add storage location (B1, C2, etc.)</li>
+            <li>🚀 Post to eBay, Mercari, etc.</li>
+            <li>💰 When sold, see location instantly!</li>
+        </ol>
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-body">
+        <h5 class="card-title"><i class="fas fa-box"></i> Storage Location Tips</h5>
+        <p class="mb-2">Use simple codes to organize your items:</p>
+        <div class="d-flex flex-wrap gap-2">
+            <span class="storage-badge">B1</span>
+            <span class="storage-badge">B2</span>
+            <span class="storage-badge">C1</span>
+            <span class="storage-badge">Shelf-3</span>
+            <span class="storage-badge">Box-A</span>
+        </div>
+        <p class="mt-2 text-muted small">When item sells, you'll know exactly where to find it!</p>
+    </div>
+</div>
+{% endblock %}

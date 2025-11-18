@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Active Listings{% endblock %}
+
+{% block content %}
+<h2 class="mb-4"><i class="fas fa-list"></i> Active Listings</h2>
+
+{% if listings %}
+    {% for listing in listings %}
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <h5 class="card-title mb-0">{{ listing.title }}</h5>
+                <span class="badge bg-{{ 'success' if listing.status == 'active' else 'secondary' }}">
+                    {{ listing.status }}
+                </span>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-success fw-bold">${{ "%.2f"|format(listing.price) }}</span>
+                {% if listing.storage_location %}
+                <span class="storage-badge">
+                    <i class="fas fa-map-marker-alt"></i> {{ listing.storage_location }}
+                </span>
+                {% endif %}
+            </div>
+
+            {% if listing.platform_statuses %}
+            <div class="mb-2">
+                <small class="text-muted">Platforms:</small>
+                <div class="d-flex flex-wrap gap-1 mt-1">
+                    {% for ps in listing.platform_statuses.split(',') %}
+                        {% set platform, status = ps.split(':') %}
+                        <span class="badge bg-{{ 'success' if status == 'active' else 'warning' }}">
+                            {{ platform }}: {{ status }}
+                        </span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <small class="text-muted d-block mb-2">
+                <i class="far fa-clock"></i> {{ listing.created_at }}
+            </small>
+
+            {% if listing.status == 'active' %}
+            <button class="btn btn-sm btn-danger w-100" onclick="markSold({{ listing.id }})">
+                <i class="fas fa-check-circle"></i> Mark as Sold
+            </button>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="text-center py-5">
+        <i class="fas fa-inbox fa-4x text-muted mb-3"></i>
+        <h5>No Active Listings</h5>
+        <p class="text-muted">Your posted listings will appear here</p>
+        <a href="{{ url_for('create_listing') }}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Create Listing
+        </a>
+    </div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function markSold(id) {
+    const platform = prompt('Which platform did it sell on? (ebay/mercari)');
+    if (!platform) return;
+
+    const soldPrice = prompt('Sold price? (leave blank for listed price)');
+
+    showLoading();
+
+    try {
+        const response = await fetch('/api/mark-sold', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                listing_id: id,
+                platform: platform,
+                sold_price: soldPrice || null,
+                quantity_sold: 1
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success && data.result.storage_location) {
+            showAlert(`Item sold! Go to location: ${data.result.storage_location}`, 'success');
+            setTimeout(() => location.reload(), 2000);
+        } else if (data.success) {
+            showAlert('Item marked as sold!', 'success');
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            showAlert(data.error, 'danger');
+        }
+    } catch (error) {
+        showAlert('Failed: ' + error, 'danger');
+    } finally {
+        hideLoading();
+    }
+}
+</script>
+{% endblock %}

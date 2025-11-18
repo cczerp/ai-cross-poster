@@ -44,6 +44,30 @@ Path(app.config['UPLOAD_FOLDER']).mkdir(parents=True, exist_ok=True)
 # Initialize services
 db = get_db()
 
+# Create default admin account if no users exist
+def create_default_admin():
+    """Create default admin account (admin/admin) if no users exist"""
+    cursor = db.conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM users")
+    user_count = cursor.fetchone()[0]
+
+    if user_count == 0:
+        print("\n" + "="*60)
+        print("No users found. Creating default admin account...")
+        print("Username: admin")
+        print("Password: admin")
+        print("IMPORTANT: Please change this password after first login!")
+        print("="*60 + "\n")
+
+        password_hash = generate_password_hash('admin')
+        cursor.execute("""
+            INSERT INTO users (username, email, password_hash, is_admin, is_active, email_verified)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, ('admin', 'admin@resellgenius.local', password_hash, 1, 1, 1))
+        db.conn.commit()
+
+create_default_admin()
+
 # Initialize notification manager (optional)
 notification_manager = None
 try:

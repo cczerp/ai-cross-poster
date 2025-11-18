@@ -202,6 +202,9 @@ class Database:
             ON notifications(is_read)
         """)
 
+        # Run migrations
+        self._run_migrations()
+
         self.conn.commit()
 
         # Run migrations for existing databases (must run before user_id index)

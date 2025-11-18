@@ -224,6 +224,10 @@ class AIListerGUI(ctk.CTk):
         self.color_entry = ctk.CTkEntry(details_frame, width=150, placeholder_text="Color")
         self.color_entry.grid(row=0, column=3, padx=5, pady=5)
 
+        ctk.CTkLabel(details_frame, text="Storage Location:").grid(row=1, column=2, sticky="w", padx=5, pady=5)
+        self.storage_location_entry = ctk.CTkEntry(details_frame, width=150, placeholder_text="e.g., A1, B2")
+        self.storage_location_entry.grid(row=1, column=3, padx=5, pady=5)
+
         # Shipping
         ctk.CTkLabel(scroll_frame, text="Shipping Cost ($):").pack(anchor="w", pady=(10, 0))
         self.shipping_entry = ctk.CTkEntry(scroll_frame, width=100, placeholder_text="0.00 for free")
@@ -1038,7 +1042,7 @@ Return ONLY the description text, no JSON, no formatting, just the description."
                         cost=float(self.shipping_entry.get()) if self.shipping_entry.get() else 0.0
                     ),
                     quantity=int(self.quantity_entry.get()) if self.quantity_entry.get() else 1,
-                    location=self.location_entry.get() if self.location_entry.get() else None,
+                    storage_location=self.location_entry.get() if self.location_entry.get() else None,
                 )
 
                 # Selected platforms
@@ -1110,6 +1114,7 @@ Return ONLY the description text, no JSON, no formatting, just the description."
         self.brand_entry.delete(0, tk.END)
         self.size_entry.delete(0, tk.END)
         self.color_entry.delete(0, tk.END)
+        self.storage_location_entry.delete(0, tk.END)
         self.shipping_entry.delete(0, tk.END)
         self.quantity_entry.delete(0, tk.END)
         self.quantity_entry.insert(0, "1")  # Reset to default
@@ -1301,6 +1306,10 @@ Return ONLY the description text, no JSON, no formatting, just the description."
                     pass
 
             details.append(f"Condition: {draft['condition']}")
+
+            # Add storage location if available
+            if draft.get('storage_location'):
+                details.append(f"📍 Storage: {draft['storage_location']}")
 
             # Photo count
             if draft.get('photos'):
@@ -2117,7 +2126,13 @@ Return ONLY the description text, no JSON, no formatting, just the description."
                 profit = listing_dict['price'] - listing_dict['cost']
                 text += f" (Cost: ${listing_dict['cost']:.2f}, Profit: ${profit:.2f})"
 
-            text += f"\nStatus: {listing_dict['status']}\n"
+            text += f"\nStatus: {listing_dict['status']}"
+
+            # Storage location
+            if listing_dict.get('storage_location'):
+                text += f" | 📍 Storage: {listing_dict['storage_location']}"
+
+            text += "\n"
 
             # Platform statuses
             if listing_dict.get('platform_statuses'):

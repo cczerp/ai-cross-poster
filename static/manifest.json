@@ -1,11 +1,11 @@
 {
-  "name": "SellRage - Multi-Platform Seller",
-  "short_name": "SellRage",
+  "name": "ResellGenius - Multi-Platform Seller",
+  "short_name": "ResellGenius",
   "description": "Cross-platform inventory and listing management for resellers",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#4CAF50",
+  "theme_color": "#6366F1",
   "orientation": "portrait",
   "icons": [
     {

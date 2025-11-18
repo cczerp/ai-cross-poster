@@ -1,5 +1,5 @@
-// Service Worker for SellRage PWA
-const CACHE_NAME = 'sellrage-v1';
+// Service Worker for ResellGenius PWA
+const CACHE_NAME = 'resellgenius-v1';
 const urlsToCache = [
   '/',
   '/static/manifest.json',
@@ -99,6 +99,6 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification('SellRage', options)
+    self.registration.showNotification('ResellGenius', options)
   );
 });

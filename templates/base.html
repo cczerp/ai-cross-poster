@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>{% block title %}SellRage - Multi-Platform Seller{% endblock %}</title>
+    <title>{% block title %}ResellGenius - Multi-Platform Seller{% endblock %}</title>
 
     <!-- PWA Meta Tags -->
     <meta name="description" content="Cross-platform inventory and listing management for resellers">
-    <meta name="theme-color" content="#4CAF50">
+    <meta name="theme-color" content="#6366F1">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="SellRage">
+    <meta name="apple-mobile-web-app-title" content="ResellGenius">
     <link rel="manifest" href="/static/manifest.json">
     <link rel="apple-touch-icon" href="/static/icon-192.png">
 
@@ -22,10 +22,28 @@
 
     <style>
         :root {
-            --primary: #4CAF50;
-            --secondary: #2196F3;
-            --danger: #f44336;
-            --warning: #ff9800;
+            --primary: #6366F1;
+            --primary-dark: #4F46E5;
+            --secondary: #8B5CF6;
+            --accent: #EC4899;
+            --success: #10B981;
+            --danger: #EF4444;
+            --warning: #F59E0B;
+            --gradient: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            background: var(--gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .logo i {
+            color: #6366F1;
+            -webkit-text-fill-color: #6366F1;
         }
 
         body {

@@ -45,6 +45,15 @@ Path(app.config['UPLOAD_FOLDER']).mkdir(parents=True, exist_ok=True)
 # Initialize services
 db = get_db()
 
+# Initialize notification manager (optional)
+notification_manager = None
+try:
+    from src.notifications import NotificationManager
+    notification_manager = NotificationManager.from_env()
+except Exception:
+    # Notifications are optional, app will work without them
+    pass
+
 # Initialize Flask-Login
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -59,17 +68,25 @@ login_manager.login_message = 'Please log in to access this page.'
 class User(UserMixin):
     """User model for Flask-Login"""
 
-    def __init__(self, user_id, username, email):
+    def __init__(self, user_id, username, email, is_admin=False, is_active=True):
         self.id = user_id
         self.username = username
         self.email = email
+        self.is_admin = is_admin
+        self.is_active = is_active
 
     @staticmethod
     def get(user_id):
         """Get user by ID"""
         user_data = db.get_user_by_id(user_id)
         if user_data:
-            return User(user_data['id'], user_data['username'], user_data['email'])
+            return User(
+                user_data['id'],
+                user_data['username'],
+                user_data['email'],
+                user_data.get('is_admin', False),
+                user_data.get('is_active', True)
+            )
         return None
 
 
@@ -77,6 +94,24 @@ class User(UserMixin):
 def load_user(user_id):
     """Load user for Flask-Login"""
     return User.get(int(user_id))
+
+
+# ============================================================================
+# ADMIN DECORATOR
+# ============================================================================
+
+from functools import wraps
+
+def admin_required(f):
+    """Decorator to require admin access"""
+    @wraps(f)
+    @login_required
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_admin:
+            flash('You need administrator privileges to access this page.', 'error')
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 # ============================================================================
@@ -97,9 +132,31 @@ def login():
         user_data = db.get_user_by_username(username)
 
         if user_data and check_password_hash(user_data['password_hash'], password):
-            user = User(user_data['id'], user_data['username'], user_data['email'])
+            # Check if account is active
+            if not user_data.get('is_active', True):
+                error_msg = 'Your account has been deactivated. Please contact an administrator.'
+                if request.is_json:
+                    return jsonify({'error': error_msg}), 401
+                flash(error_msg, 'error')
+                return render_template('login.html')
+
+            user = User(
+                user_data['id'],
+                user_data['username'],
+                user_data['email'],
+                user_data.get('is_admin', False),
+                user_data.get('is_active', True)
+            )
             login_user(user, remember=True)
             db.update_last_login(user_data['id'])
+
+            # Log activity
+            db.log_activity(
+                action='login',
+                user_id=user_data['id'],
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get('User-Agent')
+            )
 
             if request.is_json:
                 return jsonify({'success': True, 'redirect': url_for('index')})
@@ -159,8 +216,16 @@ def register():
         password_hash = generate_password_hash(password)
         user_id = db.create_user(username, email, password_hash)
 
+        # Log activity
+        db.log_activity(
+            action='register',
+            user_id=user_id,
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get('User-Agent')
+        )
+
         # Auto-login
-        user = User(user_id, username, email)
+        user = User(user_id, username, email, is_admin=False, is_active=True)
         login_user(user, remember=True)
 
         if request.is_json:
@@ -175,9 +240,78 @@ def register():
 @login_required
 def logout():
     """User logout"""
+    # Log activity before logout
+    db.log_activity(
+        action='logout',
+        user_id=current_user.id,
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get('User-Agent')
+    )
     logout_user()
     flash('Logged out successfully', 'info')
     return redirect(url_for('login'))
+
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    """Forgot password"""
+    if request.method == 'POST':
+        email = request.form.get('email')
+
+        user = db.get_user_by_email(email)
+        if user:
+            # Generate reset token
+            import secrets
+            token = secrets.token_urlsafe(32)
+            db.set_reset_token(user['id'], token, expiry_hours=24)
+
+            # In production, send email here
+            # For now, print to console
+            reset_link = url_for('reset_password', token=token, _external=True)
+            print(f"\n{'='*60}")
+            print(f"PASSWORD RESET LINK FOR {email}:")
+            print(f"{reset_link}")
+            print(f"{'='*60}\n")
+
+            flash('If that email exists, a password reset link has been sent.', 'info')
+        else:
+            # Don't reveal if email exists
+            flash('If that email exists, a password reset link has been sent.', 'info')
+
+        return redirect(url_for('login'))
+
+    return render_template('forgot_password.html')
+
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    """Reset password with token"""
+    user = db.verify_reset_token(token)
+
+    if not user:
+        flash('Invalid or expired reset link', 'error')
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+
+        if not password or len(password) < 6:
+            flash('Password must be at least 6 characters', 'error')
+            return render_template('reset_password.html', token=token)
+
+        if password != confirm_password:
+            flash('Passwords do not match', 'error')
+            return render_template('reset_password.html', token=token)
+
+        # Update password
+        password_hash = generate_password_hash(password)
+        db.update_password(user['id'], password_hash)
+
+        flash('Password reset successfully! You can now log in.', 'success')
+        return redirect(url_for('login'))
+
+    return render_template('reset_password.html', token=token)
 
 
 # ============================================================================
@@ -246,6 +380,150 @@ def settings():
     creds_dict = {cred['platform']: cred for cred in marketplace_creds}
 
     return render_template('settings.html', user=user, credentials=creds_dict)
+
+
+# ============================================================================
+# ADMIN ROUTES
+# ============================================================================
+
+@app.route('/admin')
+@admin_required
+def admin_dashboard():
+    """Admin dashboard"""
+    stats = db.get_system_stats()
+    users = db.get_all_users(include_inactive=True)
+    recent_activity = db.get_activity_logs(limit=20)
+    return render_template('admin/dashboard.html', stats=stats, users=users, recent_activity=recent_activity)
+
+
+@app.route('/admin/users')
+@admin_required
+def admin_users():
+    """Admin user management"""
+    users = db.get_all_users(include_inactive=True)
+    return render_template('admin/users.html', users=users)
+
+
+@app.route('/admin/activity')
+@admin_required
+def admin_activity():
+    """Admin activity logs"""
+    page = request.args.get('page', 1, type=int)
+    limit = 50
+    offset = (page - 1) * limit
+
+    user_id = request.args.get('user_id', type=int)
+    action = request.args.get('action')
+
+    logs = db.get_activity_logs(user_id=user_id, action=action, limit=limit, offset=offset)
+
+    return render_template('admin/activity.html', logs=logs, page=page)
+
+
+@app.route('/admin/user/<int:user_id>')
+@admin_required
+def admin_user_detail(user_id):
+    """Admin user detail view"""
+    user = db.get_user_by_id(user_id)
+    if not user:
+        flash('User not found', 'error')
+        return redirect(url_for('admin_users'))
+
+    # Get user's listings
+    cursor = db.conn.cursor()
+    cursor.execute("SELECT * FROM listings WHERE user_id = ? ORDER BY created_at DESC LIMIT 50", (user_id,))
+    listings = [dict(row) for row in cursor.fetchall()]
+
+    # Get user's activity
+    activity = db.get_activity_logs(user_id=user_id, limit=50)
+
+    return render_template('admin/user_detail.html', user=user, listings=listings, activity=activity)
+
+
+# ============================================================================
+# ADMIN API ENDPOINTS
+# ============================================================================
+
+@app.route('/api/admin/user/<int:user_id>/toggle-admin', methods=['POST'])
+@admin_required
+def admin_toggle_user_admin(user_id):
+    """Toggle user admin status"""
+    try:
+        # Prevent self-demotion
+        if user_id == current_user.id:
+            return jsonify({'error': 'You cannot change your own admin status'}), 400
+
+        success = db.toggle_user_admin(user_id)
+
+        if success:
+            # Log activity
+            db.log_activity(
+                action='toggle_admin',
+                user_id=current_user.id,
+                resource_type='user',
+                resource_id=user_id,
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get('User-Agent')
+            )
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'User not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/user/<int:user_id>/toggle-active', methods=['POST'])
+@admin_required
+def admin_toggle_user_active(user_id):
+    """Toggle user active status"""
+    try:
+        # Prevent self-deactivation
+        if user_id == current_user.id:
+            return jsonify({'error': 'You cannot deactivate your own account'}), 400
+
+        success = db.toggle_user_active(user_id)
+
+        if success:
+            # Log activity
+            db.log_activity(
+                action='toggle_active',
+                user_id=current_user.id,
+                resource_type='user',
+                resource_id=user_id,
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get('User-Agent')
+            )
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'User not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/user/<int:user_id>/delete', methods=['DELETE'])
+@admin_required
+def admin_delete_user(user_id):
+    """Delete a user (admin)"""
+    try:
+        # Prevent self-deletion
+        if user_id == current_user.id:
+            return jsonify({'error': 'You cannot delete your own account'}), 400
+
+        # Log activity before deletion
+        db.log_activity(
+            action='delete_user',
+            user_id=current_user.id,
+            resource_type='user',
+            resource_id=user_id,
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get('User-Agent')
+        )
+
+        db.delete_user(user_id)
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # ============================================================================
@@ -356,6 +634,8 @@ def save_draft():
             cost=float(data.get('cost')) if data.get('cost') else None,
             quantity=int(data.get('quantity', 1)),
             storage_location=data.get('storage_location'),
+            sku=data.get('sku'),
+            upc=data.get('upc'),
             attributes={
                 'brand': data.get('brand'),
                 'size': data.get('size'),

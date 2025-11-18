@@ -117,6 +117,18 @@
         </div>
     </div>
 
+    <!-- Admin Banner -->
+    {% if current_user.is_authenticated and current_user.is_admin %}
+    <div class="bg-danger text-white text-center py-2">
+        <small>
+            <i class="fas fa-shield-alt"></i> Admin Mode
+            <a href="{{ url_for('admin_dashboard') }}" class="text-white ms-3">
+                <u>Go to Admin Dashboard</u>
+            </a>
+        </small>
+    </div>
+    {% endif %}
+
     <!-- Main Content -->
     <div class="container py-3">
         {% with messages = get_flashed_messages(with_categories=true) %}

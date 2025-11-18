@@ -39,7 +39,13 @@ class Database:
                 username TEXT UNIQUE NOT NULL,
                 email TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
+                is_admin BOOLEAN DEFAULT 0,  -- Admin role flag
+                is_active BOOLEAN DEFAULT 1,  -- Account active status
                 notification_email TEXT,  -- Where to send sale notifications
+                email_verified BOOLEAN DEFAULT 0,  -- Email verification status
+                verification_token TEXT,  -- Token for email verification
+                reset_token TEXT,  -- Token for password reset
+                reset_token_expiry TIMESTAMP,  -- When reset token expires
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_login TIMESTAMP
             )
@@ -98,10 +104,13 @@ class Database:
                 cost REAL,  -- What you paid for it
                 condition TEXT,
                 category TEXT,
+                item_type TEXT,  -- trading_card, clothing, electronics, collectible, general
                 attributes TEXT,  -- JSON blob
                 photos TEXT,  -- JSON array of photo paths
                 quantity INTEGER DEFAULT 1,  -- Quantity available
                 storage_location TEXT,  -- Physical location (B1, C2, etc.)
+                sku TEXT,  -- Stock keeping unit / custom ID
+                upc TEXT,  -- UPC / barcode
                 status TEXT DEFAULT 'draft',  -- draft, active, sold, canceled
                 sold_platform TEXT,  -- Which platform it sold on
                 sold_date TIMESTAMP,
@@ -176,6 +185,22 @@ class Database:
             )
         """)
 
+        # Activity logs - track user actions for security and debugging
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS activity_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                action TEXT NOT NULL,  -- login, logout, create_listing, delete_listing, etc.
+                resource_type TEXT,  -- listing, user, credential, etc.
+                resource_id INTEGER,
+                details TEXT,  -- JSON blob with additional details
+                ip_address TEXT,
+                user_agent TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+
         # Create indexes for better performance
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_listings_uuid
@@ -200,6 +225,21 @@ class Database:
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_notifications_unread
             ON notifications(is_read)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id
+            ON activity_logs(user_id)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_activity_logs_action
+            ON activity_logs(action)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_users_is_admin
+            ON users(is_admin)
         """)
 
         # Run migrations
@@ -280,6 +320,35 @@ class Database:
             print("Running migration: Adding notification_email column to users table")
             cursor.execute("ALTER TABLE users ADD COLUMN notification_email TEXT")
             self.conn.commit()
+
+        # Migration: Add admin and security columns to users table
+        for col_name, col_def, default_msg in [
+            ("is_admin", "BOOLEAN DEFAULT 0", "is_admin"),
+            ("is_active", "BOOLEAN DEFAULT 1", "is_active"),
+            ("email_verified", "BOOLEAN DEFAULT 0", "email_verified"),
+            ("verification_token", "TEXT", "verification_token"),
+            ("reset_token", "TEXT", "reset_token"),
+            ("reset_token_expiry", "TIMESTAMP", "reset_token_expiry"),
+        ]:
+            try:
+                cursor.execute(f"SELECT {col_name} FROM users LIMIT 1")
+            except sqlite3.OperationalError:
+                print(f"Running migration: Adding {default_msg} column to users table")
+                cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
+                self.conn.commit()
+
+        # Migration: Add SKU, UPC, and item_type to listings table
+        for col_name, col_def, default_msg in [
+            ("sku", "TEXT", "sku"),
+            ("upc", "TEXT", "upc"),
+            ("item_type", "TEXT", "item_type"),
+        ]:
+            try:
+                cursor.execute(f"SELECT {col_name} FROM listings LIMIT 1")
+            except sqlite3.OperationalError:
+                print(f"Running migration: Adding {default_msg} column to listings table")
+                cursor.execute(f"ALTER TABLE listings ADD COLUMN {col_name} {col_def}")
+                self.conn.commit()
 
     # ========================================================================
     # COLLECTIBLES METHODS
@@ -419,9 +488,12 @@ class Database:
         collectible_id: Optional[int] = None,
         cost: Optional[float] = None,
         category: Optional[str] = None,
+        item_type: Optional[str] = None,
         attributes: Optional[Dict] = None,
         quantity: int = 1,
         storage_location: Optional[str] = None,
+        sku: Optional[str] = None,
+        upc: Optional[str] = None,
     ) -> int:
         """Create a new listing"""
         cursor = self.conn.cursor()
@@ -429,15 +501,18 @@ class Database:
         cursor.execute("""
             INSERT INTO listings (
                 listing_uuid, user_id, collectible_id, title, description, price,
-                cost, condition, category, attributes, photos, quantity, storage_location, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
+                cost, condition, category, item_type, attributes, photos, quantity,
+                storage_location, sku, upc, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
         """, (
             listing_uuid, user_id, collectible_id, title, description, price,
-            cost, condition, category,
+            cost, condition, category, item_type,
             json.dumps(attributes) if attributes else None,
             json.dumps(photos),
             quantity,
             storage_location,
+            sku,
+            upc,
         ))
 
         self.conn.commit()
@@ -795,6 +870,216 @@ class Database:
             DELETE FROM marketplace_credentials
             WHERE user_id = ? AND platform = ?
         """, (user_id, platform))
+        self.conn.commit()
+
+    # ========================================================================
+    # ACTIVITY LOG METHODS
+    # ========================================================================
+
+    def log_activity(
+        self,
+        action: str,
+        user_id: Optional[int] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[int] = None,
+        details: Optional[Dict] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ):
+        """Log a user activity"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT INTO activity_logs (
+                user_id, action, resource_type, resource_id, details,
+                ip_address, user_agent
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            user_id, action, resource_type, resource_id,
+            json.dumps(details) if details else None,
+            ip_address, user_agent
+        ))
+        self.conn.commit()
+
+    def get_activity_logs(
+        self,
+        user_id: Optional[int] = None,
+        action: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[Dict]:
+        """Get activity logs with optional filters"""
+        cursor = self.conn.cursor()
+        sql = "SELECT * FROM activity_logs WHERE 1=1"
+        params = []
+
+        if user_id is not None:
+            sql += " AND user_id = ?"
+            params.append(user_id)
+
+        if action:
+            sql += " AND action = ?"
+            params.append(action)
+
+        sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
+        cursor.execute(sql, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_user_activity_count(self, user_id: int) -> int:
+        """Get total activity count for a user"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) FROM activity_logs WHERE user_id = ?
+        """, (user_id,))
+        return cursor.fetchone()[0]
+
+    # ========================================================================
+    # ADMIN METHODS
+    # ========================================================================
+
+    def get_all_users(self, include_inactive: bool = False) -> List[Dict]:
+        """Get all users (admin function)"""
+        cursor = self.conn.cursor()
+        if include_inactive:
+            cursor.execute("SELECT * FROM users ORDER BY created_at DESC")
+        else:
+            cursor.execute("SELECT * FROM users WHERE is_active = 1 ORDER BY created_at DESC")
+        return [dict(row) for row in cursor.fetchall()]
+
+    def toggle_user_admin(self, user_id: int) -> bool:
+        """Toggle admin status for a user"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT is_admin FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        if not row:
+            return False
+
+        new_status = 0 if row[0] else 1
+        cursor.execute("UPDATE users SET is_admin = ? WHERE id = ?", (new_status, user_id))
+        self.conn.commit()
+        return True
+
+    def toggle_user_active(self, user_id: int) -> bool:
+        """Toggle active status for a user"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT is_active FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        if not row:
+            return False
+
+        new_status = 0 if row[0] else 1
+        cursor.execute("UPDATE users SET is_active = ? WHERE id = ?", (new_status, user_id))
+        self.conn.commit()
+        return True
+
+    def delete_user(self, user_id: int):
+        """Delete a user and all their data (admin function)"""
+        cursor = self.conn.cursor()
+
+        # Delete user's marketplace credentials
+        cursor.execute("DELETE FROM marketplace_credentials WHERE user_id = ?", (user_id,))
+
+        # Delete user's listings
+        cursor.execute("DELETE FROM listings WHERE user_id = ?", (user_id,))
+
+        # Delete user's activity logs
+        cursor.execute("DELETE FROM activity_logs WHERE user_id = ?", (user_id,))
+
+        # Delete the user
+        cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+        self.conn.commit()
+
+    def get_system_stats(self) -> Dict:
+        """Get system statistics (admin function)"""
+        cursor = self.conn.cursor()
+
+        stats = {}
+
+        # User counts
+        cursor.execute("SELECT COUNT(*) FROM users")
+        stats['total_users'] = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM users WHERE is_admin = 1")
+        stats['admin_users'] = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM users WHERE is_active = 1")
+        stats['active_users'] = cursor.fetchone()[0]
+
+        # Listing counts
+        cursor.execute("SELECT COUNT(*) FROM listings")
+        stats['total_listings'] = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM listings WHERE status = 'draft'")
+        stats['draft_listings'] = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM listings WHERE status = 'sold'")
+        stats['sold_listings'] = cursor.fetchone()[0]
+
+        # Activity count
+        cursor.execute("SELECT COUNT(*) FROM activity_logs WHERE created_at > datetime('now', '-7 days')")
+        stats['activity_last_7_days'] = cursor.fetchone()[0]
+
+        return stats
+
+    # ========================================================================
+    # EMAIL TOKEN METHODS
+    # ========================================================================
+
+    def set_verification_token(self, user_id: int, token: str):
+        """Set email verification token"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE users
+            SET verification_token = ?
+            WHERE id = ?
+        """, (token, user_id))
+        self.conn.commit()
+
+    def verify_email(self, token: str) -> bool:
+        """Verify email with token"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE users
+            SET email_verified = 1, verification_token = NULL
+            WHERE verification_token = ?
+        """, (token,))
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def set_reset_token(self, user_id: int, token: str, expiry_hours: int = 24):
+        """Set password reset token"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE users
+            SET reset_token = ?,
+                reset_token_expiry = datetime('now', '+' || ? || ' hours')
+            WHERE id = ?
+        """, (token, expiry_hours, user_id))
+        self.conn.commit()
+
+    def verify_reset_token(self, token: str) -> Optional[Dict]:
+        """Verify reset token and return user if valid"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT * FROM users
+            WHERE reset_token = ?
+            AND reset_token_expiry > datetime('now')
+        """, (token,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def update_password(self, user_id: int, new_password_hash: str):
+        """Update user password and clear reset token"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE users
+            SET password_hash = ?,
+                reset_token = NULL,
+                reset_token_expiry = NULL
+            WHERE id = ?
+        """, (new_password_hash, user_id))
         self.conn.commit()
 
     def close(self):

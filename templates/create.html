@@ -12,7 +12,20 @@
             <i class="fas fa-camera"></i> Photos
         </div>
         <div class="card-body">
-            <input type="file" class="form-control" id="photoInput" name="photos" multiple accept="image/*" capture="environment">
+            <div class="row mb-3">
+                <div class="col-6">
+                    <button type="button" class="btn btn-outline-primary w-100" onclick="document.getElementById('cameraInput').click()">
+                        <i class="fas fa-camera"></i><br>Take Photo
+                    </button>
+                    <input type="file" class="d-none" id="cameraInput" name="photos" accept="image/*" capture="environment" onchange="handlePhotoSelect(event)">
+                </div>
+                <div class="col-6">
+                    <button type="button" class="btn btn-outline-secondary w-100" onclick="document.getElementById('photoInput').click()">
+                        <i class="fas fa-upload"></i><br>Upload Files
+                    </button>
+                    <input type="file" class="d-none" id="photoInput" name="photos" multiple accept="image/*" onchange="handlePhotoSelect(event)">
+                </div>
+            </div>
             <div id="photoPreview" class="mt-3 d-flex flex-wrap"></div>
             <button type="button" class="btn btn-secondary mt-2" id="analyzeBtn" style="display:none;">
                 <i class="fas fa-magic"></i> Analyze with AI
@@ -102,6 +115,17 @@
                 <input type="number" class="form-control" id="quantity" name="quantity" value="1" min="1">
                 <small class="text-muted">1 for single items, >1 for multiples</small>
             </div>
+
+            <div class="row">
+                <div class="col-6">
+                    <label class="form-label">SKU / Custom ID</label>
+                    <input type="text" class="form-control" id="sku" name="sku" placeholder="Optional">
+                </div>
+                <div class="col-6">
+                    <label class="form-label">UPC / Barcode</label>
+                    <input type="text" class="form-control" id="upc" name="upc" placeholder="Optional">
+                </div>
+            </div>
         </div>
     </div>
 
@@ -121,8 +145,8 @@
 <script>
 let uploadedPhotos = [];
 
-// Photo upload handling
-document.getElementById('photoInput').addEventListener('change', async function(e) {
+// Generic photo handling function for both camera and file upload
+async function handlePhotoSelect(e) {
     const files = e.target.files;
     if (files.length === 0) return;
 
@@ -142,11 +166,11 @@ document.getElementById('photoInput').addEventListener('change', async function(
         const data = await response.json();
 
         if (data.success) {
-            uploadedPhotos = data.paths;
+            // Append to existing photos instead of replacing
+            uploadedPhotos = uploadedPhotos.concat(data.paths);
 
-            // Show previews
+            // Show previews (append to existing)
             const previewDiv = document.getElementById('photoPreview');
-            previewDiv.innerHTML = '';
             for (let i = 0; i < files.length; i++) {
                 const img = document.createElement('img');
                 img.src = URL.createObjectURL(files[i]);
@@ -155,7 +179,7 @@ document.getElementById('photoInput').addEventListener('change', async function(
             }
 
             document.getElementById('analyzeBtn').style.display = 'block';
-            showAlert(`${data.count} photo(s) uploaded!`, 'success');
+            showAlert(`${data.count} photo(s) added! Total: ${uploadedPhotos.length}`, 'success');
         } else {
             showAlert(data.error, 'danger');
         }
@@ -164,7 +188,10 @@ document.getElementById('photoInput').addEventListener('change', async function(
     } finally {
         hideLoading();
     }
-});
+
+    // Reset input so same file can be selected again
+    e.target.value = '';
+}
 
 // AI Analysis
 document.getElementById('analyzeBtn').addEventListener('click', async function() {
@@ -248,7 +275,9 @@ function collectFormData() {
         color: document.getElementById('color').value,
         shipping_cost: document.getElementById('shipping_cost').value,
         storage_location: document.getElementById('storage_location').value,
-        quantity: document.getElementById('quantity').value
+        quantity: document.getElementById('quantity').value,
+        sku: document.getElementById('sku').value,
+        upc: document.getElementById('upc').value
     };
 }
 </script>

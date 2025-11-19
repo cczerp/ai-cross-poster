@@ -24,6 +24,12 @@ flask-login>=0.6.3
 werkzeug>=3.0.0
 gunicorn>=21.2.0  # Production WSGI server for Render deployment
 
+# Database
+psycopg2-binary>=2.9.9  # PostgreSQL adapter
+
+# Cloud Storage
+cloudinary>=1.41.0  # Photo storage (FREE tier: 25GB)
+
 # Development dependencies
 pytest>=7.4.0
 pytest-cov>=4.1.0

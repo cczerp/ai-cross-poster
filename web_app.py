@@ -401,7 +401,18 @@ def listings():
 def notifications():
     """View notifications"""
     if notification_manager:
-        notifs = notification_manager.get_recent_notifications(limit=50)
+        try:
+            notifs = notification_manager.get_recent_notifications(limit=50)
+            # Parse JSON data field if it's a string
+            for notif in notifs:
+                if notif.get('data') and isinstance(notif['data'], str):
+                    try:
+                        notif['data'] = json.loads(notif['data'])
+                    except:
+                        notif['data'] = {}
+        except Exception as e:
+            print(f"Error loading notifications: {e}")
+            notifs = []
     else:
         notifs = []
     return render_template('notifications.html', notifications=notifs)
@@ -637,6 +648,7 @@ def analyze_photos():
 
     try:
         from src.ai.gemini_classifier import GeminiClassifier
+        from src.ai.market_analyzer import MarketAnalyzer
         from src.schema import Photo
 
         # Create photo objects
@@ -651,6 +663,20 @@ def analyze_photos():
 
         if "error" in analysis:
             return jsonify({'error': analysis['error']}), 500
+
+        # Add market analysis (sell-through rate)
+        try:
+            market_analyzer = MarketAnalyzer(db=db)
+            market_data = market_analyzer.analyze_market(
+                item_name=analysis.get('item_name', ''),
+                brand=analysis.get('brand'),
+                category=analysis.get('category'),
+                price=analysis.get('suggested_price')
+            )
+            analysis['market_analysis'] = market_data
+        except Exception as e:
+            print(f"Market analysis failed: {e}")
+            analysis['market_analysis'] = None
 
         return jsonify({
             'success': True,

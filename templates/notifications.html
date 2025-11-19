@@ -25,14 +25,11 @@
 
             <p class="card-text mb-2">{{ notif.message }}</p>
 
-            {% if notif.data %}
-                {% set data = notif.data|fromjson if notif.data is string else notif.data %}
-                {% if data.storage_location %}
+            {% if notif.data and notif.data.storage_location %}
                 <div class="alert alert-warning mb-0">
-                    <strong><i class="fas fa-map-marker-alt"></i> Location: {{ data.storage_location }}</strong><br>
+                    <strong><i class="fas fa-map-marker-alt"></i> Location: {{ notif.data.storage_location }}</strong><br>
                     <small>Go here to find and ship this item!</small>
                 </div>
-                {% endif %}
             {% endif %}
         </div>
     </div>

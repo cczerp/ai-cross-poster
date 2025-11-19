@@ -294,6 +294,33 @@ document.getElementById('analyzeBtn').addEventListener('click', async function()
                 document.getElementById('item_type').value = 'collectible';
             }
 
+            // Show market analysis (sell-through rate)
+            if (analysis.market_analysis) {
+                const market = analysis.market_analysis;
+                let demandColor = market.demand_level === 'High' ? 'success' :
+                                 market.demand_level === 'Low' ? 'danger' : 'warning';
+
+                let marketMsg = `📊 <strong>MARKET ANALYSIS</strong><br>`;
+                marketMsg += `<strong>Sell-Through Rate:</strong> ${market.sell_through_rate}% ${getDemandEmoji(market.demand_level)}<br>`;
+                marketMsg += `<strong>Demand:</strong> <span class="badge bg-${demandColor}">${market.demand_level}</span><br>`;
+                marketMsg += `<strong>Est. Days to Sell:</strong> ${market.days_to_sell_estimate} days<br>`;
+                if (market.average_sold_price > 0) {
+                    marketMsg += `<strong>Avg Sold Price:</strong> $${market.average_sold_price.toFixed(2)}<br>`;
+                }
+                if (market.market_insights && market.market_insights.length > 0) {
+                    marketMsg += `<small class="text-muted">${market.market_insights.join(' • ')}</small>`;
+                }
+
+                const marketAlert = document.createElement('div');
+                marketAlert.className = 'alert alert-info alert-dismissible fade show mt-3';
+                marketAlert.innerHTML = `
+                    ${marketMsg}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+
+                document.getElementById('listingForm').insertAdjacentElement('beforebegin', marketAlert);
+            }
+
             showAlert('AI analysis complete!', 'success');
         } else {
             showAlert(data.error, 'warning');
@@ -304,6 +331,12 @@ document.getElementById('analyzeBtn').addEventListener('click', async function()
         hideLoading();
     }
 });
+
+function getDemandEmoji(demand) {
+    if (demand === 'High') return '🔥';
+    if (demand === 'Low') return '🐌';
+    return '📈';
+}
 
 // Save Listing (common function)
 async function saveListing(status = 'draft') {

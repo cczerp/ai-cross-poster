@@ -63,7 +63,12 @@ class ClaudeCollectibleAnalyzer:
         }
         return mime_types.get(ext, "image/jpeg")
 
-    def deep_analyze_collectible(self, photos: List[Photo], basic_analysis: Dict[str, Any]) -> Dict[str, Any]:
+    def deep_analyze_collectible(
+        self,
+        photos: List[Photo],
+        basic_analysis: Dict[str, Any],
+        db=None
+    ) -> Dict[str, Any]:
         """
         Deep collectible analysis using Claude.
 
@@ -156,6 +161,44 @@ class ClaudeCollectibleAnalyzer:
         franchise = basic_analysis.get('franchise', '')
         category = basic_analysis.get('category', '')
 
+        # RAG: Search for similar collectibles in database
+        rag_context = ""
+        if db:
+            try:
+                similar_items = db.find_similar_collectibles(
+                    brand=brand if brand else None,
+                    franchise=franchise if franchise else None,
+                    category=category if category else None,
+                    limit=5
+                )
+
+                if similar_items:
+                    rag_context = "\n\n**KNOWLEDGE BASE (Similar items analyzed before):**\n"
+                    for idx, item in enumerate(similar_items, 1):
+                        rag_context += f"\n{idx}. {item.get('name', 'Unknown')}"
+                        if item.get('deep_analysis'):
+                            try:
+                                analysis = json.loads(item['deep_analysis'])
+                                # Extract key insights
+                                if 'market_analysis' in analysis:
+                                    ma = analysis['market_analysis']
+                                    rag_context += f"\n   - Market value: ${ma.get('current_market_value_low', 0)}-${ma.get('current_market_value_high', 0)}"
+                                    rag_context += f"\n   - Trend: {ma.get('market_trend', 'Unknown')}"
+                                if 'authentication' in analysis:
+                                    auth = analysis['authentication']
+                                    if auth.get('authentication_markers'):
+                                        rag_context += f"\n   - Auth markers: {', '.join(auth['authentication_markers'][:3])}"
+                                if 'grading' in analysis:
+                                    grade = analysis['grading']
+                                    rag_context += f"\n   - Typical grade: {grade.get('overall_grade', 'N/A')}"
+                            except:
+                                pass
+                        rag_context += f"\n   - Times found: {item.get('times_found', 1)}"
+                        rag_context += "\n"
+            except Exception as e:
+                # RAG is optional, don't fail if it doesn't work
+                print(f"RAG search failed: {e}")
+
         prompt = f"""You are an expert collectibles appraiser and authenticator with decades of experience.
 
 I need you to perform a DEEP ANALYSIS of this collectible item for authentication, grading, and valuation purposes.
@@ -165,10 +208,15 @@ I need you to perform a DEEP ANALYSIS of this collectible item for authenticatio
 - Brand: {brand}
 - Franchise: {franchise}
 - Category: {category}
+{rag_context}
 
 **YOUR TASK:**
 
-Please analyze these images thoroughly and provide a COMPREHENSIVE assessment covering:
+Please analyze these images thoroughly and provide a COMPREHENSIVE assessment.
+
+IMPORTANT: If similar items are listed in the "KNOWLEDGE BASE" above, use that information to inform your analysis - especially for market values, authentication markers, and typical conditions. This is real data from previously analyzed items.
+
+Your assessment should cover:
 
 1. **AUTHENTICATION**
    - Is this item authentic or potentially counterfeit?

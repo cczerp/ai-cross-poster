@@ -347,6 +347,20 @@ class Database:
                 cursor.execute(f"ALTER TABLE listings ADD COLUMN {col_name} {col_def}")
                 self.conn.commit()
 
+        # Migration: Add deep_analysis and embedding to collectibles table (for RAG)
+        for col_name, col_def, default_msg in [
+            ("deep_analysis", "TEXT", "deep_analysis (Claude analysis JSON)"),
+            ("embedding", "TEXT", "embedding (vector for similarity search)"),
+            ("franchise", "TEXT", "franchise (Pokemon, Star Wars, etc.)"),
+            ("rarity_level", "TEXT", "rarity_level (Common, Rare, Ultra Rare)"),
+        ]:
+            try:
+                cursor.execute(f"SELECT {col_name} FROM collectibles LIMIT 1")
+            except sqlite3.OperationalError:
+                print(f"Running migration: Adding {default_msg} column to collectibles table")
+                cursor.execute(f"ALTER TABLE collectibles ADD COLUMN {col_name} {col_def}")
+                self.conn.commit()
+
     # ========================================================================
     # COLLECTIBLES METHODS
     # ========================================================================
@@ -465,6 +479,99 @@ class Database:
             params.append(max_value)
 
         sql += " ORDER BY times_found DESC, confidence_score DESC"
+
+        cursor.execute(sql, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def save_deep_analysis(
+        self,
+        collectible_id: int,
+        deep_analysis: Dict[str, Any],
+        embedding: Optional[List[float]] = None
+    ):
+        """Save Claude's deep analysis to a collectible (for RAG)"""
+        cursor = self.conn.cursor()
+
+        # Convert embedding to JSON string if provided
+        embedding_str = json.dumps(embedding) if embedding else None
+
+        # Extract key fields from deep_analysis for quick search
+        franchise = None
+        rarity_level = None
+        if deep_analysis:
+            franchise = deep_analysis.get('historical_context', {}).get('franchise') or \
+                       deep_analysis.get('franchise')
+            rarity_level = deep_analysis.get('rarity', {}).get('rarity_level')
+
+        cursor.execute("""
+            UPDATE collectibles
+            SET deep_analysis = ?,
+                embedding = ?,
+                franchise = ?,
+                rarity_level = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (
+            json.dumps(deep_analysis),
+            embedding_str,
+            franchise,
+            rarity_level,
+            collectible_id
+        ))
+
+        self.conn.commit()
+
+    def get_collectible(self, collectible_id: int) -> Optional[Dict]:
+        """Get a collectible by ID"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM collectibles WHERE id = ?", (collectible_id,))
+        row = cursor.fetchone()
+        if row:
+            return dict(row)
+        return None
+
+    def find_similar_collectibles(
+        self,
+        brand: Optional[str] = None,
+        franchise: Optional[str] = None,
+        category: Optional[str] = None,
+        condition: Optional[str] = None,
+        limit: int = 10
+    ) -> List[Dict]:
+        """
+        Find similar collectibles for RAG context (similarity search).
+
+        This is a simple similarity search based on metadata.
+        For production, you'd use vector embeddings + cosine similarity.
+        """
+        cursor = self.conn.cursor()
+
+        # Build query to find similar items
+        sql = """
+            SELECT *
+            FROM collectibles
+            WHERE deep_analysis IS NOT NULL
+        """
+        params = []
+
+        # Priority matching: franchise > brand > category
+        if franchise:
+            sql += " AND franchise LIKE ?"
+            params.append(f"%{franchise}%")
+        elif brand:
+            sql += " AND brand LIKE ?"
+            params.append(f"%{brand}%")
+        elif category:
+            sql += " AND category LIKE ?"
+            params.append(f"%{category}%")
+
+        # Optional condition matching
+        if condition:
+            sql += " AND condition = ?"
+            params.append(condition)
+
+        sql += " ORDER BY times_found DESC, confidence_score DESC LIMIT ?"
+        params.append(limit)
 
         cursor.execute(sql, params)
         return [dict(row) for row in cursor.fetchall()]

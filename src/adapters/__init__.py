@@ -1,15 +1,7 @@
 """Platform adapters for converting unified listings to platform-specific formats"""
 
-from .ebay_adapter import EbayAdapter
-from .mercari_adapter import (
-    MercariAdapter,
-    MercariShopsAdapter,
-    MercariAutomationAdapter,
-)
+# Note: eBay and Mercari adapters removed per user request
+# Use all_platforms.py for available platform adapters
 
-__all__ = [
-    "EbayAdapter",
-    "MercariAdapter",
-    "MercariShopsAdapter",
-    "MercariAutomationAdapter",
-]
+__all__ = []
+

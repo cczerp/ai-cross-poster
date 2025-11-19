@@ -852,7 +852,7 @@ def export_csv():
                 except:
                     pass
 
-            # Parse photos
+            # Parse photos and convert to full URLs
             photos = []
             if draft.get('photos'):
                 try:
@@ -860,8 +860,15 @@ def export_csv():
                 except:
                     photos = []
 
-            # Join photo paths with semicolon
-            photo_paths_str = ';'.join(photos) if photos else ''
+            # Convert file paths to full URLs
+            photo_urls = []
+            for photo_path in photos:
+                # Create full URL: http://localhost:5000/data/draft_photos/uuid/photo_00.jpg
+                photo_url = request.host_url.rstrip('/') + '/' + photo_path
+                photo_urls.append(photo_url)
+
+            # Join photo URLs with semicolon
+            photo_paths_str = ';'.join(photo_urls) if photo_urls else ''
 
             writer.writerow([
                 draft['id'],

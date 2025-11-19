@@ -358,6 +358,10 @@ async function applyCrop() {
         // Get crop coordinates for API call
         const cropData = cropper.getData();
 
+        // Create abort controller for timeout
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
         const response = await fetch('/api/edit-photo', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -370,8 +374,15 @@ async function applyCrop() {
                     width: Math.round(cropData.width),
                     height: Math.round(cropData.height)
                 }
-            })
+            }),
+            signal: controller.signal
         });
+
+        clearTimeout(timeout);
+
+        if (!response.ok) {
+            throw new Error(`Server error: ${response.status}`);
+        }
 
         const data = await response.json();
 
@@ -386,10 +397,14 @@ async function applyCrop() {
             document.getElementById('cropBtn').style.display = 'none';
             document.getElementById('cancelCropBtn').style.display = 'none';
         } else {
-            showAlert('Crop failed: ' + data.error, 'danger');
+            showAlert('Crop failed: ' + (data.error || 'Unknown error'), 'danger');
         }
     } catch (error) {
-        showAlert('Crop failed: ' + error, 'danger');
+        if (error.name === 'AbortError') {
+            showAlert('Crop timed out. Please try again.', 'warning');
+        } else {
+            showAlert('Crop failed: ' + error.message, 'danger');
+        }
     } finally {
         hideLoading();
     }
@@ -409,17 +424,28 @@ async function removeBackground() {
     if (!currentEditingPhotoSrc) return;
 
     showLoading();
-    showAlert('Removing background... This may take 5-10 seconds', 'info');
+    showAlert('Removing background... This may take 10-15 seconds', 'info');
 
     try {
+        // Create abort controller for timeout
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
         const response = await fetch('/api/edit-photo', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 image: currentEditingPhotoSrc,
                 operation: 'remove-bg'
-            })
+            }),
+            signal: controller.signal
         });
+
+        clearTimeout(timeout);
+
+        if (!response.ok) {
+            throw new Error(`Server error: ${response.status}`);
+        }
 
         const data = await response.json();
 
@@ -427,10 +453,14 @@ async function removeBackground() {
             updatePhotoAfterEdit(data.image, data.filepath);
             showAlert('Background removed! (FREE feature worth $5-20/mo)', 'success');
         } else {
-            showAlert('Background removal failed: ' + data.error, 'danger');
+            showAlert('Background removal failed: ' + (data.error || 'Unknown error'), 'danger');
         }
     } catch (error) {
-        showAlert('Background removal failed: ' + error, 'danger');
+        if (error.name === 'AbortError') {
+            showAlert('Background removal timed out. The image may be too large. Try a smaller image or crop it first.', 'warning');
+        } else {
+            showAlert('Background removal failed: ' + error.message, 'danger');
+        }
     } finally {
         hideLoading();
     }
@@ -447,6 +477,10 @@ async function enlargePhoto() {
         const currentWidth = img.naturalWidth;
         const currentHeight = img.naturalHeight;
 
+        // Create abort controller for timeout
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 20000); // 20 second timeout
+
         const response = await fetch('/api/edit-photo', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -455,8 +489,15 @@ async function enlargePhoto() {
                 operation: 'resize',
                 width: currentWidth * 2,
                 height: currentHeight * 2
-            })
+            }),
+            signal: controller.signal
         });
+
+        clearTimeout(timeout);
+
+        if (!response.ok) {
+            throw new Error(`Server error: ${response.status}`);
+        }
 
         const data = await response.json();
 
@@ -464,10 +505,14 @@ async function enlargePhoto() {
             updatePhotoAfterEdit(data.image, data.filepath);
             showAlert('Photo enlarged to 2x size!', 'success');
         } else {
-            showAlert('Enlarge failed: ' + data.error, 'danger');
+            showAlert('Enlarge failed: ' + (data.error || 'Unknown error'), 'danger');
         }
     } catch (error) {
-        showAlert('Enlarge failed: ' + error, 'danger');
+        if (error.name === 'AbortError') {
+            showAlert('Enlarge timed out. The image may be too large.', 'warning');
+        } else {
+            showAlert('Enlarge failed: ' + error.message, 'danger');
+        }
     } finally {
         hideLoading();
     }

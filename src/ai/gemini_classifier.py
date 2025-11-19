@@ -18,6 +18,7 @@ Claude handles deep collectible analysis (authentication, grading, variants).
 import os
 import base64
 import json
+import time
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 import requests
@@ -273,53 +274,127 @@ IMPORTANT:
             }
         }
 
-        try:
-            response = requests.post(
-                f"{self.api_url}?key={self.api_key}",
-                headers={"Content-Type": "application/json"},
-                json=payload,
-                timeout=30
-            )
+        # Retry logic for rate limits (exponential backoff)
+        max_retries = 4
+        base_delay = 2  # seconds
 
-            if response.status_code == 200:
-                result = response.json()
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    f"{self.api_url}?key={self.api_key}",
+                    headers={"Content-Type": "application/json"},
+                    json=payload,
+                    timeout=30
+                )
 
-                # Extract text from Gemini response
-                try:
-                    content_text = result["candidates"][0]["content"]["parts"][0]["text"]
-                except (KeyError, IndexError) as e:
+                if response.status_code == 200:
+                    result = response.json()
+
+                    # Extract text from Gemini response
+                    try:
+                        content_text = result["candidates"][0]["content"]["parts"][0]["text"]
+                    except (KeyError, IndexError) as e:
+                        return {
+                            "error": f"Unexpected Gemini response structure: {str(e)}",
+                            "raw_response": result
+                        }
+
+                    # Parse JSON response
+                    try:
+                        # Clean up any markdown formatting
+                        if "```json" in content_text:
+                            content_text = content_text.split("```json")[1].split("```")[0].strip()
+                        elif "```" in content_text:
+                            content_text = content_text.split("```")[1].split("```")[0].strip()
+
+                        analysis = json.loads(content_text)
+                        analysis["ai_provider"] = "gemini"
+                        return analysis
+
+                    except json.JSONDecodeError as e:
+                        return {
+                            "error": f"JSON parse error: {str(e)}",
+                            "raw_response": content_text
+                        }
+
+                # Handle rate limit errors (429) with exponential backoff
+                elif response.status_code == 429:
+                    if attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt)  # 2s, 4s, 8s, 16s
+                        print(f"Gemini rate limit hit. Retrying in {delay}s... (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(delay)
+                        continue
+                    else:
+                        return {
+                            "error": "Gemini API is currently overloaded. Please wait 60 seconds and try again. This is due to free tier rate limits.",
+                            "error_type": "rate_limit",
+                            "retry_after": 60
+                        }
+
+                # Handle other API errors
+                else:
+                    error_msg = response.text[:500]
+
+                    # Provide user-friendly error messages
+                    if response.status_code == 400:
+                        return {
+                            "error": "Invalid request to Gemini API. Please check your photos are valid images.",
+                            "error_type": "bad_request",
+                            "details": error_msg
+                        }
+                    elif response.status_code == 403:
+                        return {
+                            "error": "Gemini API key is invalid or doesn't have access. Please check your GEMINI_API_KEY in .env file.",
+                            "error_type": "auth_error",
+                            "details": error_msg
+                        }
+                    elif response.status_code >= 500:
+                        if attempt < max_retries - 1:
+                            delay = base_delay * (2 ** attempt)
+                            print(f"Gemini server error. Retrying in {delay}s... (attempt {attempt + 1}/{max_retries})")
+                            time.sleep(delay)
+                            continue
+                        else:
+                            return {
+                                "error": "Gemini API is experiencing server issues. Please try again in a few minutes.",
+                                "error_type": "server_error",
+                                "details": error_msg
+                            }
+                    else:
+                        return {
+                            "error": f"Gemini API error ({response.status_code}): {error_msg}",
+                            "error_type": "unknown"
+                        }
+
+            except requests.Timeout:
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)
+                    print(f"Request timeout. Retrying in {delay}s... (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(delay)
+                    continue
+                else:
                     return {
-                        "error": f"Unexpected Gemini response structure: {str(e)}",
-                        "raw_response": result
+                        "error": "Request to Gemini API timed out after multiple attempts. Please check your internet connection.",
+                        "error_type": "timeout"
                     }
 
-                # Parse JSON response
-                try:
-                    # Clean up any markdown formatting
-                    if "```json" in content_text:
-                        content_text = content_text.split("```json")[1].split("```")[0].strip()
-                    elif "```" in content_text:
-                        content_text = content_text.split("```")[1].split("```")[0].strip()
-
-                    analysis = json.loads(content_text)
-                    analysis["ai_provider"] = "gemini"
-                    return analysis
-
-                except json.JSONDecodeError as e:
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)
+                    print(f"Exception occurred: {str(e)}. Retrying in {delay}s... (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(delay)
+                    continue
+                else:
                     return {
-                        "error": f"JSON parse error: {str(e)}",
-                        "raw_response": content_text
+                        "error": f"Error communicating with Gemini API: {str(e)}",
+                        "error_type": "exception"
                     }
 
-            else:
-                return {
-                    "error": f"Gemini API error ({response.status_code}): {response.text[:500]}"
-                }
-
-        except Exception as e:
-            return {
-                "error": f"Exception: {str(e)}"
-            }
+        # Should never reach here, but just in case
+        return {
+            "error": "Failed after maximum retries",
+            "error_type": "max_retries_exceeded"
+        }
 
     @classmethod
     def from_env(cls) -> "GeminiClassifier":

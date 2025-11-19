@@ -91,6 +91,33 @@ class Database:
             )
         """)
 
+        # Training data table - Knowledge Distillation (baby bird learns from Claude)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS training_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                listing_id INTEGER,
+                collectible_id INTEGER,
+                photo_paths TEXT,  -- JSON array of photo paths
+                input_data TEXT,  -- JSON: Gemini's basic analysis (student sees this)
+                teacher_output TEXT,  -- JSON: Claude's deep analysis (student learns from this)
+                student_output TEXT,  -- JSON: Student model's attempt (once trained)
+                student_confidence REAL,  -- How confident was student?
+                used_teacher BOOLEAN DEFAULT 1,  -- Did we use Claude or student?
+                quality_score REAL,  -- Human feedback on quality (optional)
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (listing_id) REFERENCES listings(id),
+                FOREIGN KEY (collectible_id) REFERENCES collectibles(id)
+            )
+        """)
+
+        # Create index for faster training data queries
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_training_data_created
+            ON training_data(created_at DESC)
+        """)
+
         # Listings table - tracks all your listings
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS listings (
@@ -575,6 +602,115 @@ class Database:
 
         cursor.execute(sql, params)
         return [dict(row) for row in cursor.fetchall()]
+
+    # ========================================================================
+    # TRAINING DATA METHODS (Knowledge Distillation - Baby Bird Learning)
+    # ========================================================================
+
+    def save_training_sample(
+        self,
+        photo_paths: List[str],
+        input_data: Dict[str, Any],
+        teacher_output: Dict[str, Any],
+        user_id: Optional[int] = None,
+        listing_id: Optional[int] = None,
+        collectible_id: Optional[int] = None,
+        student_output: Optional[Dict[str, Any]] = None,
+        student_confidence: Optional[float] = None,
+        used_teacher: bool = True
+    ) -> int:
+        """
+        Save a training sample (Claude's analysis as ground truth).
+
+        This builds the dataset for knowledge distillation where:
+        - input_data = What the student model will see (Gemini's basic analysis)
+        - teacher_output = What Claude said (the correct answer to learn from)
+        - student_output = What student model predicted (filled in later during training)
+        """
+        cursor = self.conn.cursor()
+
+        cursor.execute("""
+            INSERT INTO training_data (
+                user_id, listing_id, collectible_id,
+                photo_paths, input_data, teacher_output,
+                student_output, student_confidence, used_teacher
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            user_id,
+            listing_id,
+            collectible_id,
+            json.dumps(photo_paths),
+            json.dumps(input_data),
+            json.dumps(teacher_output),
+            json.dumps(student_output) if student_output else None,
+            student_confidence,
+            used_teacher
+        ))
+
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_training_samples(
+        self,
+        limit: int = 1000,
+        offset: int = 0,
+        min_quality: Optional[float] = None
+    ) -> List[Dict]:
+        """Get training samples for model training"""
+        cursor = self.conn.cursor()
+
+        sql = "SELECT * FROM training_data WHERE 1=1"
+        params = []
+
+        if min_quality:
+            sql += " AND quality_score >= ?"
+            params.append(min_quality)
+
+        sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
+        cursor.execute(sql, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def count_training_samples(self) -> int:
+        """Count total training samples (to see if baby bird is ready to fly!)"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM training_data WHERE teacher_output IS NOT NULL")
+        return cursor.fetchone()[0]
+
+    def export_training_dataset(self, output_path: str, format: str = "jsonl"):
+        """
+        Export training data for fine-tuning student model.
+
+        Format options:
+        - jsonl: One JSON object per line (for LLaVA, Mistral fine-tuning)
+        - hf: HuggingFace datasets format
+        """
+        import json
+        from pathlib import Path
+
+        samples = self.get_training_samples(limit=100000)  # Get all
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        if format == "jsonl":
+            with open(output_file, 'w') as f:
+                for sample in samples:
+                    # Format for vision-language model training
+                    training_sample = {
+                        "id": sample['id'],
+                        "images": json.loads(sample['photo_paths']) if sample['photo_paths'] else [],
+                        "input": json.loads(sample['input_data']) if sample['input_data'] else {},
+                        "output": json.loads(sample['teacher_output']) if sample['teacher_output'] else {},
+                        "metadata": {
+                            "created_at": sample['created_at'],
+                            "used_teacher": sample['used_teacher']
+                        }
+                    }
+                    f.write(json.dumps(training_sample) + '\n')
+
+        print(f"Exported {len(samples)} training samples to {output_file}")
+        return len(samples)
 
     # ========================================================================
     # LISTINGS METHODS

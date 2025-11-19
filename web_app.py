@@ -1199,6 +1199,44 @@ def delete_marketplace_credentials(platform):
 
 
 # ============================================================================
+# BABY BIRD (Knowledge Distillation) API
+# ============================================================================
+
+@app.route('/api/baby-bird/status', methods=['GET'])
+@login_required
+def baby_bird_status():
+    """Get training progress for knowledge distillation"""
+    try:
+        from src.ai.knowledge_distillation import get_baby_bird_status
+
+        status = get_baby_bird_status(db)
+        return jsonify(status)
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/baby-bird/export', methods=['POST'])
+@admin_required
+def baby_bird_export():
+    """Export training dataset (admin only)"""
+    try:
+        output_path = request.json.get('output_path', './data/training_dataset.jsonl')
+
+        sample_count = db.export_training_dataset(output_path, format="jsonl")
+
+        return jsonify({
+            'success': True,
+            'sample_count': sample_count,
+            'output_path': output_path,
+            'message': f'Exported {sample_count} training samples. Ready to train the baby bird!'
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
 # RUN SERVER
 # ============================================================================
 

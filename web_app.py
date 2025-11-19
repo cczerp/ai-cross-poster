@@ -1048,6 +1048,110 @@ def import_csv():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/bulk-post', methods=['POST'])
+@login_required
+def bulk_post():
+    """
+    Bulk post multiple listings to selected platforms.
+    Allows users to select specific items and platforms for posting.
+    """
+    data = request.json
+
+    try:
+        listing_ids = data.get('listing_ids', [])
+        platforms = data.get('platforms', [])
+
+        if not listing_ids:
+            return jsonify({'error': 'No listings selected'}), 400
+
+        if not platforms:
+            return jsonify({'error': 'No platforms selected'}), 400
+
+        results = []
+        success_count = 0
+        fail_count = 0
+
+        for listing_id in listing_ids:
+            # Get listing
+            listing = db.get_listing(listing_id)
+
+            if not listing:
+                results.append({
+                    'listing_id': listing_id,
+                    'success': False,
+                    'error': 'Listing not found'
+                })
+                fail_count += 1
+                continue
+
+            # Verify ownership
+            if listing.get('user_id') != current_user.id:
+                results.append({
+                    'listing_id': listing_id,
+                    'success': False,
+                    'error': 'Unauthorized'
+                })
+                fail_count += 1
+                continue
+
+            # Post to each selected platform
+            platform_results = {}
+            listing_success = True
+
+            for platform in platforms:
+                try:
+                    # Here you would integrate with each platform's API
+                    # For now, we'll just update the database to track the posting
+
+                    # Update platform_statuses field
+                    current_statuses = listing.get('platform_statuses', '') or ''
+                    status_list = [s for s in current_statuses.split(',') if s]
+
+                    # Remove existing status for this platform
+                    status_list = [s for s in status_list if not s.startswith(f"{platform}:")]
+
+                    # Add new status
+                    status_list.append(f"{platform}:pending")
+
+                    new_statuses = ','.join(status_list)
+
+                    # Update listing
+                    db.update_listing(listing_id, {
+                        'platform_statuses': new_statuses
+                    })
+
+                    platform_results[platform] = 'success'
+
+                except Exception as e:
+                    platform_results[platform] = f'failed: {str(e)}'
+                    listing_success = False
+
+            if listing_success:
+                success_count += 1
+            else:
+                fail_count += 1
+
+            results.append({
+                'listing_id': listing_id,
+                'title': listing.get('title'),
+                'success': listing_success,
+                'platforms': platform_results
+            })
+
+        return jsonify({
+            'success': True,
+            'results': results,
+            'summary': {
+                'total': len(listing_ids),
+                'success': success_count,
+                'failed': fail_count
+            }
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/mark-sold', methods=['POST'])
 @login_required
 def mark_sold():

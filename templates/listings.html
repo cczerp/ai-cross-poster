@@ -3,14 +3,83 @@
 {% block title %}Active Listings{% endblock %}
 
 {% block content %}
-<h2 class="mb-4"><i class="fas fa-list"></i> Active Listings</h2>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0"><i class="fas fa-list"></i> Active Listings</h2>
+    {% if listings %}
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="selectAll" onchange="toggleSelectAll()">
+        <label class="form-check-label" for="selectAll">
+            Select All
+        </label>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Bulk Action Bar (hidden by default) -->
+<div id="bulkActionBar" class="card mb-3" style="display:none;">
+    <div class="card-body">
+        <h5><i class="fas fa-rocket"></i> Post Selected Items (<span id="selectedCount">0</span>)</h5>
+        <p class="text-muted mb-3">Choose platforms to post to:</p>
+
+        <div class="row mb-3">
+            <div class="col-6 col-md-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="platform_ebay" value="ebay">
+                    <label class="form-check-label" for="platform_ebay">
+                        <i class="fab fa-ebay"></i> eBay
+                    </label>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="platform_mercari" value="mercari">
+                    <label class="form-check-label" for="platform_mercari">
+                        <i class="fas fa-store"></i> Mercari
+                    </label>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="platform_poshmark" value="poshmark">
+                    <label class="form-check-label" for="platform_poshmark">
+                        <i class="fas fa-shopping-bag"></i> Poshmark
+                    </label>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="platform_rubylane" value="rubylane">
+                    <label class="form-check-label" for="platform_rubylane">
+                        <i class="fas fa-gem"></i> Ruby Lane
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex gap-2">
+            <button class="btn btn-success" onclick="bulkPost()">
+                <i class="fas fa-rocket"></i> Post to Selected Platforms
+            </button>
+            <button class="btn btn-outline-secondary" onclick="clearSelection()">
+                <i class="fas fa-times"></i> Clear Selection
+            </button>
+        </div>
+    </div>
+</div>
 
 {% if listings %}
     {% for listing in listings %}
     <div class="card mb-3">
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-start mb-2">
-                <h5 class="card-title mb-0">{{ listing.title }}</h5>
+                <div class="d-flex align-items-start gap-2 flex-grow-1">
+                    <div class="form-check mt-1">
+                        <input class="form-check-input listing-checkbox" type="checkbox" value="{{ listing.id }}"
+                               data-title="{{ listing.title }}" data-category="{{ listing.item_type or 'general' }}"
+                               onchange="updateBulkActionBar()">
+                    </div>
+                    <h5 class="card-title mb-0">{{ listing.title }}</h5>
+                </div>
                 <span class="badge bg-{{ 'success' if listing.status == 'active' else 'secondary' }}">
                     {{ listing.status }}
                 </span>
@@ -65,6 +134,122 @@
 
 {% block extra_js %}
 <script>
+// ========================================
+// BULK POSTING FUNCTIONS
+// ========================================
+
+function toggleSelectAll() {
+    const selectAll = document.getElementById('selectAll');
+    const checkboxes = document.querySelectorAll('.listing-checkbox');
+
+    checkboxes.forEach(cb => {
+        cb.checked = selectAll.checked;
+    });
+
+    updateBulkActionBar();
+}
+
+function updateBulkActionBar() {
+    const checkboxes = document.querySelectorAll('.listing-checkbox:checked');
+    const count = checkboxes.length;
+    const bulkActionBar = document.getElementById('bulkActionBar');
+    const selectedCount = document.getElementById('selectedCount');
+
+    selectedCount.textContent = count;
+
+    if (count > 0) {
+        bulkActionBar.style.display = 'block';
+    } else {
+        bulkActionBar.style.display = 'none';
+    }
+
+    // Update "Select All" checkbox state
+    const allCheckboxes = document.querySelectorAll('.listing-checkbox');
+    const selectAll = document.getElementById('selectAll');
+    if (selectAll) {
+        selectAll.checked = allCheckboxes.length > 0 && count === allCheckboxes.length;
+    }
+}
+
+function clearSelection() {
+    const checkboxes = document.querySelectorAll('.listing-checkbox');
+    checkboxes.forEach(cb => cb.checked = false);
+    document.getElementById('selectAll').checked = false;
+    updateBulkActionBar();
+}
+
+async function bulkPost() {
+    // Get selected listing IDs
+    const checkboxes = document.querySelectorAll('.listing-checkbox:checked');
+    const listingIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+    if (listingIds.length === 0) {
+        showAlert('Please select at least one item to post', 'warning');
+        return;
+    }
+
+    // Get selected platforms
+    const platforms = [];
+    if (document.getElementById('platform_ebay').checked) platforms.push('ebay');
+    if (document.getElementById('platform_mercari').checked) platforms.push('mercari');
+    if (document.getElementById('platform_poshmark').checked) platforms.push('poshmark');
+    if (document.getElementById('platform_rubylane').checked) platforms.push('rubylane');
+
+    if (platforms.length === 0) {
+        showAlert('Please select at least one platform to post to', 'warning');
+        return;
+    }
+
+    // Confirm action
+    const confirmMsg = `Post ${listingIds.length} item(s) to ${platforms.join(', ')}?`;
+    if (!confirm(confirmMsg)) return;
+
+    showLoading();
+
+    try {
+        const response = await fetch('/api/bulk-post', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                listing_ids: listingIds,
+                platforms: platforms
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            const successCount = data.results.filter(r => r.success).length;
+            const failCount = data.results.filter(r => !r.success).length;
+
+            let message = `Posted ${successCount} item(s) successfully!`;
+            if (failCount > 0) {
+                message += ` ${failCount} failed.`;
+            }
+
+            showAlert(message, successCount > 0 ? 'success' : 'danger');
+
+            // Show detailed results if there were failures
+            if (failCount > 0) {
+                const failures = data.results.filter(r => !r.success);
+                console.log('Failed posts:', failures);
+            }
+
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            showAlert(data.error || 'Bulk post failed', 'danger');
+        }
+    } catch (error) {
+        showAlert('Failed: ' + error, 'danger');
+    } finally {
+        hideLoading();
+    }
+}
+
+// ========================================
+// MARK SOLD FUNCTION
+// ========================================
+
 async function markSold(id) {
     const soldPrice = prompt('Sold price? (leave blank for listed price)');
     if (soldPrice === null) return; // User canceled

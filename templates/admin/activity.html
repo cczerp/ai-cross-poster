@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Activity Logs - Admin{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-list"></i> Activity Logs</h2>
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Back to Dashboard
+        </a>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Recent Activity</h5>
+        </div>
+        <div class="card-body">
+            {% if logs %}
+            <div class="table-responsive">
+                <table class="table table-hover table-sm">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>User</th>
+                            <th>Action</th>
+                            <th>Resource</th>
+                            <th>IP Address</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in logs %}
+                        <tr>
+                            <td style="font-size: 12px;">{{ log.created_at }}</td>
+                            <td>
+                                {% if log.user_id %}
+                                <a href="{{ url_for('admin_user_detail', user_id=log.user_id) }}">
+                                    User #{{ log.user_id }}
+                                </a>
+                                {% else %}
+                                <span class="text-muted">System</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge
+                                    {% if log.action == 'login' %}bg-success
+                                    {% elif log.action == 'logout' %}bg-secondary
+                                    {% elif log.action == 'register' %}bg-primary
+                                    {% elif 'delete' in log.action %}bg-danger
+                                    {% else %}bg-info
+                                    {% endif %}">
+                                    {{ log.action }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if log.resource_type %}
+                                {{ log.resource_type }} #{{ log.resource_id }}
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            <td style="font-size: 11px;">{{ log.ip_address or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <div>
+                    {% if page > 1 %}
+                    <a href="{{ url_for('admin_activity', page=page-1) }}" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-arrow-left"></i> Previous
+                    </a>
+                    {% endif %}
+                </div>
+                <span class="text-muted">Page {{ page }}</span>
+                <div>
+                    {% if logs|length == 50 %}
+                    <a href="{{ url_for('admin_activity', page=page+1) }}" class="btn btn-sm btn-outline-primary">
+                        Next <i class="fas fa-arrow-right"></i>
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <p class="text-muted text-center">No activity logs found</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

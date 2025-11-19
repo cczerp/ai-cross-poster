@@ -627,8 +627,6 @@ def settings():
         {'id': 'ecrater', 'name': 'eCRATER', 'icon': 'fas fa-box', 'color': 'text-info'},
         {'id': 'bonanza', 'name': 'Bonanza', 'icon': 'fas fa-star', 'color': 'text-warning'},
         {'id': 'kijiji', 'name': 'Kijiji', 'icon': 'fas fa-newspaper', 'color': 'text-danger'},
-        {'id': 'mercari', 'name': 'Mercari', 'icon': 'fas fa-box', 'color': 'text-warning'},
-        {'id': 'ebay', 'name': 'eBay', 'icon': 'fab fa-ebay', 'color': 'text-primary'},
         {'id': 'grailed', 'name': 'Grailed', 'icon': 'fas fa-user-tie', 'color': 'text-dark'},
         {'id': 'vinted', 'name': 'Vinted', 'icon': 'fas fa-recycle', 'color': 'text-success'},
         {'id': 'mercado_libre', 'name': 'Mercado Libre', 'icon': 'fas fa-globe-americas', 'color': 'text-warning'},
@@ -1561,10 +1559,10 @@ def save_marketplace_credentials():
         valid_platforms = [
             'etsy', 'poshmark', 'depop', 'offerup', 'shopify', 'craigslist',
             'facebook', 'tiktok_shop', 'woocommerce', 'nextdoor', 'varagesale',
-            'ruby_lane', 'ecrater', 'bonanza', 'kijiji', 'mercari', 'ebay',
+            'ruby_lane', 'ecrater', 'bonanza', 'kijiji',
             'personal_website', 'grailed', 'vinted', 'mercado_libre',
             'tradesy', 'vestiaire', 'rebag', 'thredup', 'poshmark_ca',
-            'ebay_uk', 'other'
+            'other'
         ]
         if platform.lower() not in valid_platforms:
             return jsonify({'error': 'Invalid platform'}), 400

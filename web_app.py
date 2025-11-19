@@ -1941,6 +1941,529 @@ def baby_bird_export():
 
 # ============================================================================
 # RUN SERVER
+
+# ============================================================================
+# CARD COLLECTION API ENDPOINTS
+# ============================================================================
+
+@app.route('/cards')
+@login_required  
+def cards_collection():
+    """Card collection management page"""
+    return render_template('cards.html')
+
+
+@app.route('/api/analyze-card', methods=['POST'])
+@login_required
+def api_analyze_card():
+    """
+    Analyze uploaded photos to detect and classify cards.
+    
+    Returns card-specific details for TCG and sports cards.
+    """
+    try:
+        from src.ai.gemini_classifier import analyze_card
+        from src.schema.unified_listing import Photo
+        
+        data = request.get_json()
+        photo_paths = data.get('photos', [])
+        
+        if not photo_paths:
+            return jsonify({'error': 'No photos provided'}), 400
+        
+        # Convert paths to Photo objects
+        photos = [Photo(local_path=path) for path in photo_paths]
+        
+        # Analyze with Gemini
+        result = analyze_card(photos)
+        
+        if result.get('error'):
+            return jsonify(result), 500
+        
+        return jsonify({
+            'success': True,
+            'card_data': result
+        })
+        
+    except Exception as e:
+        print(f"Card analysis error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cards/add', methods=['POST'])
+@login_required
+def api_add_card():
+    """
+    Add a card to user's collection.
+    
+    Accepts either:
+    - AI analysis result
+    - Manual card data
+    """
+    try:
+        from src.cards import add_card_to_collection, create_card_from_ai_analysis
+        
+        data = request.get_json()
+        
+        # Check if this is from AI analysis
+        if data.get('ai_result'):
+            ai_result = data['ai_result']
+            photos = data.get('photos', [])
+            storage_location = data.get('storage_location')
+            
+            # Add card from AI result
+            card_id = add_card_to_collection(
+                ai_result,
+                current_user.id,
+                photos=photos,
+                storage_location=storage_location
+            )
+            
+            if not card_id:
+                return jsonify({'error': 'Failed to create card - not a valid card'}), 400
+            
+            return jsonify({
+                'success': True,
+                'card_id': card_id,
+                'message': 'Card added to collection'
+            })
+        
+        # Manual card entry
+        else:
+            from src.cards import CardCollectionManager, UnifiedCard
+            
+            manager = CardCollectionManager()
+            
+            # Create UnifiedCard from manual data
+            card = UnifiedCard(
+                card_type=data.get('card_type', 'unknown'),
+                title=data.get('title', 'Unknown Card'),
+                user_id=current_user.id,
+                card_number=data.get('card_number'),
+                quantity=data.get('quantity', 1),
+                organization_mode=data.get('organization_mode', 'by_set'),
+                
+                # TCG fields
+                game_name=data.get('game_name'),
+                set_name=data.get('set_name'),
+                set_code=data.get('set_code'),
+                rarity=data.get('rarity'),
+                
+                # Sports fields
+                sport=data.get('sport'),
+                year=data.get('year'),
+                brand=data.get('brand'),
+                series=data.get('series'),
+                player_name=data.get('player_name'),
+                is_rookie_card=data.get('is_rookie_card', False),
+                
+                # Grading
+                grading_company=data.get('grading_company'),
+                grading_score=data.get('grading_score'),
+                
+                # Value & location
+                estimated_value=data.get('estimated_value'),
+                storage_location=data.get('storage_location'),
+                photos=data.get('photos', []),
+                notes=data.get('notes'),
+            )
+            
+            card_id = manager.add_card(card)
+            
+            return jsonify({
+                'success': True,
+                'card_id': card_id,
+                'message': 'Card added to collection'
+            })
+        
+    except Exception as e:
+        print(f"Add card error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cards/list', methods=['GET'])
+@login_required
+def api_list_cards():
+    """
+    Get user's card collection with optional filters.
+    
+    Query params:
+    - card_type: Filter by card type
+    - organization_mode: Filter by organization mode
+    - limit: Max cards to return
+    - offset: Pagination offset
+    """
+    try:
+        from src.cards import CardCollectionManager
+        
+        manager = CardCollectionManager()
+        
+        card_type = request.args.get('card_type')
+        organization_mode = request.args.get('organization_mode')
+        limit = int(request.args.get('limit', 100))
+        offset = int(request.args.get('offset', 0))
+        
+        cards = manager.get_user_cards(
+            current_user.id,
+            card_type=card_type,
+            organization_mode=organization_mode,
+            limit=limit,
+            offset=offset
+        )
+        
+        # Convert to dicts
+        cards_data = [card.to_dict() for card in cards]
+        
+        return jsonify({
+            'success': True,
+            'cards': cards_data,
+            'count': len(cards_data)
+        })
+        
+    except Exception as e:
+        print(f"List cards error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cards/organized', methods=['GET'])
+@login_required
+def api_get_organized_cards():
+    """
+    Get cards organized by category.
+    
+    Query params:
+    - organization_mode: Required (by_set, by_year, etc.)
+    - card_type: Optional filter
+    
+    Returns:
+    - Dict mapping categories to lists of cards
+    """
+    try:
+        from src.cards import CardCollectionManager
+        
+        manager = CardCollectionManager()
+        
+        organization_mode = request.args.get('organization_mode')
+        card_type = request.args.get('card_type')
+        
+        if not organization_mode:
+            return jsonify({'error': 'organization_mode is required'}), 400
+        
+        organized = manager.get_cards_by_organization(
+            current_user.id,
+            organization_mode,
+            card_type=card_type
+        )
+        
+        # Convert UnifiedCards to dicts
+        result = {}
+        for category, cards in organized.items():
+            result[category] = [card.to_dict() for card in cards]
+        
+        return jsonify({
+            'success': True,
+            'organized': result,
+            'categories': list(result.keys())
+        })
+        
+    except Exception as e:
+        print(f"Get organized cards error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cards/search', methods=['GET'])
+@login_required
+def api_search_cards():
+    """
+    Search cards by title, player name, set, etc.
+    
+    Query params:
+    - q: Search query
+    - card_type: Optional filter
+    """
+    try:
+        from src.cards import CardCollectionManager
+        
+        manager = CardCollectionManager()
+        
+        query = request.args.get('q', '')
+        card_type = request.args.get('card_type')
+        
+        if not query:
+            return jsonify({'error': 'Search query is required'}), 400
+        
+        cards = manager.search_cards(current_user.id, query, card_type=card_type)
+        
+        cards_data = [card.to_dict() for card in cards]
+        
+        return jsonify({
+            'success': True,
+            'cards': cards_data,
+            'count': len(cards_data)
+        })
+        
+    except Exception as e:
+        print(f"Search cards error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cards/export', methods=['GET'])
+@login_required
+def api_export_cards():
+    """
+    Export cards to CSV.
+    
+    Query params:
+    - card_type: Optional filter
+    - organization_mode: Optional filter
+    """
+    try:
+        from src.cards import CardCollectionManager
+        from flask import make_response
+        
+        manager = CardCollectionManager()
+        
+        card_type = request.args.get('card_type')
+        organization_mode = request.args.get('organization_mode')
+        
+        csv_data = manager.export_to_csv(
+            current_user.id,
+            card_type=card_type,
+            organization_mode=organization_mode
+        )
+        
+        if not csv_data:
+            return jsonify({'error': 'No cards to export'}), 404
+        
+        # Create CSV response
+        response = make_response(csv_data)
+        response.headers['Content-Type'] = 'text/csv'
+        response.headers['Content-Disposition'] = 'attachment; filename=card_collection.csv'
+        
+        return response
+        
+    except Exception as e:
+        print(f"Export cards error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cards/import', methods=['POST'])
+@login_required
+def api_import_cards():
+    """
+    Import cards from CSV.
+    
+    Expects:
+    - file: CSV file upload
+    - card_type: Optional default card type
+    """
+    try:
+        from src.cards import CardCollectionManager
+        
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file uploaded'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Read CSV content
+        csv_content = file.read().decode('utf-8')
+        
+        card_type = request.form.get('card_type')
+        
+        manager = CardCollectionManager()
+        result = manager.import_from_csv(current_user.id, csv_content, card_type=card_type)
+        
+        return jsonify({
+            'success': True,
+            'imported': result['imported'],
+            'errors': result['errors']
+        })
+        
+    except Exception as e:
+        print(f"Import cards error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cards/switch-organization', methods=['POST'])
+@login_required
+def api_switch_organization():
+    """
+    Switch organization mode for user's cards.
+    
+    This re-categorizes all cards based on the new mode.
+    
+    Body:
+    - new_mode: Organization mode (by_set, by_year, etc.)
+    - card_type: Optional filter
+    """
+    try:
+        from src.cards import CardCollectionManager
+        
+        data = request.get_json()
+        new_mode = data.get('new_mode')
+        card_type = data.get('card_type')
+        
+        if not new_mode:
+            return jsonify({'error': 'new_mode is required'}), 400
+        
+        valid_modes = [
+            'by_set', 'by_year', 'by_sport', 'by_brand', 'by_game',
+            'by_rarity', 'by_number', 'by_grading', 'by_value', 'by_binder', 'custom'
+        ]
+        
+        if new_mode not in valid_modes:
+            return jsonify({'error': f'Invalid organization mode. Valid: {", ".join(valid_modes)}'}), 400
+        
+        manager = CardCollectionManager()
+        manager.switch_organization_mode(current_user.id, new_mode, card_type=card_type)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Organization mode switched to {new_mode}'
+        })
+        
+    except Exception as e:
+        print(f"Switch organization error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cards/stats', methods=['GET'])
+@login_required
+def api_card_stats():
+    """Get collection statistics"""
+    try:
+        from src.cards import CardCollectionManager
+        
+        manager = CardCollectionManager()
+        stats = manager.get_collection_stats(current_user.id)
+        
+        return jsonify({
+            'success': True,
+            'stats': stats
+        })
+        
+    except Exception as e:
+        print(f"Card stats error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cards/<int:card_id>', methods=['GET'])
+@login_required
+def api_get_card(card_id):
+    """Get a specific card by ID"""
+    try:
+        from src.cards import CardCollectionManager
+        
+        manager = CardCollectionManager()
+        card = manager.get_card(card_id)
+        
+        if not card:
+            return jsonify({'error': 'Card not found'}), 404
+        
+        # Verify ownership
+        if card.user_id != current_user.id:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        return jsonify({
+            'success': True,
+            'card': card.to_dict()
+        })
+        
+    except Exception as e:
+        print(f"Get card error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cards/<int:card_id>', methods=['PUT'])
+@login_required
+def api_update_card(card_id):
+    """Update a card"""
+    try:
+        from src.cards import CardCollectionManager, UnifiedCard
+        
+        manager = CardCollectionManager()
+        
+        # Get existing card
+        card = manager.get_card(card_id)
+        if not card:
+            return jsonify({'error': 'Card not found'}), 404
+        
+        # Verify ownership
+        if card.user_id != current_user.id:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        # Update fields from request
+        data = request.get_json()
+        
+        # Update allowed fields
+        if 'title' in data:
+            card.title = data['title']
+        if 'quantity' in data:
+            card.quantity = data['quantity']
+        if 'storage_location' in data:
+            card.storage_location = data['storage_location']
+        if 'notes' in data:
+            card.notes = data['notes']
+        if 'estimated_value' in data:
+            card.estimated_value = data['estimated_value']
+        if 'grading_company' in data:
+            card.grading_company = data['grading_company']
+        if 'grading_score' in data:
+            card.grading_score = data['grading_score']
+        
+        manager.update_card(card_id, card)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Card updated'
+        })
+        
+    except Exception as e:
+        print(f"Update card error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cards/<int:card_id>', methods=['DELETE'])
+@login_required
+def api_delete_card(card_id):
+    """Delete a card"""
+    try:
+        from src.cards import CardCollectionManager
+        
+        manager = CardCollectionManager()
+        
+        # Get existing card
+        card = manager.get_card(card_id)
+        if not card:
+            return jsonify({'error': 'Card not found'}), 404
+        
+        # Verify ownership
+        if card.user_id != current_user.id:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        manager.delete_card(card_id)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Card deleted'
+        })
+        
+    except Exception as e:
+        print(f"Delete card error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+
+
+# RUN SERVER
 # ============================================================================
 
 if __name__ == '__main__':

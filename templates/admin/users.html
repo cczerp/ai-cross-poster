@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}User Management - Admin{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-users"></i> User Management</h2>
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Back to Dashboard
+        </a>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">All Users ({{ users|length }})</h5>
+        </div>
+        <div class="card-body">
+            {% if users %}
+            <div class="table-responsive">
+                <table class="table table-hover" id="usersTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                            <th>Last Login</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr id="user-{{ user.id }}">
+                            <td>{{ user.id }}</td>
+                            <td>
+                                <a href="{{ url_for('admin_user_detail', user_id=user.id) }}">
+                                    <strong>{{ user.username }}</strong>
+                                </a>
+                            </td>
+                            <td>{{ user.email }}</td>
+                            <td>
+                                {% if user.is_admin %}
+                                <span class="badge bg-danger">Admin</span>
+                                {% else %}
+                                <span class="badge bg-secondary">User</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if user.is_active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-warning">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if user.last_login %}
+                                {{ user.last_login }}
+                                {% else %}
+                                <span class="text-muted">Never</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{{ url_for('admin_user_detail', user_id=user.id) }}"
+                                       class="btn btn-outline-info" title="View Details">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                    {% if user.id != current_user.id %}
+                                    <button onclick="toggleAdmin({{ user.id }})"
+                                            class="btn btn-outline-warning" title="Toggle Admin">
+                                        <i class="fas fa-shield-alt"></i>
+                                    </button>
+                                    <button onclick="toggleActive({{ user.id }})"
+                                            class="btn btn-outline-secondary" title="Toggle Active">
+                                        <i class="fas fa-power-off"></i>
+                                    </button>
+                                    <button onclick="deleteUser({{ user.id }}, '{{ user.username }}')"
+                                            class="btn btn-outline-danger" title="Delete User">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted text-center">No users found</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleAdmin(userId) {
+    if (!confirm('Are you sure you want to toggle admin status for this user?')) return;
+
+    fetch(`/api/admin/user/${userId}/toggle-admin`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(err => alert('Error: ' + err));
+}
+
+function toggleActive(userId) {
+    if (!confirm('Are you sure you want to toggle active status for this user?')) return;
+
+    fetch(`/api/admin/user/${userId}/toggle-active`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(err => alert('Error: ' + err));
+}
+
+function deleteUser(userId, username) {
+    if (!confirm(`Are you sure you want to DELETE user "${username}"? This will delete all their listings and data. This action cannot be undone!`)) return;
+    if (!confirm('Are you ABSOLUTELY sure? This is permanent!')) return;
+
+    fetch(`/api/admin/user/${userId}/delete`, {
+        method: 'DELETE',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById(`user-${userId}`).remove();
+            alert('User deleted successfully');
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(err => alert('Error: ' + err));
+}
+</script>
+{% endblock %}

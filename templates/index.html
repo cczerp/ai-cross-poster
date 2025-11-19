@@ -1,11 +1,75 @@
 {% extends "base.html" %}
 
-{% block title %}Home - AI Cross-Poster{% endblock %}
+{% block title %}Home - ResellGenie{% endblock %}
 
 {% block content %}
+
+{% if is_guest %}
+<!-- Guest Landing Page -->
+<div class="text-center py-5">
+    <div class="mb-4">
+        <i class="fas fa-brain fa-4x mb-3" style="background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;"></i>
+        <h1 class="display-3 logo mb-0">ResellGenie</h1>
+    </div>
+    <p class="lead">Multi-Platform Inventory & Listing Management</p>
+    <p class="text-muted">Sell smarter. Track everything. Never lose an item.</p>
+
+    <div class="mt-4">
+        <a href="{{ url_for('create_listing') }}" class="btn btn-success btn-lg me-2">
+            <i class="fas fa-magic"></i> Try AI Now (Free!)
+        </a>
+        <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg me-2">
+            <i class="fas fa-user-plus"></i> Sign Up
+        </a>
+        <a href="{{ url_for('login') }}" class="btn btn-outline-secondary btn-lg">
+            <i class="fas fa-sign-in-alt"></i> Sign In
+        </a>
+    </div>
+    <p class="text-muted small mt-3">
+        <i class="fas fa-check-circle text-success"></i> No credit card required
+        <i class="fas fa-check-circle text-success ms-3"></i> Test AI without signup
+    </p>
+</div>
+
+<div class="row g-4 mt-3">
+    <div class="col-md-4">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body text-center">
+                <i class="fas fa-camera fa-3x text-primary mb-3"></i>
+                <h5 class="card-title">Photo to Listing</h5>
+                <p class="card-text">Take a photo, AI creates the listing with title, description, price suggestions</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body text-center">
+                <i class="fas fa-map-marker-alt fa-3x text-warning mb-3"></i>
+                <h5 class="card-title">Smart Storage</h5>
+                <p class="card-text">Track where every item is stored. Never search for items after a sale!</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body text-center">
+                <i class="fas fa-globe fa-3x text-success mb-3"></i>
+                <h5 class="card-title">27+ Platforms</h5>
+                <p class="card-text">Manage listings for Etsy, Poshmark, eBay, Facebook, and 23 more platforms</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<!-- Logged-in User Dashboard -->
 <div class="text-center py-4">
-    <h1 class="display-4">🚀 AI Lister</h1>
+    <div class="mb-3">
+        <i class="fas fa-brain fa-3x" style="background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;"></i>
+    </div>
+    <h1 class="display-4 logo">ResellGenie</h1>
     <p class="lead">Create listings with AI and track your inventory</p>
+    <p class="text-muted">Welcome back, <strong>{{ current_user.username }}</strong>!</p>
 </div>
 
 <div class="row g-3">
@@ -42,6 +106,7 @@
         </div>
     </div>
 </div>
+{% endif %}
 
 <div class="card mt-3">
     <div class="card-body">

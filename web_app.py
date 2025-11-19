@@ -96,7 +96,12 @@ class User(UserMixin):
         self.username = username
         self.email = email
         self.is_admin = is_admin
-        self.is_active = is_active
+        self._is_active = is_active  # Store in private attribute
+
+    @property
+    def is_active(self):
+        """Override Flask-Login's is_active to use database value"""
+        return self._is_active
 
     @staticmethod
     def get(user_id):

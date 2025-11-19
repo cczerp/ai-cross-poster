@@ -11,6 +11,8 @@ Gemini handles:
 - Simple description generation
 - Collectible YES/NO detection (triggers deep analysis)
 - Basic value estimation
+- **CARD DETECTION** - Identifies trading cards & sports cards
+- **CARD CLASSIFICATION** - Extracts card-specific details
 
 Claude handles deep collectible analysis (authentication, grading, variants).
 """
@@ -32,6 +34,7 @@ class GeminiClassifier:
 
     This is designed for speed and cost-efficiency.
     Use for initial classification before deep collectible analysis.
+    Now includes specialized card detection and classification.
     """
 
     def __init__(self, api_key: Optional[str] = None):
@@ -396,13 +399,241 @@ IMPORTANT:
             "error_type": "max_retries_exceeded"
         }
 
+    def analyze_card(self, photos: List[Photo]) -> Dict[str, Any]:
+        """
+        Specialized card analysis using Gemini Vision.
+
+        Extracts card-specific details for:
+        - Trading Card Games (Pokémon, MTG, Yu-Gi-Oh, etc.)
+        - Sports Cards (NFL, NBA, MLB, NHL, etc.)
+
+        Returns:
+            {
+                "is_card": bool,
+                "card_type": str,  # 'pokemon', 'mtg', 'yugioh', 'sports_nfl', etc.
+                "card_name": str,
+                "player_name": str,  # For sports cards
+                "card_number": str,
+                "set_name": str,
+                "set_code": str,
+                "year": int,
+                "brand": str,  # Topps, Panini, etc. (sports cards)
+                "series": str,  # Prizm, Chrome, etc. (sports cards)
+                "rarity": str,
+                "is_rookie_card": bool,
+                "is_autographed": bool,
+                "is_graded": bool,
+                "grading_company": str,  # PSA, BGS, CGC
+                "grading_score": float,
+                "parallel": str,  # Silver, Gold, etc.
+                "condition": str,
+                "estimated_value_low": float,
+                "estimated_value_high": float,
+                "confidence": float,
+            }
+        """
+        if not photos:
+            return {"error": "No photos provided", "is_card": False}
+
+        # Prepare images
+        image_parts = []
+        for photo in photos[:4]:
+            if photo.local_path:
+                image_b64 = self._encode_image_to_base64(photo.local_path)
+                mime_type = self._get_image_mime_type(photo.local_path)
+                image_parts.append({
+                    "inline_data": {
+                        "mime_type": mime_type,
+                        "data": image_b64
+                    }
+                })
+
+        # Card-specific analysis prompt
+        prompt = """Analyze this image and determine if it's a trading card or sports card.
+
+🎴 CARD DETECTION & CLASSIFICATION
+
+**Step 1: Is this a card?**
+Look for:
+- Standard card dimensions (roughly 2.5" x 3.5")
+- Card in protective sleeve, top loader, or grading case
+- Visible card features (borders, text, stats)
+- Trading card game elements (energy symbols, mana costs, etc.)
+- Sports card elements (player photo, team logo, stats on back)
+
+**Step 2: What type of card?**
+
+TRADING CARD GAMES:
+- Pokemon: Look for Pokemon logo, energy symbols, HP, attacks
+- Magic: The Gathering (MTG): Look for mana symbols, card types, expansion symbols
+- Yu-Gi-Oh!: Look for ATK/DEF numbers, card types (Monster/Spell/Trap)
+- One Piece, Dragon Ball, etc.
+
+SPORTS CARDS:
+- NFL: Football players, team logos, NFL shield
+- NBA: Basketball players, team logos, NBA logo
+- MLB: Baseball players, team logos, MLB logo
+- NHL: Hockey players, team logos, NHL logo
+- Soccer: Players, team crests, league logos
+
+**Step 3: Extract Details**
+
+For TCG Cards:
+- Card name (at top of card)
+- Set symbol (bottom right, or expansion mark)
+- Card number (usually bottom: "12/102" format)
+- Rarity (star, circle, diamond, or text like "Rare", "Ultra Rare")
+- Set name if visible
+
+For Sports Cards:
+- Player name
+- Year (usually on front or back)
+- Brand (Topps, Panini, Upper Deck, Donruss, Fleer, Bowman)
+- Series (Prizm, Chrome, Optic, Select, etc.)
+- Card number
+- Rookie Card designation ("RC" logo or text)
+- Parallel/variant (Silver, Gold, Refractor, etc.)
+- Team and position
+
+**Step 4: Grading & Condition**
+
+Check for:
+- PSA, BGS, CGC grading case (plastic slab)
+- Grading score (1-10 scale)
+- Serial number on case
+- If ungraded: estimate condition (Mint, Near Mint, Excellent, Good, Poor)
+
+**Step 5: Special Features**
+
+- Autograph (signature on card)
+- Rookie card (RC designation)
+- Limited edition / numbered (e.g., "5/99")
+- Holographic / foil finish
+- Insert set designation
+
+**Step 6: Value Estimation**
+
+Provide rough market value based on:
+- Player/character popularity
+- Card rarity
+- Condition/grade
+- Year (vintage vs modern)
+- Market demand
+
+OUTPUT FORMAT (JSON only, no markdown):
+
+For a CARD:
+{
+  "is_card": true,
+  "card_type": "pokemon",
+  "card_name": "Charizard",
+  "player_name": "",
+  "card_number": "4/102",
+  "set_name": "Base Set",
+  "set_code": "BS",
+  "year": 1999,
+  "brand": "",
+  "series": "",
+  "rarity": "Rare Holo",
+  "is_rookie_card": false,
+  "is_autographed": false,
+  "is_graded": true,
+  "grading_company": "PSA",
+  "grading_score": 9.0,
+  "parallel": "",
+  "condition": "Mint",
+  "estimated_value_low": 2000,
+  "estimated_value_high": 5000,
+  "confidence": 0.95
+}
+
+For a SPORTS CARD:
+{
+  "is_card": true,
+  "card_type": "sports_nfl",
+  "card_name": "Tom Brady Rookie Card",
+  "player_name": "Tom Brady",
+  "card_number": "236",
+  "set_name": "2000 Playoff Contenders",
+  "set_code": "",
+  "year": 2000,
+  "brand": "Playoff",
+  "series": "Contenders",
+  "rarity": "Rookie Ticket Autograph",
+  "is_rookie_card": true,
+  "is_autographed": true,
+  "is_graded": true,
+  "grading_company": "PSA",
+  "grading_score": 10.0,
+  "parallel": "",
+  "condition": "Gem Mint",
+  "estimated_value_low": 100000,
+  "estimated_value_high": 500000,
+  "confidence": 0.98
+}
+
+For NOT A CARD:
+{
+  "is_card": false,
+  "confidence": 0.95
+}
+
+Analyze the image(s) now and respond with ONLY the JSON."""
+
+        # Combine text + images
+        content = [{"text": prompt}]
+        content.extend(image_parts)
+
+        payload = {
+            "contents": [{
+                "parts": content
+            }],
+            "generationConfig": {
+                "temperature": 0.1,  # Low temperature for factual extraction
+                "maxOutputTokens": 1024,
+            }
+        }
+
+        try:
+            response = requests.post(
+                f"{self.api_url}?key={self.api_key}",
+                json=payload,
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                content_text = result['candidates'][0]['content']['parts'][0]['text']
+
+                # Parse JSON response
+                content_text = content_text.strip()
+                if content_text.startswith('```json'):
+                    content_text = content_text[7:-3].strip()
+                elif content_text.startswith('```'):
+                    content_text = content_text[3:-3].strip()
+
+                card_data = json.loads(content_text)
+                return card_data
+
+            else:
+                return {
+                    "error": f"Gemini API error: {response.status_code}",
+                    "is_card": False
+                }
+
+        except Exception as e:
+            return {
+                "error": f"Card analysis failed: {str(e)}",
+                "is_card": False
+            }
+
     @classmethod
     def from_env(cls) -> "GeminiClassifier":
         """Create classifier from environment variables"""
         return cls()
 
 
-# Convenience function
+# Convenience functions
 def classify_item(photos: List[Photo]) -> Dict[str, Any]:
     """
     Quick function to classify an item using Gemini.
@@ -415,3 +646,51 @@ def classify_item(photos: List[Photo]) -> Dict[str, Any]:
     """
     classifier = GeminiClassifier.from_env()
     return classifier.analyze_item(photos)
+
+
+def analyze_card(photos: List[Photo]) -> Dict[str, Any]:
+    """
+    Quick function to analyze a card using Gemini.
+    
+    Args:
+        photos: List of Photo objects
+        
+    Returns:
+        Card analysis dict with card-specific details
+    """
+    classifier = GeminiClassifier.from_env()
+    return classifier.analyze_card(photos)
+
+
+def smart_analyze(photos: List[Photo]) -> Dict[str, Any]:
+    """
+    Smart analyzer that detects item type and routes appropriately.
+    
+    First does quick card detection, then:
+    - If card: run detailed card analysis
+    - If not card: run standard item classification
+    
+    Args:
+        photos: List of Photo objects
+        
+    Returns:
+        Analysis dict with appropriate details
+    """
+    classifier = GeminiClassifier.from_env()
+    
+    # Try card analysis first (faster than full classification)
+    card_result = classifier.analyze_card(photos)
+    
+    if card_result.get('is_card'):
+        # It's a card! Return card-specific data
+        return {
+            **card_result,
+            'analysis_type': 'card'
+        }
+    else:
+        # Not a card, do standard classification
+        item_result = classifier.analyze_item(photos)
+        return {
+            **item_result,
+            'analysis_type': 'item'
+        }

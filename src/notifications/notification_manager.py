@@ -61,12 +61,11 @@ class NotificationManager:
 
         self.db = get_db()
 
-        # Check if email is configured
+        # Check if email is configured (SMTP only, to_email is per-user now)
         self.email_enabled = all([
             self.smtp_username,
             self.smtp_password,
             self.from_email,
-            self.to_email,
         ])
 
     def _send_email(
@@ -75,6 +74,7 @@ class NotificationManager:
         body_html: str,
         body_text: Optional[str] = None,
         attachments: Optional[List[tuple]] = None,
+        to_email: Optional[str] = None,
     ) -> bool:
         """
         Send an email notification.
@@ -84,12 +84,19 @@ class NotificationManager:
             body_html: HTML body
             body_text: Plain text body (optional)
             attachments: List of (filename, file_data) tuples
+            to_email: Recipient email (per-user, from database)
 
         Returns:
             True if sent successfully
         """
         if not self.email_enabled:
-            print("⚠️  Email notifications not configured (check .env)")
+            print("⚠️  Email notifications not configured (check .env SMTP settings)")
+            return False
+
+        # Use provided email or fall back to default
+        recipient = to_email or self.to_email
+        if not recipient:
+            print("⚠️  No recipient email address - user needs to set notification email in Settings")
             return False
 
         try:
@@ -97,7 +104,7 @@ class NotificationManager:
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
             msg["From"] = self.from_email
-            msg["To"] = self.to_email
+            msg["To"] = recipient
 
             # Add text and HTML parts
             if body_text:
@@ -286,7 +293,16 @@ class NotificationManager:
                     label_data = f.read()
                     attachments.append((f"shipping_label_{listing_id}.pdf", label_data))
 
-            email_sent = self._send_email(subject, html_body, text_body, attachments if attachments else None)
+            # Get user's notification email from database
+            user_id = listing.get('user_id')
+            user_email = None
+            if user_id:
+                user = self.db.get_user(user_id)
+                if user:
+                    # Use notification_email if set, otherwise fall back to user's email
+                    user_email = user.get('notification_email') or user.get('email')
+
+            email_sent = self._send_email(subject, html_body, text_body, attachments if attachments else None, to_email=user_email)
 
             if email_sent:
                 self.db.mark_notification_emailed(notification_id)

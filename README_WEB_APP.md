@@ -41,6 +41,8 @@ AI-powered listing creator and inventory tracker for resellers.
 
 ## Key Features
 
+✅ **User Authentication** - Each user has their own account and data
+✅ **Data Separation** - Complete privacy, users can't see each other's inventory
 ✅ No automated posting (compliant with platform rules)
 ✅ AI analysis with Gemini
 ✅ Mobile-friendly interface
@@ -48,6 +50,7 @@ AI-powered listing creator and inventory tracker for resellers.
 ✅ Storage location tracking
 ✅ CSV bulk operations
 ✅ Works on any device with browser
+✅ **Multi-User Cloud Ready** - Deploy once, support unlimited users
 ✅ Can be added to phone home screen
 
 ## Use Cases

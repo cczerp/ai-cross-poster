@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}User Details - {{ user.username }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-user"></i> {{ user.username }}</h2>
+        <a href="{{ url_for('admin_users') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Back to Users
+        </a>
+    </div>
+
+    <!-- User Info -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">User Information</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <p><strong>ID:</strong> {{ user.id }}</p>
+                    <p><strong>Username:</strong> {{ user.username }}</p>
+                    <p><strong>Email:</strong> {{ user.email }}</p>
+                </div>
+                <div class="col-md-6">
+                    <p><strong>Role:</strong>
+                        {% if user.is_admin %}
+                        <span class="badge bg-danger">Admin</span>
+                        {% else %}
+                        <span class="badge bg-secondary">User</span>
+                        {% endif %}
+                    </p>
+                    <p><strong>Status:</strong>
+                        {% if user.is_active %}
+                        <span class="badge bg-success">Active</span>
+                        {% else %}
+                        <span class="badge bg-warning">Inactive</span>
+                        {% endif %}
+                    </p>
+                    <p><strong>Created:</strong> {{ user.created_at }}</p>
+                    <p><strong>Last Login:</strong>
+                        {% if user.last_login %}
+                        {{ user.last_login }}
+                        {% else %}
+                        <span class="text-muted">Never</span>
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Listings -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Listings ({{ listings|length }})</h5>
+        </div>
+        <div class="card-body">
+            {% if listings %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Title</th>
+                            <th>Price</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for listing in listings %}
+                        <tr>
+                            <td>{{ listing.id }}</td>
+                            <td>{{ listing.title }}</td>
+                            <td>${{ "%.2f"|format(listing.price) }}</td>
+                            <td>
+                                <span class="badge
+                                    {% if listing.status == 'sold' %}bg-success
+                                    {% elif listing.status == 'draft' %}bg-secondary
+                                    {% else %}bg-primary
+                                    {% endif %}">
+                                    {{ listing.status }}
+                                </span>
+                            </td>
+                            <td>{{ listing.created_at }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted text-center">No listings</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Recent Activity</h5>
+        </div>
+        <div class="card-body">
+            {% if activity %}
+            <div class="table-responsive">
+                <table class="table table-hover table-sm">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Action</th>
+                            <th>Resource</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in activity %}
+                        <tr>
+                            <td style="font-size: 12px;">{{ log.created_at }}</td>
+                            <td>
+                                <span class="badge bg-info">{{ log.action }}</span>
+                            </td>
+                            <td>
+                                {% if log.resource_type %}
+                                {{ log.resource_type }} #{{ log.resource_id }}
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted text-center">No activity</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

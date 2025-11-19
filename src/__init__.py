@@ -27,50 +27,57 @@ from .schema import (
     ListingFormat,
 )
 
-from .adapters import (
-    EbayAdapter,
-    MercariAdapter,
-)
+# Adapters are imported on-demand to avoid missing module errors
+# from .adapters import (
+#     EbayAdapter,
+#     MercariAdapter,
+# )
 
-from .enhancer import (
-    AIEnhancer,
-    enhance_listing,
-)
+# Enhancer and other modules imported on-demand
+# from .enhancer import (
+#     AIEnhancer,
+#     enhance_listing,
+# )
 
-from .publisher import (
-    CrossPlatformPublisher,
-    PublishResult,
-    publish_to_ebay,
-    publish_to_mercari,
-    publish_to_all,
-)
+# Publisher imported on-demand
+# from .publisher import (
+#     CrossPlatformPublisher,
+#     PublishResult,
+#     publish_to_ebay,
+#     publish_to_mercari,
+#     publish_to_all,
+# )
 
-from .collectibles import (
-    CollectibleRecognizer,
-    identify_collectible,
-    AttributeDetector,
-    detect_attributes,
-)
+# Collectibles imported on-demand
+# from .collectibles import (
+#     CollectibleRecognizer,
+#     identify_collectible,
+#     AttributeDetector,
+#     detect_attributes,
+# )
 
 from .database import (
     Database,
     get_db,
 )
 
-from .sync import (
-    MultiPlatformSyncManager,
-)
+# Sync imported on-demand
+# from .sync import (
+#     MultiPlatformSyncManager,
+# )
 
-from .notifications import (
-    NotificationManager,
-)
+# Notifications imported on-demand
+# from .notifications import (
+#     NotificationManager,
+# )
 
-from .shopping import (
-    ShoppingLookup,
-    quick_lookup,
-    profit_calculator,
-    compare_prices,
-)
+# Shopping imported on-demand
+# from .shopping import (
+#     ShoppingLookup,
+#     quick_lookup,
+#     profit_calculator,
+#     compare_prices,
+# )
 
 __version__ = "2.0.0"  # Major update with collectibles and sync features
 
@@ -85,33 +92,15 @@ __all__ = [
     "SEOData",
     "ListingCondition",
     "ListingFormat",
-    # Adapters
-    "EbayAdapter",
-    "MercariAdapter",
-    # Enhancer
-    "AIEnhancer",
-    "enhance_listing",
-    # Publisher
-    "CrossPlatformPublisher",
-    "PublishResult",
-    "publish_to_ebay",
-    "publish_to_mercari",
-    "publish_to_all",
-    # Collectibles
-    "CollectibleRecognizer",
-    "identify_collectible",
-    "AttributeDetector",
-    "detect_attributes",
-    # Database
+    # Database (always available)
     "Database",
     "get_db",
-    # Sync
-    "MultiPlatformSyncManager",
-    # Notifications
-    "NotificationManager",
-    # Shopping
-    "ShoppingLookup",
-    "quick_lookup",
-    "profit_calculator",
-    "compare_prices",
+    # Other modules available via explicit imports:
+    # from src.adapters import EbayAdapter, MercariAdapter
+    # from src.enhancer import AIEnhancer, enhance_listing
+    # from src.publisher import CrossPlatformPublisher, PublishResult, etc.
+    # from src.collectibles import CollectibleRecognizer, AttributeDetector, etc.
+    # from src.sync import MultiPlatformSyncManager
+    # from src.notifications import NotificationManager
+    # from src.shopping import ShoppingLookup, quick_lookup, etc.
 ]

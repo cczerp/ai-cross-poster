@@ -260,6 +260,12 @@
                 </a>
             </div>
             <div class="nav-item">
+                <a href="{{ url_for('storage') }}" class="nav-link {% if request.endpoint in ['storage', 'storage_clothing', 'storage_cards', 'storage_map'] %}active{% endif %}">
+                    <i class="fas fa-box"></i>
+                    <span>Storage</span>
+                </a>
+            </div>
+            <div class="nav-item">
                 <a href="{{ url_for('notifications') }}" class="nav-link {% if request.endpoint == 'notifications' %}active{% endif %}">
                     <i class="fas fa-bell"></i>
                     <span>Alerts</span>

@@ -420,6 +420,186 @@ def notifications():
     return render_template('notifications.html', notifications=notifs)
 
 
+# ========================================
+# STORAGE ROUTES (Standalone Organization Tool)
+# ========================================
+
+@app.route('/storage')
+@login_required
+def storage():
+    """Main storage page - choose mode"""
+    storage_map = db.get_storage_map(current_user.id)
+    return render_template('storage.html', storage_map=storage_map)
+
+
+@app.route('/storage/clothing')
+@login_required
+def storage_clothing():
+    """Clothing bin storage system"""
+    bins = db.get_storage_bins(current_user.id, bin_type='clothing')
+    return render_template('storage_clothing.html', bins=bins)
+
+
+@app.route('/storage/cards')
+@login_required
+def storage_cards():
+    """Card storage system (A1/A2)"""
+    bins = db.get_storage_bins(current_user.id, bin_type='cards')
+
+    # Create default Bin A if no bins exist
+    if not bins:
+        bin_id = db.create_storage_bin(current_user.id, 'A', 'cards', 'Default card bin')
+        bins = db.get_storage_bins(current_user.id, bin_type='cards')
+
+    return render_template('storage_cards.html', bins=bins)
+
+
+@app.route('/storage/map')
+@login_required
+def storage_map():
+    """Visual storage map"""
+    storage_map = db.get_storage_map(current_user.id)
+    return render_template('storage_map.html', storage_map=storage_map)
+
+
+@app.route('/api/storage/create-bin', methods=['POST'])
+@login_required
+def create_storage_bin():
+    """Create new storage bin"""
+    data = request.json
+
+    try:
+        bin_name = data['bin_name']
+        bin_type = data['bin_type']
+        description = data.get('description')
+
+        bin_id = db.create_storage_bin(current_user.id, bin_name, bin_type, description)
+
+        return jsonify({'success': True, 'bin_id': bin_id})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/storage/create-section', methods=['POST'])
+@login_required
+def create_storage_section():
+    """Create section within bin"""
+    data = request.json
+
+    try:
+        bin_id = int(data['bin_id'])
+        section_name = data['section_name']
+        capacity = data.get('capacity')
+
+        section_id = db.create_storage_section(bin_id, section_name, capacity)
+
+        return jsonify({'success': True, 'section_id': section_id})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/storage/add-item', methods=['POST'])
+@login_required
+def add_storage_item():
+    """Add item to storage"""
+    data = request.json
+
+    try:
+        bin_id = int(data['bin_id'])
+        section_id = int(data['section_id']) if data.get('section_id') else None
+        item_type = data.get('item_type')
+        category = data.get('category')
+        title = data.get('title')
+        description = data.get('description')
+        quantity = int(data.get('quantity', 1))
+        photos = data.get('photos', [])
+        notes = data.get('notes')
+
+        # Get bin info for ID generation
+        bins = db.get_storage_bins(current_user.id)
+        bin = next((b for b in bins if b['id'] == bin_id), None)
+
+        if not bin:
+            return jsonify({'error': 'Bin not found'}), 404
+
+        # Get section name if section_id provided
+        section_name = None
+        if section_id:
+            sections = db.get_storage_sections(bin_id)
+            section = next((s for s in sections if s['id'] == section_id), None)
+            if section:
+                section_name = section['section_name']
+
+        # Generate storage ID
+        storage_id = db.generate_storage_id(
+            current_user.id,
+            bin['bin_name'],
+            section_name,
+            category
+        )
+
+        # Add item
+        item_id = db.add_storage_item(
+            current_user.id,
+            storage_id,
+            bin_id,
+            section_id,
+            item_type,
+            category,
+            title,
+            description,
+            quantity,
+            photos,
+            notes
+        )
+
+        return jsonify({
+            'success': True,
+            'item_id': item_id,
+            'storage_id': storage_id
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/storage/find', methods=['GET'])
+@login_required
+def find_storage_item():
+    """Find item by storage ID"""
+    storage_id = request.args.get('storage_id')
+
+    if not storage_id:
+        return jsonify({'error': 'storage_id required'}), 400
+
+    item = db.find_storage_item(current_user.id, storage_id)
+
+    if item:
+        return jsonify({'success': True, 'item': item})
+    else:
+        return jsonify({'error': 'Item not found'}), 404
+
+
+@app.route('/api/storage/items', methods=['GET'])
+@login_required
+def get_storage_items():
+    """Get storage items with filters"""
+    bin_id = request.args.get('bin_id', type=int)
+    section_id = request.args.get('section_id', type=int)
+    item_type = request.args.get('item_type')
+    limit = request.args.get('limit', 100, type=int)
+
+    items = db.get_storage_items(
+        current_user.id,
+        bin_id=bin_id,
+        section_id=section_id,
+        item_type=item_type,
+        limit=limit
+    )
+
+    return jsonify({'success': True, 'items': items})
+
+
 @app.route('/settings')
 @login_required
 def settings():

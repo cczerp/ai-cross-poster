@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block title %}Storage & Inventory{% endblock %}
+
+{% block content %}
+<h2 class="mb-4"><i class="fas fa-box"></i> Storage & Inventory</h2>
+
+<p class="text-muted">
+    Organize your physical inventory with bins, compartments, and auto-generated IDs.
+    <strong>Storage is separate from listings</strong> - track items without selling them!
+</p>
+
+<!-- Storage Overview Cards -->
+<div class="row mb-4">
+    <div class="col-md-6 mb-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-tshirt text-primary"></i> Clothing Storage
+                </h5>
+                <p class="card-text">
+                    Organize clothing, shoes, and accessories with bins and compartments.
+                    Auto-generate IDs like <code>A2-14</code>
+                </p>
+                <div class="mb-3">
+                    <small class="text-muted">
+                        <strong>{{ storage_map.clothing_bins|length }} bins</strong> created
+                    </small>
+                </div>
+                <a href="{{ url_for('storage_clothing') }}" class="btn btn-primary w-100">
+                    <i class="fas fa-arrow-right"></i> Manage Clothing Storage
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 mb-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-id-card text-success"></i> Card Storage
+                </h5>
+                <p class="card-text">
+                    Organize trading cards with sections (A1, A2, A3...).
+                    Auto-generate IDs like <code>FB-A1-12</code>
+                </p>
+                <div class="mb-3">
+                    <small class="text-muted">
+                        <strong>{{ storage_map.card_bins|length }} bins</strong> created
+                    </small>
+                </div>
+                <a href="{{ url_for('storage_cards') }}" class="btn btn-success w-100">
+                    <i class="fas fa-arrow-right"></i> Manage Card Storage
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Stats -->
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <i class="fas fa-chart-bar"></i> Storage Overview
+    </div>
+    <div class="card-body">
+        <div class="row text-center">
+            <div class="col-4">
+                <h3 class="text-primary">{{ storage_map.total_items }}</h3>
+                <small class="text-muted">Total Items</small>
+            </div>
+            <div class="col-4">
+                <h3 class="text-success">{{ storage_map.clothing_bins|length + storage_map.card_bins|length }}</h3>
+                <small class="text-muted">Total Bins</small>
+            </div>
+            <div class="col-4">
+                <h3 class="text-info">
+                    {% set total_sections = 0 %}
+                    {% for bin in storage_map.clothing_bins %}
+                        {% set total_sections = total_sections + bin.section_count %}
+                    {% endfor %}
+                    {% for bin in storage_map.card_bins %}
+                        {% set total_sections = total_sections + bin.section_count %}
+                    {% endfor %}
+                    {{ total_sections }}
+                </h3>
+                <small class="text-muted">Total Sections</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Find Item by ID -->
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-search"></i> Find Item by ID
+    </div>
+    <div class="card-body">
+        <div class="input-group">
+            <input type="text" class="form-control" id="searchStorageId"
+                   placeholder="Enter storage ID (e.g., A2-14, FB-A1-12)"
+                   autocomplete="off">
+            <button class="btn btn-primary" onclick="findStorageItem()">
+                <i class="fas fa-search"></i> Find
+            </button>
+        </div>
+        <div id="searchResults" class="mt-3"></div>
+    </div>
+</div>
+
+<!-- Quick Link to Map -->
+<div class="text-center">
+    <a href="{{ url_for('storage_map') }}" class="btn btn-outline-primary btn-lg">
+        <i class="fas fa-map"></i> View Full Storage Map
+    </a>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function findStorageItem() {
+    const storageId = document.getElementById('searchStorageId').value.trim();
+    const resultsDiv = document.getElementById('searchResults');
+
+    if (!storageId) {
+        resultsDiv.innerHTML = '<div class="alert alert-warning">Please enter a storage ID</div>';
+        return;
+    }
+
+    showLoading();
+
+    try {
+        const response = await fetch(`/api/storage/find?storage_id=${encodeURIComponent(storageId)}`);
+        const data = await response.json();
+
+        if (data.success && data.item) {
+            const item = data.item;
+            resultsDiv.innerHTML = `
+                <div class="alert alert-success">
+                    <h5><i class="fas fa-check-circle"></i> Item Found!</h5>
+                    <hr>
+                    <p><strong>Storage ID:</strong> <code>${item.storage_id}</code></p>
+                    <p><strong>Location:</strong> Bin ${item.bin_name}, Section ${item.section_name || 'N/A'}</p>
+                    <p><strong>Type:</strong> ${item.item_type || 'Not specified'}</p>
+                    <p><strong>Title:</strong> ${item.title || 'Untitled'}</p>
+                    ${item.notes ? `<p><strong>Notes:</strong> ${item.notes}</p>` : ''}
+                </div>
+            `;
+        } else {
+            resultsDiv.innerHTML = '<div class="alert alert-danger">Item not found. Check the ID and try again.</div>';
+        }
+    } catch (error) {
+        resultsDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    } finally {
+        hideLoading();
+    }
+}
+
+// Allow Enter key to search
+document.getElementById('searchStorageId').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        findStorageItem();
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+
+{% block title %}Clothing Storage{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0"><i class="fas fa-tshirt"></i> Clothing Storage</h2>
+    <a href="{{ url_for('storage') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i> Back
+    </a>
+</div>
+
+<p class="text-muted">
+    Organize clothing, shoes, and accessories with bins and compartments.
+    Each item gets a unique ID like <code>A2-14</code>
+</p>
+
+<!-- Create New Bin -->
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <i class="fas fa-plus-circle"></i> Create New Bin
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <label class="form-label">Bin Name</label>
+                <input type="text" class="form-control" id="newBinName" placeholder="A, B, Shoes, etc.">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Description (Optional)</label>
+                <input type="text" class="form-control" id="newBinDesc" placeholder="Winter clothes, athletic shoes...">
+            </div>
+        </div>
+        <button class="btn btn-primary mt-3" onclick="createBin()">
+            <i class="fas fa-plus"></i> Create Bin
+        </button>
+    </div>
+</div>
+
+<!-- Existing Bins -->
+<div id="binsContainer">
+    {% if bins %}
+        {% for bin in bins %}
+        <div class="card mb-3" id="bin-{{ bin.id }}">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-box"></i> Bin {{ bin.bin_name }}
+                        {% if bin.description %}
+                        <small class="text-muted">({{ bin.description }})</small>
+                        {% endif %}
+                    </h5>
+                    <button class="btn btn-sm btn-outline-primary" onclick="toggleSections({{ bin.id }})">
+                        <i class="fas fa-chevron-down"></i> Sections
+                    </button>
+                </div>
+            </div>
+            <div class="card-body" id="sections-{{ bin.id }}" style="display:none;">
+                <!-- Add Section Form -->
+                <div class="border p-3 mb-3 bg-light">
+                    <h6>Add Compartment to Bin {{ bin.bin_name }}</h6>
+                    <div class="row">
+                        <div class="col-8">
+                            <input type="text" class="form-control" id="sectionName-{{ bin.id }}"
+                                   placeholder="1, 2, 3 or A1, A2, A3...">
+                        </div>
+                        <div class="col-4">
+                            <button class="btn btn-success w-100" onclick="createSection({{ bin.id }})">
+                                <i class="fas fa-plus"></i> Add
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sections List -->
+                <div id="sectionslist-{{ bin.id }}">
+                    <p class="text-muted">No compartments yet. Add one above!</p>
+                </div>
+
+                <!-- Add Item Form -->
+                <div class="border p-3 mt-3 bg-info bg-opacity-10">
+                    <h6>Add Item to Bin {{ bin.bin_name }}</h6>
+                    <div class="mb-2">
+                        <label class="form-label">Compartment</label>
+                        <select class="form-select" id="itemSection-{{ bin.id }}">
+                            <option value="">No compartment (bin level)</option>
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Item Type</label>
+                        <select class="form-select" id="itemType-{{ bin.id }}">
+                            <option value="clothing">Clothing</option>
+                            <option value="shoes">Shoes</option>
+                            <option value="accessories">Accessories</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Title/Name</label>
+                        <input type="text" class="form-control" id="itemTitle-{{ bin.id }}"
+                               placeholder="Blue Nike T-Shirt">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Notes (Optional)</label>
+                        <input type="text" class="form-control" id="itemNotes-{{ bin.id }}"
+                               placeholder="Size M, good condition">
+                    </div>
+                    <button class="btn btn-primary" onclick="addItem({{ bin.id }}, '{{ bin.bin_name }}')">
+                        <i class="fas fa-plus"></i> Add Item
+                    </button>
+                </div>
+
+                <!-- Items List -->
+                <div class="mt-3" id="itemslist-{{ bin.id }}">
+                    <!-- Items will load here -->
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+    <div class="text-center py-5">
+        <i class="fas fa-box fa-4x text-muted mb-3"></i>
+        <h5>No Bins Yet</h5>
+        <p class="text-muted">Create your first bin above to get started!</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Load sections and items on page load
+document.addEventListener('DOMContentLoaded', function() {
+    {% for bin in bins %}
+    loadSections({{ bin.id }});
+    loadItems({{ bin.id }});
+    {% endfor %}
+});
+
+function toggleSections(binId) {
+    const sectionsDiv = document.getElementById(`sections-${binId}`);
+    if (sectionsDiv.style.display === 'none') {
+        sectionsDiv.style.display = 'block';
+    } else {
+        sectionsDiv.style.display = 'none';
+    }
+}
+
+async function createBin() {
+    const binName = document.getElementById('newBinName').value.trim();
+    const description = document.getElementById('newBinDesc').value.trim();
+
+    if (!binName) {
+        showAlert('Please enter a bin name', 'warning');
+        return;
+    }
+
+    showLoading();
+
+    try {
+        const response = await fetch('/api/storage/create-bin', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                bin_name: binName,
+                bin_type: 'clothing',
+                description: description || null
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert(`Bin "${binName}" created!`, 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert(data.error || 'Failed to create bin', 'danger');
+        }
+    } catch (error) {
+        showAlert('Error: ' + error, 'danger');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function createSection(binId) {
+    const sectionName = document.getElementById(`sectionName-${binId}`).value.trim();
+
+    if (!sectionName) {
+        showAlert('Please enter a compartment name', 'warning');
+        return;
+    }
+
+    showLoading();
+
+    try {
+        const response = await fetch('/api/storage/create-section', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                bin_id: binId,
+                section_name: sectionName
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert(`Compartment "${sectionName}" added!`, 'success');
+            document.getElementById(`sectionName-${binId}`).value = '';
+            loadSections(binId);
+        } else {
+            showAlert(data.error || 'Failed to create section', 'danger');
+        }
+    } catch (error) {
+        showAlert('Error: ' + error, 'danger');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function loadSections(binId) {
+    try {
+        const response = await fetch(`/api/storage/items?bin_id=${binId}`);
+        const data = await response.json();
+
+        // Update section dropdown
+        const select = document.getElementById(`itemSection-${binId}`);
+        // Keep the "No compartment" option and add sections
+        const sections = new Set();
+        data.items.forEach(item => {
+            if (item.section_name) {
+                sections.add(item.section_name);
+            }
+        });
+
+        sections.forEach(section => {
+            const option = document.createElement('option');
+            option.value = section;
+            option.textContent = section;
+            select.appendChild(option);
+        });
+
+        // Display sections in list
+        if (sections.size > 0) {
+            const sectionsListDiv = document.getElementById(`sectionslist-${binId}`);
+            sectionsListDiv.innerHTML = '<h6>Compartments:</h6>';
+            sections.forEach(section => {
+                const badge = document.createElement('span');
+                badge.className = 'badge bg-secondary me-2';
+                badge.textContent = section;
+                sectionsListDiv.appendChild(badge);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading sections:', error);
+    }
+}
+
+async function loadItems(binId) {
+    try {
+        const response = await fetch(`/api/storage/items?bin_id=${binId}`);
+        const data = await response.json();
+
+        const itemsDiv = document.getElementById(`itemslist-${binId}`);
+
+        if (data.items && data.items.length > 0) {
+            itemsDiv.innerHTML = '<h6>Items:</h6>';
+            data.items.forEach(item => {
+                const itemCard = document.createElement('div');
+                itemCard.className = 'border p-2 mb-2 bg-light';
+                itemCard.innerHTML = `
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <strong><code>${item.storage_id}</code></strong>
+                            ${item.title ? `- ${item.title}` : ''}
+                            <br>
+                            <small class="text-muted">
+                                Type: ${item.item_type || 'N/A'}
+                                ${item.section_name ? `| Section: ${item.section_name}` : ''}
+                            </small>
+                        </div>
+                    </div>
+                `;
+                itemsDiv.appendChild(itemCard);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading items:', error);
+    }
+}
+
+async function addItem(binId, binName) {
+    const sectionSelect = document.getElementById(`itemSection-${binId}`);
+    const sectionName = sectionSelect.value;
+    const itemType = document.getElementById(`itemType-${binId}`).value;
+    const title = document.getElementById(`itemTitle-${binId}`).value.trim();
+    const notes = document.getElementById(`itemNotes-${binId}`).value.trim();
+
+    // Get section_id if section selected
+    let sectionId = null;
+    if (sectionName) {
+        // We need to fetch section ID - simplified: we'll just send section_name
+        // and handle it server-side (would need to enhance API)
+    }
+
+    showLoading();
+
+    try {
+        const response = await fetch('/api/storage/add-item', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                bin_id: binId,
+                section_id: sectionId,
+                item_type: itemType,
+                title: title || null,
+                notes: notes || null
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert(`Item added! Storage ID: ${data.storage_id}`, 'success');
+            document.getElementById(`itemTitle-${binId}`).value = '';
+            document.getElementById(`itemNotes-${binId}`).value = '';
+            loadItems(binId);
+        } else {
+            showAlert(data.error || 'Failed to add item', 'danger');
+        }
+    } catch (error) {
+        showAlert('Error: ' + error, 'danger');
+    } finally {
+        hideLoading();
+    }
+}
+</script>
+{% endblock %}

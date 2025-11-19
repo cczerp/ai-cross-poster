@@ -1,0 +1,393 @@
+{% extends "base.html" %}
+
+{% block title %}Card Storage{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0"><i class="fas fa-id-card"></i> Card Storage</h2>
+    <a href="{{ url_for('storage') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i> Back
+    </a>
+</div>
+
+<p class="text-muted">
+    Organize trading cards with sections (A1, A2, A3...).
+    Each card gets a unique ID like <code>FB-A1-12</code> (Football, Bin A, Section 1, Card #12)
+</p>
+
+<!-- Card Categories Reference -->
+<div class="card mb-4">
+    <div class="card-header bg-info text-white">
+        <i class="fas fa-info-circle"></i> Card Categories
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-6 col-md-3">
+                <small><strong>FB</strong> - Football</small><br>
+                <small><strong>BB</strong> - Basketball</small><br>
+                <small><strong>BSB</strong> - Baseball</small><br>
+            </div>
+            <div class="col-6 col-md-3">
+                <small><strong>PKMN</strong> - Pokemon</small><br>
+                <small><strong>MTG</strong> - Magic</small><br>
+                <small><strong>YGO</strong> - Yu-Gi-Oh</small><br>
+            </div>
+            <div class="col-6 col-md-3">
+                <small><strong>NHL</strong> - Hockey</small><br>
+                <small><strong>SOC</strong> - Soccer</small><br>
+                <small><strong>WWE</strong> - Wrestling</small><br>
+            </div>
+            <div class="col-6 col-md-3">
+                <small><strong>MRV</strong> - Marvel</small><br>
+                <small><strong>SW</strong> - Star Wars</small><br>
+                <small><strong>OTH</strong> - Other</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create New Bin -->
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <i class="fas fa-plus-circle"></i> Create New Bin
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <label class="form-label">Bin Name</label>
+                <input type="text" class="form-control" id="newBinName" placeholder="B, C, D, etc.">
+                <small class="text-muted">Bin A already created by default</small>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Description (Optional)</label>
+                <input type="text" class="form-control" id="newBinDesc" placeholder="Football cards, Pokemon...">
+            </div>
+        </div>
+        <button class="btn btn-primary mt-3" onclick="createBin()">
+            <i class="fas fa-plus"></i> Create Bin
+        </button>
+    </div>
+</div>
+
+<!-- Existing Bins -->
+<div id="binsContainer">
+    {% if bins %}
+        {% for bin in bins %}
+        <div class="card mb-3" id="bin-{{ bin.id }}">
+            <div class="card-header bg-success text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-box"></i> Bin {{ bin.bin_name }}
+                        {% if bin.description %}
+                        <small>({{ bin.description }})</small>
+                        {% endif %}
+                    </h5>
+                    <button class="btn btn-sm btn-light" onclick="toggleSections({{ bin.id }})">
+                        <i class="fas fa-chevron-down"></i> Sections
+                    </button>
+                </div>
+            </div>
+            <div class="card-body" id="sections-{{ bin.id }}" style="display:none;">
+                <!-- Add Section Form -->
+                <div class="border p-3 mb-3 bg-light">
+                    <h6>Add Section to Bin {{ bin.bin_name }}</h6>
+                    <div class="row">
+                        <div class="col-8">
+                            <input type="text" class="form-control" id="sectionName-{{ bin.id }}"
+                                   placeholder="A1, A2, A3... or 1, 2, 3...">
+                        </div>
+                        <div class="col-4">
+                            <button class="btn btn-success w-100" onclick="createSection({{ bin.id }})">
+                                <i class="fas fa-plus"></i> Add
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sections List -->
+                <div id="sectionslist-{{ bin.id }}">
+                    <p class="text-muted">No sections yet. Add one above!</p>
+                </div>
+
+                <!-- Add Card Form -->
+                <div class="border p-3 mt-3 bg-success bg-opacity-10">
+                    <h6>Add Card to Bin {{ bin.bin_name }}</h6>
+                    <div class="mb-2">
+                        <label class="form-label">Section</label>
+                        <select class="form-select" id="cardSection-{{ bin.id }}" required>
+                            <option value="">Select section</option>
+                        </select>
+                        <small class="text-muted">Create sections above first</small>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Category</label>
+                        <select class="form-select" id="cardCategory-{{ bin.id }}">
+                            <option value="FB">FB - Football</option>
+                            <option value="BB">BB - Basketball</option>
+                            <option value="BSB">BSB - Baseball</option>
+                            <option value="NHL">NHL - Hockey</option>
+                            <option value="SOC">SOC - Soccer</option>
+                            <option value="PKMN">PKMN - Pokemon</option>
+                            <option value="MTG">MTG - Magic</option>
+                            <option value="YGO">YGO - Yu-Gi-Oh</option>
+                            <option value="WWE">WWE - Wrestling</option>
+                            <option value="MRV">MRV - Marvel</option>
+                            <option value="SW">SW - Star Wars</option>
+                            <option value="OTH">OTH - Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Title/Name (Optional)</label>
+                        <input type="text" class="form-control" id="cardTitle-{{ bin.id }}"
+                               placeholder="Patrick Mahomes Rookie">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Notes (Optional)</label>
+                        <input type="text" class="form-control" id="cardNotes-{{ bin.id }}"
+                               placeholder="PSA 9, holographic...">
+                    </div>
+                    <button class="btn btn-success" onclick="addCard({{ bin.id }}, '{{ bin.bin_name }}')">
+                        <i class="fas fa-plus"></i> Add Card
+                    </button>
+                </div>
+
+                <!-- Cards List -->
+                <div class="mt-3" id="cardslist-{{ bin.id }}">
+                    <!-- Cards will load here -->
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+    <div class="text-center py-5">
+        <i class="fas fa-id-card fa-4x text-muted mb-3"></i>
+        <h5>No Bins Yet</h5>
+        <p class="text-muted">Default Bin A will be created automatically</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Load sections and cards on page load
+document.addEventListener('DOMContentLoaded', function() {
+    {% for bin in bins %}
+    loadSections({{ bin.id }});
+    loadCards({{ bin.id }});
+    {% endfor %}
+});
+
+function toggleSections(binId) {
+    const sectionsDiv = document.getElementById(`sections-${binId}`);
+    if (sectionsDiv.style.display === 'none') {
+        sectionsDiv.style.display = 'block';
+    } else {
+        sectionsDiv.style.display = 'none';
+    }
+}
+
+async function createBin() {
+    const binName = document.getElementById('newBinName').value.trim();
+    const description = document.getElementById('newBinDesc').value.trim();
+
+    if (!binName) {
+        showAlert('Please enter a bin name', 'warning');
+        return;
+    }
+
+    showLoading();
+
+    try {
+        const response = await fetch('/api/storage/create-bin', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                bin_name: binName,
+                bin_type: 'cards',
+                description: description || null
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert(`Bin "${binName}" created!`, 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert(data.error || 'Failed to create bin', 'danger');
+        }
+    } catch (error) {
+        showAlert('Error: ' + error, 'danger');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function createSection(binId) {
+    const sectionName = document.getElementById(`sectionName-${binId}`).value.trim();
+
+    if (!sectionName) {
+        showAlert('Please enter a section name', 'warning');
+        return;
+    }
+
+    showLoading();
+
+    try {
+        const response = await fetch('/api/storage/create-section', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                bin_id: binId,
+                section_name: sectionName
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert(`Section "${sectionName}" added!`, 'success');
+            document.getElementById(`sectionName-${binId}`).value = '';
+            loadSections(binId);
+        } else {
+            showAlert(data.error || 'Failed to create section', 'danger');
+        }
+    } catch (error) {
+        showAlert('Error: ' + error, 'danger');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function loadSections(binId) {
+    try {
+        const response = await fetch(`/api/storage/items?bin_id=${binId}`);
+        const data = await response.json();
+
+        // Update section dropdown
+        const select = document.getElementById(`cardSection-${binId}`);
+        // Clear existing options except first
+        select.innerHTML = '<option value="">Select section</option>';
+
+        const sections = new Set();
+        data.items.forEach(item => {
+            if (item.section_name) {
+                sections.add(item.section_name);
+            }
+        });
+
+        sections.forEach(section => {
+            const option = document.createElement('option');
+            option.value = section;
+            option.textContent = section;
+            select.appendChild(option);
+        });
+
+        // Display sections in list
+        if (sections.size > 0) {
+            const sectionsListDiv = document.getElementById(`sectionslist-${binId}`);
+            sectionsListDiv.innerHTML = '<h6>Sections:</h6>';
+            sections.forEach(section => {
+                const badge = document.createElement('span');
+                badge.className = 'badge bg-success me-2';
+                badge.textContent = section;
+                sectionsListDiv.appendChild(badge);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading sections:', error);
+    }
+}
+
+async function loadCards(binId) {
+    try {
+        const response = await fetch(`/api/storage/items?bin_id=${binId}`);
+        const data = await response.json();
+
+        const cardsDiv = document.getElementById(`cardslist-${binId}`);
+
+        if (data.items && data.items.length > 0) {
+            cardsDiv.innerHTML = '<h6>Cards:</h6>';
+            // Group by category
+            const byCategory = {};
+            data.items.forEach(item => {
+                const cat = item.category || 'OTH';
+                if (!byCategory[cat]) byCategory[cat] = [];
+                byCategory[cat].push(item);
+            });
+
+            Object.keys(byCategory).sort().forEach(category => {
+                const categoryDiv = document.createElement('div');
+                categoryDiv.className = 'mb-3';
+                categoryDiv.innerHTML = `<strong class="text-success">${category}:</strong>`;
+
+                byCategory[category].forEach(card => {
+                    const cardItem = document.createElement('div');
+                    cardItem.className = 'border p-2 mb-1 bg-light ms-3';
+                    cardItem.innerHTML = `
+                        <strong><code>${card.storage_id}</code></strong>
+                        ${card.title ? `- ${card.title}` : ''}
+                        <br>
+                        <small class="text-muted">
+                            Section: ${card.section_name || 'N/A'}
+                            ${card.notes ? `| ${card.notes}` : ''}
+                        </small>
+                    `;
+                    categoryDiv.appendChild(cardItem);
+                });
+
+                cardsDiv.appendChild(categoryDiv);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading cards:', error);
+    }
+}
+
+async function addCard(binId, binName) {
+    const sectionSelect = document.getElementById(`cardSection-${binId}`);
+    const sectionName = sectionSelect.value;
+    const category = document.getElementById(`cardCategory-${binId}`).value;
+    const title = document.getElementById(`cardTitle-${binId}`).value.trim();
+    const notes = document.getElementById(`cardNotes-${binId}`).value.trim();
+
+    if (!sectionName) {
+        showAlert('Please select a section', 'warning');
+        return;
+    }
+
+    showLoading();
+
+    try {
+        const response = await fetch('/api/storage/add-item', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                bin_id: binId,
+                section_id: null, // Simplified - server will handle
+                item_type: 'card',
+                category: category,
+                title: title || null,
+                notes: notes || null
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert(`Card added! Storage ID: ${data.storage_id}`, 'success');
+            document.getElementById(`cardTitle-${binId}`).value = '';
+            document.getElementById(`cardNotes-${binId}`).value = '';
+            loadCards(binId);
+        } else {
+            showAlert(data.error || 'Failed to add card', 'danger');
+        }
+    } catch (error) {
+        showAlert('Error: ' + error, 'danger');
+    } finally {
+        hideLoading();
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}Storage Map{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0"><i class="fas fa-map"></i> Storage Map</h2>
+    <a href="{{ url_for('storage') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i> Back
+    </a>
+</div>
+
+<p class="text-muted">
+    Visual overview of all your storage bins, sections, and item counts.
+</p>
+
+<!-- Overall Stats -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h2 class="text-primary">{{ storage_map.total_items }}</h2>
+                <small class="text-muted">Total Items</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h2 class="text-success">{{ storage_map.clothing_bins|length }}</h2>
+                <small class="text-muted">Clothing Bins</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h2 class="text-info">{{ storage_map.card_bins|length }}</h2>
+                <small class="text-muted">Card Bins</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Clothing Storage -->
+{% if storage_map.clothing_bins %}
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0"><i class="fas fa-tshirt"></i> Clothing Storage</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            {% for bin in storage_map.clothing_bins %}
+            <div class="col-md-6 mb-3">
+                <div class="border p-3 rounded">
+                    <h6 class="text-primary">
+                        <i class="fas fa-box"></i> Bin {{ bin.bin_name }}
+                        {% if bin.description %}
+                        <small class="text-muted">({{ bin.description }})</small>
+                        {% endif %}
+                    </h6>
+                    <p class="mb-2">
+                        <strong>{{ bin.total_items }}</strong> items
+                        {% if bin.sections %}
+                        in <strong>{{ bin.sections|length }}</strong> compartments
+                        {% endif %}
+                    </p>
+
+                    {% if bin.sections %}
+                    <div class="bg-light p-2 rounded">
+                        <small class="text-muted">Compartments:</small><br>
+                        {% for section in bin.sections %}
+                        <span class="badge bg-secondary me-1 mb-1">
+                            {{ section.section_name }} ({{ section.item_count }} items)
+                        </span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <a href="{{ url_for('storage_clothing') }}" class="btn btn-sm btn-outline-primary mt-2">
+                        <i class="fas fa-arrow-right"></i> Manage
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Card Storage -->
+{% if storage_map.card_bins %}
+<div class="card mb-4">
+    <div class="card-header bg-success text-white">
+        <h5 class="mb-0"><i class="fas fa-id-card"></i> Card Storage</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            {% for bin in storage_map.card_bins %}
+            <div class="col-md-6 mb-3">
+                <div class="border p-3 rounded">
+                    <h6 class="text-success">
+                        <i class="fas fa-box"></i> Bin {{ bin.bin_name }}
+                        {% if bin.description %}
+                        <small class="text-muted">({{ bin.description }})</small>
+                        {% endif %}
+                    </h6>
+                    <p class="mb-2">
+                        <strong>{{ bin.total_items }}</strong> cards
+                        {% if bin.sections %}
+                        in <strong>{{ bin.sections|length }}</strong> sections
+                        {% endif %}
+                    </p>
+
+                    {% if bin.sections %}
+                    <div class="bg-light p-2 rounded">
+                        <small class="text-muted">Sections:</small><br>
+                        {% for section in bin.sections %}
+                        <span class="badge bg-success me-1 mb-1">
+                            {{ section.section_name }} ({{ section.item_count }} cards)
+                        </span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <a href="{{ url_for('storage_cards') }}" class="btn btn-sm btn-outline-success mt-2">
+                        <i class="fas fa-arrow-right"></i> Manage
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- No Storage Yet -->
+{% if not storage_map.clothing_bins and not storage_map.card_bins %}
+<div class="text-center py-5">
+    <i class="fas fa-map fa-4x text-muted mb-3"></i>
+    <h5>No Storage Created Yet</h5>
+    <p class="text-muted">Create bins to organize your items!</p>
+    <div class="d-flex gap-2 justify-content-center mt-3">
+        <a href="{{ url_for('storage_clothing') }}" class="btn btn-primary">
+            <i class="fas fa-tshirt"></i> Start Clothing Storage
+        </a>
+        <a href="{{ url_for('storage_cards') }}" class="btn btn-success">
+            <i class="fas fa-id-card"></i> Start Card Storage
+        </a>
+    </div>
+</div>
+{% endif %}
+
+<!-- Quick Find -->
+<div class="card mt-4">
+    <div class="card-header">
+        <i class="fas fa-search"></i> Quick Find
+    </div>
+    <div class="card-body">
+        <div class="input-group">
+            <input type="text" class="form-control" id="quickSearch"
+                   placeholder="Enter storage ID to find item location"
+                   autocomplete="off">
+            <button class="btn btn-primary" onclick="quickFind()">
+                <i class="fas fa-search"></i> Find
+            </button>
+        </div>
+        <div id="quickResults" class="mt-3"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function quickFind() {
+    const storageId = document.getElementById('quickSearch').value.trim();
+    const resultsDiv = document.getElementById('quickResults');
+
+    if (!storageId) {
+        resultsDiv.innerHTML = '<div class="alert alert-warning">Please enter a storage ID</div>';
+        return;
+    }
+
+    showLoading();
+
+    try {
+        const response = await fetch(`/api/storage/find?storage_id=${encodeURIComponent(storageId)}`);
+        const data = await response.json();
+
+        if (data.success && data.item) {
+            const item = data.item;
+            resultsDiv.innerHTML = `
+                <div class="alert alert-success">
+                    <h5><i class="fas fa-check-circle"></i> Found!</h5>
+                    <hr>
+                    <p><strong>Storage ID:</strong> <code>${item.storage_id}</code></p>
+                    <p><strong>Location:</strong> Bin ${item.bin_name}${item.section_name ? `, Section ${item.section_name}` : ''}</p>
+                    <p><strong>Type:</strong> ${item.bin_type === 'cards' ? 'Card' : 'Clothing'}</p>
+                    ${item.title ? `<p><strong>Title:</strong> ${item.title}</p>` : ''}
+                    ${item.category ? `<p><strong>Category:</strong> ${item.category}</p>` : ''}
+                    ${item.notes ? `<p><strong>Notes:</strong> ${item.notes}</p>` : ''}
+                </div>
+            `;
+        } else {
+            resultsDiv.innerHTML = '<div class="alert alert-danger">Item not found. Check the ID and try again.</div>';
+        }
+    } catch (error) {
+        resultsDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    } finally {
+        hideLoading();
+    }
+}
+
+// Allow Enter key to search
+document.getElementById('quickSearch').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        quickFind();
+    }
+});
+</script>
+{% endblock %}

@@ -19,7 +19,7 @@ import uuid
 import json
 from datetime import datetime
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, send_file
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -366,7 +366,8 @@ def index():
 def create_listing():
     """Create new listing page - accessible to guests for AI demo"""
     is_guest = not current_user.is_authenticated
-    return render_template('create.html', is_guest=is_guest)
+    draft_id = request.args.get('draft_id', type=int)
+    return render_template('create.html', is_guest=is_guest, draft_id=draft_id)
 
 
 @app.route('/drafts')
@@ -663,61 +664,163 @@ def analyze_photos():
 @app.route('/api/save-draft', methods=['POST'])
 @login_required
 def save_draft():
-    """Save listing as draft"""
+    """Save listing as draft or post as active (create or update)"""
     data = request.json
-    photo_paths = session.get('photo_paths', [])
+    draft_id = data.get('draft_id')
+    listing_uuid = data.get('listing_uuid')
+    status = data.get('status', 'draft')  # 'draft' or 'active'
 
-    if not photo_paths:
-        return jsonify({'error': 'No photos uploaded'}), 400
+    # Get photos from session or use existing ones
+    new_photo_paths = session.get('photo_paths', [])
 
     try:
-        listing_uuid = str(uuid.uuid4())
+        import shutil
 
-        # Copy photos to permanent storage
-        draft_photos_dir = Path("data/draft_photos") / listing_uuid
-        draft_photos_dir.mkdir(parents=True, exist_ok=True)
+        # EDITING EXISTING DRAFT
+        if draft_id and listing_uuid:
+            # Get existing listing
+            listing = db.get_listing(draft_id)
+            if not listing:
+                return jsonify({'error': 'Listing not found'}), 404
 
-        permanent_photo_paths = []
-        for i, photo_path in enumerate(photo_paths):
-            ext = Path(photo_path).suffix
-            new_filename = f"photo_{i:02d}{ext}"
-            permanent_path = draft_photos_dir / new_filename
+            # Verify ownership
+            if listing.get('user_id') != current_user.id:
+                return jsonify({'error': 'Unauthorized'}), 403
 
-            # Copy file
-            import shutil
-            shutil.copy2(photo_path, permanent_path)
-            permanent_photo_paths.append(str(permanent_path))
+            # Get existing photos
+            existing_photos = []
+            if listing.get('photos'):
+                try:
+                    existing_photos = json.loads(listing['photos']) if isinstance(listing['photos'], str) else listing['photos']
+                except:
+                    existing_photos = []
 
-        # Save to database
-        listing_id = db.create_listing(
-            listing_uuid=listing_uuid,
-            title=data.get('title', 'Untitled'),
-            description=data.get('description', ''),
-            price=float(data.get('price', 0)),
-            condition=data.get('condition', 'good'),
-            photos=permanent_photo_paths,
-            user_id=current_user.id,  # Add user_id
-            cost=float(data.get('cost')) if data.get('cost') else None,
-            item_type=data.get('item_type', 'general'),
-            quantity=int(data.get('quantity', 1)),
-            storage_location=data.get('storage_location'),
-            sku=data.get('sku'),
-            upc=data.get('upc'),
-            attributes={
-                'brand': data.get('brand'),
-                'size': data.get('size'),
-                'color': data.get('color'),
-                'shipping_cost': float(data.get('shipping_cost', 0)),
-            }
-        )
+            # Handle photos
+            draft_photos_dir = Path("data/draft_photos") / listing_uuid
+            draft_photos_dir.mkdir(parents=True, exist_ok=True)
 
-        # Clear session
-        session.pop('photo_paths', None)
+            # If new photos were uploaded, append them to existing ones
+            if new_photo_paths:
+                permanent_photo_paths = existing_photos.copy()
+                start_index = len(existing_photos)
 
-        return jsonify({
-            'success': True,
-            'listing_id': listing_id
-        })
+                for i, photo_path in enumerate(new_photo_paths):
+                    ext = Path(photo_path).suffix
+                    new_filename = f"photo_{start_index + i:02d}{ext}"
+                    permanent_path = draft_photos_dir / new_filename
+
+                    shutil.copy2(photo_path, permanent_path)
+                    permanent_photo_paths.append(str(permanent_path))
+
+                # Clear session
+                session.pop('photo_paths', None)
+            else:
+                # No new photos, keep existing ones
+                permanent_photo_paths = existing_photos
+
+            # Update listing in database
+            cursor = db.conn.cursor()
+            cursor.execute("""
+                UPDATE listings SET
+                    title = ?,
+                    description = ?,
+                    price = ?,
+                    cost = ?,
+                    condition = ?,
+                    item_type = ?,
+                    quantity = ?,
+                    storage_location = ?,
+                    sku = ?,
+                    upc = ?,
+                    photos = ?,
+                    attributes = ?,
+                    status = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND user_id = ?
+            """, (
+                data.get('title', 'Untitled'),
+                data.get('description', ''),
+                float(data.get('price', 0)),
+                float(data.get('cost')) if data.get('cost') else None,
+                data.get('condition', 'good'),
+                data.get('item_type', 'general'),
+                int(data.get('quantity', 1)),
+                data.get('storage_location'),
+                data.get('sku'),
+                data.get('upc'),
+                json.dumps(permanent_photo_paths),
+                json.dumps({
+                    'brand': data.get('brand'),
+                    'size': data.get('size'),
+                    'color': data.get('color'),
+                    'shipping_cost': float(data.get('shipping_cost', 0)),
+                }),
+                status,
+                draft_id,
+                current_user.id
+            ))
+            db.conn.commit()
+
+            msg = 'Listing posted successfully' if status == 'active' else 'Listing updated successfully'
+            return jsonify({
+                'success': True,
+                'listing_id': draft_id,
+                'message': msg
+            })
+
+        # CREATING NEW DRAFT
+        else:
+            if not new_photo_paths:
+                return jsonify({'error': 'No photos uploaded'}), 400
+
+            listing_uuid = str(uuid.uuid4())
+
+            # Copy photos to permanent storage
+            draft_photos_dir = Path("data/draft_photos") / listing_uuid
+            draft_photos_dir.mkdir(parents=True, exist_ok=True)
+
+            permanent_photo_paths = []
+            for i, photo_path in enumerate(new_photo_paths):
+                ext = Path(photo_path).suffix
+                new_filename = f"photo_{i:02d}{ext}"
+                permanent_path = draft_photos_dir / new_filename
+
+                shutil.copy2(photo_path, permanent_path)
+                permanent_photo_paths.append(str(permanent_path))
+
+            # Save to database
+            listing_id = db.create_listing(
+                listing_uuid=listing_uuid,
+                title=data.get('title', 'Untitled'),
+                description=data.get('description', ''),
+                price=float(data.get('price', 0)),
+                condition=data.get('condition', 'good'),
+                photos=permanent_photo_paths,
+                user_id=current_user.id,
+                cost=float(data.get('cost')) if data.get('cost') else None,
+                item_type=data.get('item_type', 'general'),
+                quantity=int(data.get('quantity', 1)),
+                storage_location=data.get('storage_location'),
+                sku=data.get('sku'),
+                upc=data.get('upc'),
+                status=status,  # Use status parameter
+                attributes={
+                    'brand': data.get('brand'),
+                    'size': data.get('size'),
+                    'color': data.get('color'),
+                    'shipping_cost': float(data.get('shipping_cost', 0)),
+                }
+            )
+
+            # Clear session
+            session.pop('photo_paths', None)
+
+            msg = 'Listing posted successfully' if status == 'active' else 'Listing created successfully'
+            return jsonify({
+                'success': True,
+                'listing_id': listing_id,
+                'message': msg
+            })
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -737,7 +840,7 @@ def export_csv():
         # Header
         writer.writerow(['ID', 'Title', 'Description', 'Price', 'Cost', 'Condition',
                         'Brand', 'Size', 'Color', 'Storage Location', 'Quantity',
-                        'Shipping Cost', 'Created'])
+                        'Shipping Cost', 'Photo Paths', 'Created'])
 
         # Data
         for draft in drafts:
@@ -748,6 +851,17 @@ def export_csv():
                     attrs = json.loads(draft['attributes'])
                 except:
                     pass
+
+            # Parse photos
+            photos = []
+            if draft.get('photos'):
+                try:
+                    photos = json.loads(draft['photos']) if isinstance(draft['photos'], str) else draft['photos']
+                except:
+                    photos = []
+
+            # Join photo paths with semicolon
+            photo_paths_str = ';'.join(photos) if photos else ''
 
             writer.writerow([
                 draft['id'],
@@ -762,6 +876,7 @@ def export_csv():
                 draft.get('storage_location', ''),
                 draft.get('quantity', 1),
                 attrs.get('shipping_cost', ''),
+                photo_paths_str,
                 draft['created_at']
             ])
 
@@ -869,6 +984,112 @@ def mark_sold():
             'storage_location': listing.get('storage_location'),
             'remaining_quantity': remaining_quantity
         })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/get-draft/<int:listing_id>', methods=['GET'])
+@login_required
+def get_draft(listing_id):
+    """Get a draft for editing"""
+    try:
+        listing = db.get_listing(listing_id)
+
+        if not listing:
+            return jsonify({'error': 'Listing not found'}), 404
+
+        # Verify ownership
+        if listing.get('user_id') != current_user.id:
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        # Parse photos and attributes
+        photos = []
+        if listing.get('photos'):
+            try:
+                photos = json.loads(listing['photos']) if isinstance(listing['photos'], str) else listing['photos']
+            except:
+                photos = []
+
+        attributes = {}
+        if listing.get('attributes'):
+            try:
+                attributes = json.loads(listing['attributes']) if isinstance(listing['attributes'], str) else listing['attributes']
+            except:
+                attributes = {}
+
+        # Return draft data
+        return jsonify({
+            'success': True,
+            'listing': {
+                'id': listing['id'],
+                'listing_uuid': listing.get('listing_uuid'),
+                'title': listing.get('title', ''),
+                'description': listing.get('description', ''),
+                'price': listing.get('price', 0),
+                'cost': listing.get('cost'),
+                'condition': listing.get('condition', 'good'),
+                'item_type': listing.get('item_type', 'general'),
+                'quantity': listing.get('quantity', 1),
+                'storage_location': listing.get('storage_location', ''),
+                'sku': listing.get('sku', ''),
+                'upc': listing.get('upc', ''),
+                'photos': photos,
+                'brand': attributes.get('brand', ''),
+                'size': attributes.get('size', ''),
+                'color': attributes.get('color', ''),
+                'shipping_cost': attributes.get('shipping_cost', 0)
+            }
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/data/draft_photos/<path:filepath>')
+@login_required
+def serve_draft_photo(filepath):
+    """Serve draft photos"""
+    try:
+        photo_path = Path('data/draft_photos') / filepath
+
+        # Security check - ensure path doesn't escape draft_photos directory
+        if not photo_path.resolve().is_relative_to(Path('data/draft_photos').resolve()):
+            return jsonify({'error': 'Invalid path'}), 403
+
+        if not photo_path.exists():
+            return jsonify({'error': 'Photo not found'}), 404
+
+        return send_file(photo_path)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/post-draft/<int:listing_id>', methods=['POST'])
+@login_required
+def post_draft(listing_id):
+    """Post a draft (make it active)"""
+    try:
+        listing = db.get_listing(listing_id)
+
+        if not listing:
+            return jsonify({'error': 'Listing not found'}), 404
+
+        # Verify ownership
+        if listing.get('user_id') != current_user.id:
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        # Update status to active
+        cursor = db.conn.cursor()
+        cursor.execute("""
+            UPDATE listings
+            SET status = 'active',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND user_id = ?
+        """, (listing_id, current_user.id))
+        db.conn.commit()
+
+        return jsonify({'success': True})
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500

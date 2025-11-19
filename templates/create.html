@@ -166,11 +166,14 @@
             You can test the AI photo analysis above without signing up!
         </small>
         {% else %}
-        <button type="button" class="btn btn-primary btn-lg" id="saveDraftBtn">
-            <i class="fas fa-save"></i> Save Listing
+        <button type="button" class="btn btn-success btn-lg" id="postNowBtn">
+            <i class="fas fa-rocket"></i> Post Now (Make Active)
+        </button>
+        <button type="button" class="btn btn-outline-primary btn-lg" id="saveDraftBtn">
+            <i class="fas fa-save"></i> Save as Draft
         </button>
         <small class="text-muted text-center mt-2">
-            Listing will be saved. You can manually post to any platform you want!
+            <strong>Post Now</strong> makes it active for selling. <strong>Save as Draft</strong> saves it for later.
         </small>
         {% endif %}
     </div>
@@ -180,6 +183,8 @@
 {% block extra_js %}
 <script>
 let uploadedPhotos = [];
+let editingDraftId = {{ draft_id if draft_id else 'null' }};
+let editingListingUuid = null;
 
 // Generic photo handling function for both camera and file upload
 async function handlePhotoSelect(e) {
@@ -256,6 +261,39 @@ document.getElementById('analyzeBtn').addEventListener('click', async function()
                 document.getElementById('condition').value = condition;
             }
 
+            // Check for collectible items
+            if (analysis.collectible) {
+                const confidence = analysis.collectible_confidence || 0;
+                const indicators = analysis.collectible_indicators || [];
+                const franchise = analysis.franchise || '';
+
+                let collectibleMsg = `🎯 <strong>COLLECTIBLE DETECTED!</strong><br>`;
+                collectibleMsg += `Confidence: ${(confidence * 100).toFixed(0)}%<br>`;
+
+                if (franchise) {
+                    collectibleMsg += `Franchise: ${franchise}<br>`;
+                }
+
+                if (indicators.length > 0) {
+                    collectibleMsg += `Indicators: ${indicators.join(', ')}`;
+                }
+
+                // Create custom alert div
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-warning alert-dismissible fade show mt-3';
+                alertDiv.style.cssText = 'position: sticky; top: 10px; z-index: 1000; border: 3px solid #ff6b6b;';
+                alertDiv.innerHTML = `
+                    ${collectibleMsg}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+
+                // Insert after form
+                document.getElementById('listingForm').insertAdjacentElement('beforebegin', alertDiv);
+
+                // Auto-set item type to collectible
+                document.getElementById('item_type').value = 'collectible';
+            }
+
             showAlert('AI analysis complete!', 'success');
         } else {
             showAlert(data.error, 'warning');
@@ -267,14 +305,15 @@ document.getElementById('analyzeBtn').addEventListener('click', async function()
     }
 });
 
-// Save Listing
-document.getElementById('saveDraftBtn').addEventListener('click', async function() {
+// Save Listing (common function)
+async function saveListing(status = 'draft') {
     if (uploadedPhotos.length === 0) {
         showAlert('Please upload photos first!', 'warning');
         return;
     }
 
     const formData = collectFormData();
+    formData.status = status;
     showLoading();
 
     try {
@@ -287,8 +326,10 @@ document.getElementById('saveDraftBtn').addEventListener('click', async function
         const data = await response.json();
 
         if (data.success) {
-            showAlert('Listing saved successfully!', 'success');
-            setTimeout(() => window.location.href = '/drafts', 1500);
+            const msg = status === 'active' ? 'Listing posted successfully!' : 'Listing saved as draft!';
+            const redirect = status === 'active' ? '/listings' : '/drafts';
+            showAlert(msg, 'success');
+            setTimeout(() => window.location.href = redirect, 1500);
         } else {
             showAlert(data.error, 'danger');
         }
@@ -297,10 +338,20 @@ document.getElementById('saveDraftBtn').addEventListener('click', async function
     } finally {
         hideLoading();
     }
+}
+
+// Save as Draft button
+document.getElementById('saveDraftBtn').addEventListener('click', async function() {
+    await saveListing('draft');
+});
+
+// Post Now button
+document.getElementById('postNowBtn').addEventListener('click', async function() {
+    await saveListing('active');
 });
 
 function collectFormData() {
-    return {
+    const data = {
         title: document.getElementById('title').value,
         description: document.getElementById('description').value,
         price: document.getElementById('price').value,
@@ -316,6 +367,83 @@ function collectFormData() {
         sku: document.getElementById('sku').value,
         upc: document.getElementById('upc').value
     };
+
+    // Include draft_id if editing
+    if (editingDraftId) {
+        data.draft_id = editingDraftId;
+        data.listing_uuid = editingListingUuid;
+    }
+
+    return data;
+}
+
+// Load draft data for editing
+async function loadDraftData() {
+    if (!editingDraftId) return;
+
+    showLoading();
+
+    try {
+        const response = await fetch(`/api/get-draft/${editingDraftId}`);
+        const data = await response.json();
+
+        if (data.success) {
+            const listing = data.listing;
+            editingListingUuid = listing.listing_uuid;
+
+            // Populate form fields
+            document.getElementById('title').value = listing.title || '';
+            document.getElementById('description').value = listing.description || '';
+            document.getElementById('price').value = listing.price || '';
+            document.getElementById('cost').value = listing.cost || '';
+            document.getElementById('condition').value = listing.condition || 'good';
+            document.getElementById('item_type').value = listing.item_type || 'general';
+            document.getElementById('brand').value = listing.brand || '';
+            document.getElementById('size').value = listing.size || '';
+            document.getElementById('color').value = listing.color || '';
+            document.getElementById('shipping_cost').value = listing.shipping_cost || 0;
+            document.getElementById('storage_location').value = listing.storage_location || '';
+            document.getElementById('quantity').value = listing.quantity || 1;
+            document.getElementById('sku').value = listing.sku || '';
+            document.getElementById('upc').value = listing.upc || '';
+
+            // Load photos
+            if (listing.photos && listing.photos.length > 0) {
+                uploadedPhotos = listing.photos;
+
+                // Display photo previews
+                const previewDiv = document.getElementById('photoPreview');
+                previewDiv.innerHTML = '';
+
+                for (let photoPath of listing.photos) {
+                    const img = document.createElement('img');
+                    // Convert server path to URL
+                    img.src = '/' + photoPath;
+                    img.className = 'photo-preview';
+                    img.onerror = function() {
+                        // Fallback: try different path formats
+                        this.src = '/data/draft_photos/' + listing.listing_uuid + '/' + photoPath.split('/').pop();
+                    };
+                    previewDiv.appendChild(img);
+                }
+
+                document.getElementById('analyzeBtn').style.display = 'block';
+            }
+
+            showAlert('Draft loaded for editing', 'info');
+        } else {
+            showAlert(data.error || 'Failed to load draft', 'danger');
+        }
+    } catch (error) {
+        showAlert('Failed to load draft: ' + error, 'danger');
+    } finally {
+        hideLoading();
+    }
+}
+
+// Load draft data when page loads
+if (editingDraftId) {
+    document.addEventListener('DOMContentLoaded', loadDraftData);
 }
 </script>
 {% endblock %}

@@ -49,7 +49,10 @@
                     <i class="far fa-clock"></i> {{ draft.created_at }}
                 </small>
                 <div class="btn-group btn-group-sm">
-                    <a href="{{ url_for('create_listing') }}" class="btn btn-outline-primary">
+                    <button class="btn btn-success" onclick="postDraft({{ draft.id }})">
+                        <i class="fas fa-rocket"></i> Post
+                    </button>
+                    <a href="{{ url_for('create_listing', draft_id=draft.id) }}" class="btn btn-outline-primary">
                         <i class="fas fa-edit"></i> Edit
                     </a>
                     <button class="btn btn-outline-danger" onclick="deleteDraft({{ draft.id }})">
@@ -74,6 +77,31 @@
 
 {% block extra_js %}
 <script>
+async function postDraft(id) {
+    if (!confirm('Post this listing? It will become active and visible in your listings.')) return;
+
+    showLoading();
+
+    try {
+        const response = await fetch(`/api/post-draft/${id}`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert('Listing posted successfully!', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showAlert(data.error, 'danger');
+        }
+    } catch (error) {
+        showAlert('Post failed: ' + error, 'danger');
+    } finally {
+        hideLoading();
+    }
+}
+
 async function deleteDraft(id) {
     if (!confirm('Delete this listing?')) return;
 

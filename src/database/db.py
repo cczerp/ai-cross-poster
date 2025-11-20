@@ -1063,6 +1063,7 @@ class Database:
         storage_location: Optional[str] = None,
         sku: Optional[str] = None,
         upc: Optional[str] = None,
+        status: str = 'draft',
     ) -> int:
         """Create a new listing"""
         cursor = self._get_cursor()
@@ -1072,7 +1073,7 @@ class Database:
                 listing_uuid, user_id, collectible_id, title, description, price,
                 cost, condition, category, item_type, attributes, photos, quantity,
                 storage_location, sku, upc, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             listing_uuid, user_id, collectible_id, title, description, price,
             cost, condition, category, item_type,
@@ -1082,6 +1083,7 @@ class Database:
             storage_location,
             sku,
             upc,
+            status,
         ))
 
         self.conn.commit()

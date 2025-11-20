@@ -201,47 +201,150 @@
 </div>
 
 {% else %}
-<!-- Logged-in User Dashboard -->
-<div class="text-center py-4">
-    <div class="mb-3">
-        <i class="fas fa-brain fa-3x" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;"></i>
+<!-- Logged-in User Dashboard - REDESIGNED -->
+<div class="hero-section" style="margin-top: -24px;">
+    <div class="container text-center py-4">
+        <div class="hero-content">
+            <div class="hero-icon mb-3">
+                <i class="fas fa-brain fa-4x"></i>
+            </div>
+            <h1 class="display-4 fw-bold mb-2" style="color: white;">Welcome Back!</h1>
+            <p class="hero-subtitle mb-1">Hey <strong>{{ current_user.username }}</strong>, ready to crush it today?</p>
+            <div class="hero-badges mt-3">
+                <span class="badge-pill"><i class="fas fa-rocket me-1"></i> Let's make some sales</span>
+            </div>
+        </div>
     </div>
-    <h1 class="display-4 logo">ResellGenie</h1>
-    <p class="lead">Create listings with AI and track your inventory</p>
-    <p class="text-muted">Welcome back, <strong>{{ current_user.username }}</strong>!</p>
 </div>
 
-<div class="row g-3">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-body text-center">
-                <i class="fas fa-camera fa-3x text-primary mb-3"></i>
-                <h5 class="card-title">Create New Listing</h5>
-                <p class="card-text">Take photos and let AI do the rest</p>
-                <a href="{{ url_for('create_listing') }}" class="btn btn-primary btn-lg w-100">
-                    <i class="fas fa-plus"></i> Start Listing
+<!-- Quick Actions - Enhanced Cards -->
+<div class="container my-4">
+    <div class="row g-4">
+        <!-- Create Listing - Primary Action -->
+        <div class="col-12">
+            <div class="feature-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 50px 40px;">
+                <div class="text-center">
+                    <div class="hero-icon mb-3">
+                        <i class="fas fa-camera fa-5x" style="color: white;"></i>
+                    </div>
+                    <h3 class="fw-bold mb-3">Create New Listing</h3>
+                    <p class="mb-4" style="font-size: 1.1rem; opacity: 0.95;">Snap photos and let AI handle the magic ✨</p>
+                    <a href="{{ url_for('create_listing') }}" class="btn btn-light btn-lg px-5 pulse-glow" style="color: #667eea; font-weight: 700;">
+                        <i class="fas fa-plus-circle me-2"></i> Start Listing Now
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Drafts Card -->
+        <div class="col-md-4">
+            <a href="{{ url_for('drafts') }}" class="text-decoration-none">
+                <div class="feature-card" style="cursor: pointer;">
+                    <div class="feature-icon">
+                        <i class="fas fa-folder-open fa-4x"></i>
+                    </div>
+                    <h5 class="feature-title">Drafts</h5>
+                    <p class="feature-text">Continue working on your saved listings</p>
+                    <div class="mt-3">
+                        <span class="badge bg-primary" style="font-size: 1rem; padding: 8px 16px;">View All</span>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <!-- Active Listings Card -->
+        <div class="col-md-4">
+            <a href="{{ url_for('listings') }}" class="text-decoration-none">
+                <div class="feature-card" style="cursor: pointer;">
+                    <div class="feature-icon success">
+                        <i class="fas fa-list-check fa-4x"></i>
+                    </div>
+                    <h5 class="feature-title">Active Listings</h5>
+                    <p class="feature-text">Manage your live listings and sales</p>
+                    <div class="mt-3">
+                        <span class="badge bg-success" style="font-size: 1rem; padding: 8px 16px;">View All</span>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <!-- Storage Card -->
+        <div class="col-md-4">
+            <a href="{{ url_for('storage') }}" class="text-decoration-none">
+                <div class="feature-card" style="cursor: pointer;">
+                    <div class="feature-icon warning">
+                        <i class="fas fa-box-open fa-4x"></i>
+                    </div>
+                    <h5 class="feature-title">Storage</h5>
+                    <p class="feature-text">Find any item instantly with smart tracking</p>
+                    <div class="mt-3">
+                        <span class="badge bg-warning text-dark" style="font-size: 1rem; padding: 8px 16px;">View All</span>
+                    </div>
+                </div>
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Stats Section -->
+<div class="section-alt py-4">
+    <div class="container">
+        <div class="text-center mb-4">
+            <h3 class="section-title" style="font-size: 1.8rem;">Your Command Center</h3>
+            <p class="section-subtitle">Everything you need, right at your fingertips</p>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-6 col-md-3">
+                <a href="{{ url_for('cards_collection') }}" class="text-decoration-none">
+                    <div class="step-card" style="cursor: pointer; padding: 30px 20px;">
+                        <div class="step-icon">🎴</div>
+                        <h6 class="step-title" style="font-size: 1rem;">Cards</h6>
+                        <p class="step-text" style="font-size: 0.85rem;">Collection manager</p>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col-6 col-md-3">
+                <a href="{{ url_for('notifications') }}" class="text-decoration-none">
+                    <div class="step-card" style="cursor: pointer; padding: 30px 20px;">
+                        <div class="step-icon">🔔</div>
+                        <h6 class="step-title" style="font-size: 1rem;">Alerts</h6>
+                        <p class="step-text" style="font-size: 0.85rem;">Stay updated</p>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col-6 col-md-3">
+                <a href="{{ url_for('index') }}" class="text-decoration-none">
+                    <div class="step-card" style="cursor: pointer; padding: 30px 20px;">
+                        <div class="step-icon">⚡</div>
+                        <h6 class="step-title" style="font-size: 1rem;">Quick Post</h6>
+                        <p class="step-text" style="font-size: 0.85rem;">Fast listing</p>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col-6 col-md-3">
+                <a href="{{ url_for('logout') }}" class="text-decoration-none">
+                    <div class="step-card" style="cursor: pointer; padding: 30px 20px; border: 2px solid #ef4444;">
+                        <div class="step-icon">🚪</div>
+                        <h6 class="step-title" style="font-size: 1rem; color: #ef4444;">Logout</h6>
+                        <p class="step-text" style="font-size: 0.85rem;">See you soon!</p>
+                    </div>
                 </a>
             </div>
         </div>
     </div>
+</div>
 
-    <div class="col-6">
-        <div class="card">
-            <div class="card-body text-center">
-                <i class="fas fa-folder fa-2x text-secondary mb-2"></i>
-                <h6 class="card-title">Drafts</h6>
-                <a href="{{ url_for('drafts') }}" class="btn btn-sm btn-outline-secondary w-100">View</a>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-6">
-        <div class="card">
-            <div class="card-body text-center">
-                <i class="fas fa-list fa-2x text-success mb-2"></i>
-                <h6 class="card-title">Active</h6>
-                <a href="{{ url_for('listings') }}" class="btn btn-sm btn-outline-success w-100">View</a>
-            </div>
+<!-- Pro Tip Section -->
+<div class="container my-4">
+    <div class="benefit-item">
+        <div class="benefit-icon">💡</div>
+        <div>
+            <h5 class="benefit-title">Pro Tip</h5>
+            <p class="benefit-text">Use the AI camera to list items 10x faster. Just snap, review, and post!</p>
         </div>
     </div>
 </div>

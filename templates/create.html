@@ -559,95 +559,123 @@ function updatePhotoAfterEdit(newImageData, newFilepath) {
 
 // ========================================
 // AI Analysis
+let detectedCardData = null; // Store card data if detected
+
 document.getElementById('analyzeBtn').addEventListener('click', async function() {
     showLoading();
 
     try {
-        const response = await fetch('/api/analyze', {
+        // Try card analysis first
+        const cardResponse = await fetch('/api/analyze-card', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'}
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                photos: uploadedPhotos
+            })
         });
 
-        const data = await response.json();
+        const cardData = await cardResponse.json();
 
-        if (data.success) {
-            const analysis = data.analysis;
+        // Check if it's a card
+        if (cardData.success && cardData.card_data && cardData.card_data.is_card) {
+            // Store card data for later
+            detectedCardData = cardData.card_data;
 
-            // Fill form
-            if (analysis.suggested_title) document.getElementById('title').value = analysis.suggested_title;
-            if (analysis.description) document.getElementById('description').value = analysis.description;
-            if (analysis.brand) document.getElementById('brand').value = analysis.brand;
-            if (analysis.size) document.getElementById('size').value = analysis.size;
-            if (analysis.color) document.getElementById('color').value = analysis.color;
-            if (analysis.suggested_price) document.getElementById('price').value = analysis.suggested_price;
-            if (analysis.condition) {
-                const condition = analysis.condition.replace(' ', '_').toLowerCase();
-                document.getElementById('condition').value = condition;
-            }
+            // Show card detection banner
+            showCardDetectionBanner(cardData.card_data);
 
-            // Check for collectible items
-            if (analysis.collectible) {
-                const confidence = analysis.collectible_confidence || 0;
-                const indicators = analysis.collectible_indicators || [];
-                const franchise = analysis.franchise || '';
+            // Fill form with card data
+            fillFormFromCardData(cardData.card_data);
 
-                let collectibleMsg = `🎯 <strong>COLLECTIBLE DETECTED!</strong><br>`;
-                collectibleMsg += `Confidence: ${(confidence * 100).toFixed(0)}%<br>`;
-
-                if (franchise) {
-                    collectibleMsg += `Franchise: ${franchise}<br>`;
-                }
-
-                if (indicators.length > 0) {
-                    collectibleMsg += `Indicators: ${indicators.join(', ')}`;
-                }
-
-                // Create custom alert div
-                const alertDiv = document.createElement('div');
-                alertDiv.className = 'alert alert-warning alert-dismissible fade show mt-3';
-                alertDiv.style.cssText = 'position: sticky; top: 10px; z-index: 1000; border: 3px solid #ff6b6b;';
-                alertDiv.innerHTML = `
-                    ${collectibleMsg}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                `;
-
-                // Insert after form
-                document.getElementById('listingForm').insertAdjacentElement('beforebegin', alertDiv);
-
-                // Auto-set item type to collectible
-                document.getElementById('item_type').value = 'collectible';
-            }
-
-            // Show market analysis (sell-through rate)
-            if (analysis.market_analysis) {
-                const market = analysis.market_analysis;
-                let demandColor = market.demand_level === 'High' ? 'success' :
-                                 market.demand_level === 'Low' ? 'danger' : 'warning';
-
-                let marketMsg = `📊 <strong>MARKET ANALYSIS</strong><br>`;
-                marketMsg += `<strong>Sell-Through Rate:</strong> ${market.sell_through_rate}% ${getDemandEmoji(market.demand_level)}<br>`;
-                marketMsg += `<strong>Demand:</strong> <span class="badge bg-${demandColor}">${market.demand_level}</span><br>`;
-                marketMsg += `<strong>Est. Days to Sell:</strong> ${market.days_to_sell_estimate} days<br>`;
-                if (market.average_sold_price > 0) {
-                    marketMsg += `<strong>Avg Sold Price:</strong> $${market.average_sold_price.toFixed(2)}<br>`;
-                }
-                if (market.market_insights && market.market_insights.length > 0) {
-                    marketMsg += `<small class="text-muted">${market.market_insights.join(' • ')}</small>`;
-                }
-
-                const marketAlert = document.createElement('div');
-                marketAlert.className = 'alert alert-info alert-dismissible fade show mt-3';
-                marketAlert.innerHTML = `
-                    ${marketMsg}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                `;
-
-                document.getElementById('listingForm').insertAdjacentElement('beforebegin', marketAlert);
-            }
-
-            showAlert('AI analysis complete!', 'success');
+            showAlert('Card detected and analyzed!', 'success');
         } else {
-            showAlert(data.error, 'warning');
+            // Not a card, do regular item analysis
+            const response = await fetch('/api/analyze', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                const analysis = data.analysis;
+
+                // Fill form
+                if (analysis.suggested_title) document.getElementById('title').value = analysis.suggested_title;
+                if (analysis.description) document.getElementById('description').value = analysis.description;
+                if (analysis.brand) document.getElementById('brand').value = analysis.brand;
+                if (analysis.size) document.getElementById('size').value = analysis.size;
+                if (analysis.color) document.getElementById('color').value = analysis.color;
+                if (analysis.suggested_price) document.getElementById('price').value = analysis.suggested_price;
+                if (analysis.condition) {
+                    const condition = analysis.condition.replace(' ', '_').toLowerCase();
+                    document.getElementById('condition').value = condition;
+                }
+
+                // Check for collectible items
+                if (analysis.collectible) {
+                    const confidence = analysis.collectible_confidence || 0;
+                    const indicators = analysis.collectible_indicators || [];
+                    const franchise = analysis.franchise || '';
+
+                    let collectibleMsg = `🎯 <strong>COLLECTIBLE DETECTED!</strong><br>`;
+                    collectibleMsg += `Confidence: ${(confidence * 100).toFixed(0)}%<br>`;
+
+                    if (franchise) {
+                        collectibleMsg += `Franchise: ${franchise}<br>`;
+                    }
+
+                    if (indicators.length > 0) {
+                        collectibleMsg += `Indicators: ${indicators.join(', ')}`;
+                    }
+
+                    // Create custom alert div
+                    const alertDiv = document.createElement('div');
+                    alertDiv.className = 'alert alert-warning alert-dismissible fade show mt-3';
+                    alertDiv.style.cssText = 'position: sticky; top: 10px; z-index: 1000; border: 3px solid #ff6b6b;';
+                    alertDiv.innerHTML = `
+                        ${collectibleMsg}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    `;
+
+                    // Insert after form
+                    document.getElementById('listingForm').insertAdjacentElement('beforebegin', alertDiv);
+
+                    // Auto-set item type to collectible
+                    document.getElementById('item_type').value = 'collectible';
+                }
+
+                // Show market analysis (sell-through rate)
+                if (analysis.market_analysis) {
+                    const market = analysis.market_analysis;
+                    let demandColor = market.demand_level === 'High' ? 'success' :
+                                     market.demand_level === 'Low' ? 'danger' : 'warning';
+
+                    let marketMsg = `📊 <strong>MARKET ANALYSIS</strong><br>`;
+                    marketMsg += `<strong>Sell-Through Rate:</strong> ${market.sell_through_rate}% ${getDemandEmoji(market.demand_level)}<br>`;
+                    marketMsg += `<strong>Demand:</strong> <span class="badge bg-${demandColor}">${market.demand_level}</span><br>`;
+                    marketMsg += `<strong>Est. Days to Sell:</strong> ${market.days_to_sell_estimate} days<br>`;
+                    if (market.average_sold_price > 0) {
+                        marketMsg += `<strong>Avg Sold Price:</strong> $${market.average_sold_price.toFixed(2)}<br>`;
+                    }
+                    if (market.market_insights && market.market_insights.length > 0) {
+                        marketMsg += `<small class="text-muted">${market.market_insights.join(' • ')}</small>`;
+                    }
+
+                    const marketAlert = document.createElement('div');
+                    marketAlert.className = 'alert alert-info alert-dismissible fade show mt-3';
+                    marketAlert.innerHTML = `
+                        ${marketMsg}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    `;
+
+                    document.getElementById('listingForm').insertAdjacentElement('beforebegin', marketAlert);
+                }
+
+                showAlert('AI analysis complete!', 'success');
+            } else {
+                showAlert(data.error, 'warning');
+            }
         }
     } catch (error) {
         showAlert('Analysis failed: ' + error, 'danger');
@@ -660,6 +688,247 @@ function getDemandEmoji(demand) {
     if (demand === 'High') return '🔥';
     if (demand === 'Low') return '🐌';
     return '📈';
+}
+
+// ========================================
+// CARD COLLECTION FUNCTIONS
+// ========================================
+
+function showCardDetectionBanner(cardData) {
+    // Remove any existing banner
+    const existingBanner = document.getElementById('cardDetectionBanner');
+    if (existingBanner) {
+        existingBanner.remove();
+    }
+
+    // Build card info display
+    let cardType = cardData.card_type || 'unknown';
+    let cardName = cardData.card_name || cardData.player_name || 'Unknown Card';
+    let cardDetails = [];
+
+    // Add type-specific details
+    if (cardData.player_name) {
+        // Sports card
+        if (cardData.year) cardDetails.push(`${cardData.year}`);
+        if (cardData.brand) cardDetails.push(cardData.brand);
+        if (cardData.is_rookie_card) cardDetails.push('RC');
+    } else {
+        // TCG card
+        if (cardData.set_name) cardDetails.push(cardData.set_name);
+        if (cardData.card_number) cardDetails.push(`#${cardData.card_number}`);
+        if (cardData.rarity) cardDetails.push(cardData.rarity);
+    }
+
+    // Grading info
+    if (cardData.is_graded && cardData.grading_company) {
+        cardDetails.push(`${cardData.grading_company} ${cardData.grading_score || ''}`);
+    }
+
+    // Value estimate
+    let valueText = '';
+    if (cardData.estimated_value_low || cardData.estimated_value_high) {
+        const low = cardData.estimated_value_low || 0;
+        const high = cardData.estimated_value_high || 0;
+        if (low > 0 && high > 0) {
+            valueText = `<strong>Est. Value:</strong> $${low} - $${high}`;
+        } else if (low > 0) {
+            valueText = `<strong>Est. Value:</strong> $${low}+`;
+        }
+    }
+
+    const cardInfo = cardDetails.join(' • ');
+    const confidence = cardData.confidence ? `${(cardData.confidence * 100).toFixed(0)}%` : 'N/A';
+
+    const banner = document.createElement('div');
+    banner.id = 'cardDetectionBanner';
+    banner.className = 'alert alert-success alert-dismissible fade show mt-3';
+    banner.style.cssText = 'position: sticky; top: 10px; z-index: 1000; border: 3px solid #28a745; background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);';
+    banner.innerHTML = `
+        <div>
+            <h5 class="alert-heading mb-3">
+                <i class="fas fa-id-card"></i> <strong>TRADING CARD DETECTED!</strong>
+            </h5>
+            <div class="row">
+                <div class="col-md-7">
+                    <p class="mb-2">
+                        <strong>${cardName}</strong><br>
+                        <small class="text-muted">${cardInfo}</small>
+                    </p>
+                    ${valueText ? `<p class="mb-2">${valueText}</p>` : ''}
+                    <small class="text-muted">Confidence: ${confidence}</small>
+                </div>
+                <div class="col-md-5">
+                    <div class="d-grid gap-2">
+                        <button type="button" class="btn btn-success btn-lg pulse-glow" onclick="storeCardOnly()">
+                            <i class="fas fa-box"></i> Store Only
+                        </button>
+                        <button type="button" class="btn btn-outline-success" onclick="storeAndList()">
+                            <i class="fas fa-plus-circle"></i> Store + Create Listing
+                        </button>
+                        <small class="text-muted text-center">
+                            Or just create a listing below without storing
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+
+    document.getElementById('listingForm').insertAdjacentElement('beforebegin', banner);
+}
+
+function fillFormFromCardData(cardData) {
+    // Build title
+    let title = '';
+    if (cardData.player_name) {
+        // Sports card
+        title = cardData.player_name;
+        if (cardData.year) title = `${cardData.year} ${title}`;
+        if (cardData.brand) title = `${title} ${cardData.brand}`;
+        if (cardData.series) title = `${title} ${cardData.series}`;
+        if (cardData.card_number) title = `${title} #${cardData.card_number}`;
+        if (cardData.is_rookie_card) title = `${title} RC`;
+    } else {
+        // TCG card
+        title = cardData.card_name || 'Unknown Card';
+        if (cardData.card_number) title = `${title} #${cardData.card_number}`;
+    }
+
+    document.getElementById('title').value = title;
+
+    // Build description
+    let description = '';
+    if (cardData.set_name) {
+        description += `Set: ${cardData.set_name}\n`;
+    }
+    if (cardData.rarity) {
+        description += `Rarity: ${cardData.rarity}\n`;
+    }
+    if (cardData.is_graded && cardData.grading_company) {
+        description += `Graded: ${cardData.grading_company} ${cardData.grading_score || ''}\n`;
+    }
+    if (cardData.parallel) {
+        description += `Parallel: ${cardData.parallel}\n`;
+    }
+
+    document.getElementById('description').value = description;
+
+    // Set brand
+    if (cardData.brand) {
+        document.getElementById('brand').value = cardData.brand;
+    }
+
+    // Set price from estimated value
+    if (cardData.estimated_value_low && cardData.estimated_value_high) {
+        const avgValue = (cardData.estimated_value_low + cardData.estimated_value_high) / 2;
+        document.getElementById('price').value = avgValue.toFixed(2);
+    } else if (cardData.estimated_value_low) {
+        document.getElementById('price').value = cardData.estimated_value_low.toFixed(2);
+    }
+
+    // Set item type to trading card
+    document.getElementById('item_type').value = 'trading_card';
+
+    // Set condition based on grading
+    if (cardData.is_graded && cardData.grading_score) {
+        if (cardData.grading_score >= 9) {
+            document.getElementById('condition').value = 'excellent';
+        } else if (cardData.grading_score >= 7) {
+            document.getElementById('condition').value = 'good';
+        } else {
+            document.getElementById('condition').value = 'fair';
+        }
+    }
+}
+
+async function storeCardOnly() {
+    if (!detectedCardData) {
+        showAlert('No card data available', 'danger');
+        return;
+    }
+
+    showLoading();
+
+    try {
+        const response = await fetch('/api/cards/add', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                ai_result: detectedCardData,
+                photos: uploadedPhotos,
+                storage_location: document.getElementById('storage_location').value || null
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert('Card stored in your collection! Redirecting...', 'success');
+            // Redirect to cards collection page after 1 second
+            setTimeout(() => window.location.href = '/cards', 1000);
+        } else {
+            showAlert(data.error || 'Failed to add card to collection', 'danger');
+            hideLoading();
+        }
+    } catch (error) {
+        showAlert('Failed to add card: ' + error, 'danger');
+        hideLoading();
+    }
+}
+
+async function storeAndList() {
+    if (!detectedCardData) {
+        showAlert('No card data available', 'danger');
+        return;
+    }
+
+    showLoading();
+
+    try {
+        const response = await fetch('/api/cards/add', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                ai_result: detectedCardData,
+                photos: uploadedPhotos,
+                storage_location: document.getElementById('storage_location').value || null
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert('Card added to collection! You can now create a listing below.', 'success');
+
+            // Update the banner to show it's been stored
+            const banner = document.getElementById('cardDetectionBanner');
+            if (banner) {
+                banner.classList.remove('alert-success');
+                banner.classList.add('alert-info');
+                banner.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="alert-heading mb-0">
+                                <i class="fas fa-check-circle"></i> <strong>Card Stored!</strong>
+                            </h5>
+                            <small class="text-muted">Continue filling out the form below to create a listing.</small>
+                        </div>
+                        <a href="/cards" class="btn btn-info">
+                            <i class="fas fa-box-open"></i> View Collection
+                        </a>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+            }
+        } else {
+            showAlert(data.error || 'Failed to add card to collection', 'danger');
+        }
+    } catch (error) {
+        showAlert('Failed to add card: ' + error, 'danger');
+    } finally {
+        hideLoading();
+    }
 }
 
 // Save Listing (common function)

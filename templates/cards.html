@@ -1,0 +1,580 @@
+{% extends "base.html" %}
+
+{% block title %}My Card Collection{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fas fa-box-open"></i> My Card Collection</h2>
+    <button class="btn btn-primary" onclick="showAddCardModal()">
+        <i class="fas fa-plus"></i> Add Cards
+    </button>
+</div>
+
+<!-- Stats Section -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h3 id="totalCards">0</h3>
+                <small class="text-muted">Total Cards</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h3 id="totalValue">$0</h3>
+                <small class="text-muted">Est. Value</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h3 id="uniqueSets">0</h3>
+                <small class="text-muted">Sets</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <select class="form-select" id="organizationMode" onchange="changeOrganization()">
+                    <option value="by_set">By Set</option>
+                    <option value="by_year">By Year</option>
+                    <option value="by_sport">By Sport</option>
+                    <option value="by_game">By Game</option>
+                    <option value="by_brand">By Brand</option>
+                    <option value="by_rarity">By Rarity</option>
+                    <option value="by_value">By Value</option>
+                    <option value="none">No Organization</option>
+                </select>
+                <small class="text-muted">Organization</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Search & Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <input type="text" class="form-control" id="searchCards" placeholder="Search cards..." oninput="searchCards()">
+            </div>
+            <div class="col-md-3">
+                <select class="form-select" id="filterType" onchange="filterCards()">
+                    <option value="">All Types</option>
+                    <option value="pokemon">Pokémon</option>
+                    <option value="mtg">Magic: The Gathering</option>
+                    <option value="yugioh">Yu-Gi-Oh!</option>
+                    <option value="sports_nfl">NFL</option>
+                    <option value="sports_nba">NBA</option>
+                    <option value="sports_mlb">MLB</option>
+                    <option value="sports_nhl">NHL</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <div class="btn-group w-100">
+                    <button class="btn btn-outline-secondary" onclick="viewMode='grid'; loadCards()">
+                        <i class="fas fa-th"></i>
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="viewMode='list'; loadCards()">
+                        <i class="fas fa-list"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Cards Display -->
+<div id="cardsContainer">
+    <div class="text-center py-5">
+        <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+        <h4>No Cards Yet</h4>
+        <p class="text-muted">Click "Add Cards" to start building your collection!</p>
+    </div>
+</div>
+
+<!-- Add Card Modal -->
+<div class="modal fade" id="addCardModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Cards to Collection</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#scanTab">
+                            <i class="fas fa-camera"></i> Scan Card
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#manualTab">
+                            <i class="fas fa-keyboard"></i> Manual Entry
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#importTab">
+                            <i class="fas fa-file-csv"></i> Import CSV
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <!-- Scan Tab -->
+                    <div class="tab-pane fade show active" id="scanTab">
+                        <div class="text-center mb-3">
+                            <button class="btn btn-primary btn-lg" onclick="document.getElementById('cardScanInput').click()">
+                                <i class="fas fa-camera"></i> Scan Card with Camera
+                            </button>
+                            <input type="file" id="cardScanInput" accept="image/*" capture="environment" class="d-none" onchange="scanCard(event)">
+                        </div>
+                        <div id="scanPreview" class="text-center"></div>
+                        <div id="scanResult"></div>
+                    </div>
+
+                    <!-- Manual Tab -->
+                    <div class="tab-pane fade" id="manualTab">
+                        <form id="manualCardForm">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Card Type *</label>
+                                        <select class="form-select" id="manualCardType" required onchange="updateManualFields()">
+                                            <option value="">Select type...</option>
+                                            <option value="pokemon">Pokémon</option>
+                                            <option value="mtg">Magic: The Gathering</option>
+                                            <option value="yugioh">Yu-Gi-Oh!</option>
+                                            <option value="sports_nfl">NFL</option>
+                                            <option value="sports_nba">NBA</option>
+                                            <option value="sports_mlb">MLB</option>
+                                            <option value="sports_nhl">NHL</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label" id="nameLabel">Card/Player Name *</label>
+                                        <input type="text" class="form-control" id="manualCardName" required>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Brand/Set</label>
+                                        <input type="text" class="form-control" id="manualBrand">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Card Number</label>
+                                        <input type="text" class="form-control" id="manualCardNumber">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="mb-3">
+                                        <label class="form-label">Year</label>
+                                        <input type="number" class="form-control" id="manualYear" min="1900" max="2099">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="mb-3">
+                                        <label class="form-label">Quantity</label>
+                                        <input type="number" class="form-control" id="manualQuantity" value="1" min="1">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="mb-3">
+                                        <label class="form-label">Storage Location</label>
+                                        <input type="text" class="form-control" id="manualStorage" placeholder="Box 1, Binder A, etc.">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-success w-100">
+                                <i class="fas fa-plus"></i> Add to Collection
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Import Tab -->
+                    <div class="tab-pane fade" id="importTab">
+                        <div class="mb-3">
+                            <label class="form-label">Upload CSV File</label>
+                            <input type="file" class="form-control" id="csvImportInput" accept=".csv">
+                        </div>
+                        <button class="btn btn-primary" onclick="importCSV()">
+                            <i class="fas fa-upload"></i> Import Cards
+                        </button>
+                        <hr>
+                        <small class="text-muted">
+                            CSV should have columns: Card Type, Card Name, Brand, Card Number, Year, Quantity, Storage Location
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let viewMode = 'grid';
+let allCards = [];
+let addCardModal;
+
+document.addEventListener('DOMContentLoaded', function() {
+    addCardModal = new bootstrap.Modal(document.getElementById('addCardModal'));
+    loadCards();
+    loadStats();
+});
+
+function showAddCardModal() {
+    addCardModal.show();
+}
+
+async function loadCards() {
+    try {
+        const type = document.getElementById('filterType').value;
+        const url = `/api/cards/list?limit=1000${type ? '&card_type=' + type : ''}`;
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.success) {
+            allCards = data.cards;
+            displayCards(allCards);
+        }
+    } catch (error) {
+        console.error('Failed to load cards:', error);
+    }
+}
+
+async function loadStats() {
+    try {
+        const response = await fetch('/api/cards/stats');
+        const data = await response.json();
+
+        if (data.success) {
+            const stats = data.stats;
+            document.getElementById('totalCards').textContent = stats.total_cards || 0;
+            document.getElementById('totalValue').textContent = '$' + (stats.total_value || 0).toFixed(2);
+            document.getElementById('uniqueSets').textContent = stats.unique_sets || 0;
+        }
+    } catch (error) {
+        console.error('Failed to load stats:', error);
+    }
+}
+
+function displayCards(cards) {
+    const container = document.getElementById('cardsContainer');
+
+    if (cards.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-5">
+                <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+                <h4>No Cards Found</h4>
+                <p class="text-muted">Try adjusting your filters or add some cards!</p>
+            </div>
+        `;
+        return;
+    }
+
+    if (viewMode === 'grid') {
+        container.innerHTML = '<div class="row g-3"></div>';
+        const row = container.querySelector('.row');
+
+        cards.forEach(card => {
+            const cardHtml = `
+                <div class="col-md-3">
+                    <div class="card h-100 card-hover">
+                        ${card.photos && card.photos.length > 0 ?
+                            `<img src="/${card.photos[0]}" class="card-img-top" style="height: 200px; object-fit: cover;" alt="${card.title}">` :
+                            `<div class="bg-light" style="height: 200px; display: flex; align-items: center; justify-content: center;">
+                                <i class="fas fa-id-card fa-3x text-muted"></i>
+                            </div>`
+                        }
+                        <div class="card-body">
+                            <h6 class="card-title">${card.title}</h6>
+                            <p class="card-text">
+                                <small class="text-muted">
+                                    ${card.set_name || card.brand || ''}<br>
+                                    ${card.card_number ? '#' + card.card_number : ''}<br>
+                                    ${card.estimated_value ? '$' + card.estimated_value.toFixed(2) : ''}
+                                </small>
+                            </p>
+                            ${card.storage_location ? `<span class="badge bg-warning">${card.storage_location}</span>` : ''}
+                            ${card.quantity > 1 ? `<span class="badge bg-info">x${card.quantity}</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+            row.innerHTML += cardHtml;
+        });
+    } else {
+        // List view
+        container.innerHTML = '<div class="list-group"></div>';
+        const list = container.querySelector('.list-group');
+
+        cards.forEach(card => {
+            const listItem = `
+                <div class="list-group-item">
+                    <div class="d-flex align-items-center">
+                        ${card.photos && card.photos.length > 0 ?
+                            `<img src="/${card.photos[0]}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px;" class="me-3">` :
+                            `<div class="bg-light me-3" style="width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; border-radius: 4px;">
+                                <i class="fas fa-id-card text-muted"></i>
+                            </div>`
+                        }
+                        <div class="flex-grow-1">
+                            <h6 class="mb-1">${card.title}</h6>
+                            <small class="text-muted">
+                                ${card.set_name || card.brand || ''}
+                                ${card.card_number ? '#' + card.card_number : ''}
+                            </small>
+                        </div>
+                        <div>
+                            ${card.estimated_value ? `<strong>$${card.estimated_value.toFixed(2)}</strong><br>` : ''}
+                            ${card.storage_location ? `<span class="badge bg-warning">${card.storage_location}</span>` : ''}
+                            ${card.quantity > 1 ? `<span class="badge bg-info">x${card.quantity}</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+            list.innerHTML += listItem;
+        });
+    }
+}
+
+function searchCards() {
+    const query = document.getElementById('searchCards').value.toLowerCase();
+    if (!query) {
+        displayCards(allCards);
+        return;
+    }
+
+    const filtered = allCards.filter(card =>
+        card.title.toLowerCase().includes(query) ||
+        (card.set_name && card.set_name.toLowerCase().includes(query)) ||
+        (card.brand && card.brand.toLowerCase().includes(query)) ||
+        (card.player_name && card.player_name.toLowerCase().includes(query))
+    );
+
+    displayCards(filtered);
+}
+
+function filterCards() {
+    loadCards();
+}
+
+async function scanCard(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Show preview
+    const preview = document.getElementById('scanPreview');
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        preview.innerHTML = `<img src="${e.target.result}" class="img-fluid mb-3" style="max-height: 300px;">`;
+    };
+    reader.readAsDataURL(file);
+
+    // Upload and analyze
+    showLoading();
+    const formData = new FormData();
+    formData.append('photos', file);
+
+    try {
+        const uploadRes = await fetch('/api/upload-photos', { method: 'POST', body: formData });
+        const uploadData = await uploadRes.json();
+
+        if (uploadData.success) {
+            // Analyze card
+            const analyzeRes = await fetch('/api/analyze-card', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ photos: uploadData.paths })
+            });
+
+            const analyzeData = await analyzeRes.json();
+
+            if (analyzeData.success && analyzeData.card_data.is_card) {
+                // Add to collection
+                const addRes = await fetch('/api/cards/add', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        ai_result: analyzeData.card_data,
+                        photos: uploadData.paths
+                    })
+                });
+
+                const addData = await addRes.json();
+                if (addData.success) {
+                    showAlert('Card added successfully!', 'success');
+                    addCardModal.hide();
+                    loadCards();
+                    loadStats();
+                }
+            } else {
+                showAlert('No card detected in the image. Please try again or use manual entry.', 'warning');
+            }
+        }
+    } catch (error) {
+        showAlert('Failed to scan card: ' + error, 'danger');
+    } finally {
+        hideLoading();
+    }
+}
+
+function updateManualFields() {
+    const cardType = document.getElementById('manualCardType').value;
+    const nameLabel = document.getElementById('nameLabel');
+
+    if (cardType.startsWith('sports_')) {
+        nameLabel.textContent = 'Player Name *';
+    } else {
+        nameLabel.textContent = 'Card Name *';
+    }
+}
+
+document.getElementById('manualCardForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const cardType = document.getElementById('manualCardType').value;
+    const cardName = document.getElementById('manualCardName').value;
+    const brand = document.getElementById('manualBrand').value;
+    const cardNumber = document.getElementById('manualCardNumber').value;
+    const year = document.getElementById('manualYear').value;
+    const quantity = document.getElementById('manualQuantity').value;
+    const storage = document.getElementById('manualStorage').value;
+
+    showLoading();
+
+    try {
+        const response = await fetch('/api/cards/add', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                manual_entry: {
+                    card_type: cardType,
+                    title: cardName,
+                    brand: brand,
+                    card_number: cardNumber,
+                    year: year ? parseInt(year) : null,
+                    quantity: parseInt(quantity),
+                    storage_location: storage
+                }
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert('Card added successfully!', 'success');
+            addCardModal.hide();
+            document.getElementById('manualCardForm').reset();
+            loadCards();
+            loadStats();
+        } else {
+            showAlert(data.error || 'Failed to add card', 'danger');
+        }
+    } catch (error) {
+        showAlert('Failed to add card: ' + error, 'danger');
+    } finally {
+        hideLoading();
+    }
+});
+
+async function importCSV() {
+    const fileInput = document.getElementById('csvImportInput');
+    const file = fileInput.files[0];
+
+    if (!file) {
+        showAlert('Please select a CSV file', 'warning');
+        return;
+    }
+
+    showLoading();
+
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch('/api/cards/import', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert(`Imported ${data.imported} cards successfully!`, 'success');
+            if (data.errors && data.errors.length > 0) {
+                console.log('Import errors:', data.errors);
+            }
+            addCardModal.hide();
+            loadCards();
+            loadStats();
+        } else {
+            showAlert('Failed to import CSV', 'danger');
+        }
+    } catch (error) {
+        showAlert('Failed to import: ' + error, 'danger');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function changeOrganization() {
+    const newMode = document.getElementById('organizationMode').value;
+    if (newMode === 'none') {
+        loadCards();
+        return;
+    }
+
+    showLoading();
+
+    try {
+        const response = await fetch('/api/cards/switch-organization', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ new_mode: newMode })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert('Organization updated!', 'success');
+            loadCards();
+        }
+    } catch (error) {
+        showAlert('Failed to change organization: ' + error, 'danger');
+    } finally {
+        hideLoading();
+    }
+}
+</script>
+
+<style>
+.card-hover {
+    transition: all 0.3s ease;
+}
+
+.card-hover:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+}
+</style>
+{% endblock %}

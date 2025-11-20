@@ -5,67 +5,607 @@
 {% block content %}
 
 {% if is_guest %}
-<!-- Guest Landing Page -->
-<div class="text-center py-5">
-    <div class="mb-4">
-        <i class="fas fa-brain fa-4x mb-3" style="background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;"></i>
-        <h1 class="display-3 logo mb-0">ResellGenie</h1>
-    </div>
-    <p class="lead">Multi-Platform Inventory & Listing Management</p>
-    <p class="text-muted">Sell smarter. Track everything. Never lose an item.</p>
-
-    <div class="mt-4">
-        <a href="{{ url_for('create_listing') }}" class="btn btn-success btn-lg me-2">
-            <i class="fas fa-magic"></i> Try AI Now (Free!)
-        </a>
-        <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg me-2">
-            <i class="fas fa-user-plus"></i> Sign Up
-        </a>
-        <a href="{{ url_for('login') }}" class="btn btn-outline-secondary btn-lg">
-            <i class="fas fa-sign-in-alt"></i> Sign In
-        </a>
-    </div>
-    <p class="text-muted small mt-3">
-        <i class="fas fa-check-circle text-success"></i> No credit card required
-        <i class="fas fa-check-circle text-success ms-3"></i> Test AI without signup
-    </p>
-</div>
-
-<div class="row g-4 mt-3">
-    <div class="col-md-4">
-        <div class="card h-100 border-0 shadow-sm">
-            <div class="card-body text-center">
-                <i class="fas fa-camera fa-3x text-primary mb-3"></i>
-                <h5 class="card-title">Photo to Listing</h5>
-                <p class="card-text">Take a photo, AI creates the listing with title, description, price suggestions</p>
+<!-- HERO SECTION - Full Width Gradient -->
+<div class="hero-section">
+    <div class="container text-center py-5">
+        <div class="hero-content">
+            <div class="hero-icon mb-4">
+                <i class="fas fa-brain fa-5x"></i>
             </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card h-100 border-0 shadow-sm">
-            <div class="card-body text-center">
-                <i class="fas fa-map-marker-alt fa-3x text-warning mb-3"></i>
-                <h5 class="card-title">Smart Storage</h5>
-                <p class="card-text">Track where every item is stored. Never search for items after a sale!</p>
+            <h1 class="display-2 fw-bold mb-3">ResellGenie</h1>
+            <p class="hero-tagline mb-2">Everything you sell, perfectly organized.</p>
+            <p class="hero-subtitle mb-4">AI handles the listings. You handle the profits.</p>
+
+            <div class="hero-cta mt-4">
+                <a href="{{ url_for('create_listing') }}" class="btn btn-hero btn-lg me-3 pulse-glow">
+                    <i class="fas fa-magic me-2"></i> Try AI Now (Free!)
+                </a>
+                <a href="{{ url_for('register') }}" class="btn btn-hero-outline btn-lg">
+                    <i class="fas fa-user-plus me-2"></i> Sign Up
+                </a>
             </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card h-100 border-0 shadow-sm">
-            <div class="card-body text-center">
-                <i class="fas fa-globe fa-3x text-success mb-3"></i>
-                <h5 class="card-title">27+ Platforms</h5>
-                <p class="card-text">Manage listings for Poshmark, Ruby Lane, Depop, Facebook, and 23 more platforms</p>
+
+            <div class="hero-badges mt-4">
+                <span class="badge-pill me-3"><i class="fas fa-check-circle"></i> No credit card required</span>
+                <span class="badge-pill"><i class="fas fa-check-circle"></i> Test AI without signup</span>
             </div>
         </div>
     </div>
 </div>
+
+<!-- FEATURE CARDS - Enhanced with Hover Effects -->
+<div class="container my-5">
+    <div class="row g-4">
+        <div class="col-md-4">
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-camera fa-4x"></i>
+                </div>
+                <h5 class="feature-title">Photo to Listing</h5>
+                <p class="feature-text">Snap a photo. AI instantly creates professional listings with titles, descriptions, and smart pricing</p>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="feature-card">
+                <div class="feature-icon warning">
+                    <i class="fas fa-map-marker-alt fa-4x"></i>
+                </div>
+                <h5 class="feature-title">Smart Storage</h5>
+                <p class="feature-text">Never lose track of inventory again. Know exactly where every item is — instantly.</p>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="feature-card">
+                <div class="feature-icon success">
+                    <i class="fas fa-globe fa-4x"></i>
+                </div>
+                <h5 class="feature-title">27+ Platforms</h5>
+                <p class="feature-text">Poshmark, eBay, Depop, Facebook Marketplace, and 23+ more. All from one dashboard.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- HOW IT WORKS - Light Background Section -->
+<div class="section-alt py-5">
+    <div class="container">
+        <div class="text-center mb-5">
+            <h2 class="section-title">How It Works</h2>
+            <p class="section-subtitle">From photo to profit in 3 simple steps</p>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-md-4">
+                <div class="step-card">
+                    <div class="step-number">1</div>
+                    <div class="step-icon">📸</div>
+                    <h5 class="step-title">Take Photos</h5>
+                    <p class="step-text">Upload product photos from any device</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="step-card">
+                    <div class="step-number">2</div>
+                    <div class="step-icon">🤖</div>
+                    <h5 class="step-title">AI Creates Listing</h5>
+                    <p class="step-text">Automatic title, description, pricing & categorization</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="step-card">
+                    <div class="step-number">3</div>
+                    <div class="step-icon">💰</div>
+                    <h5 class="step-title">Post & Profit</h5>
+                    <p class="step-text">Export to any platform. Track sales. Find items instantly.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- WHY RESELLGENIE? - White Background -->
+<div class="container my-5 py-5">
+    <div class="text-center mb-5">
+        <h2 class="section-title">Why ResellGenie?</h2>
+        <p class="section-subtitle">Built for resellers who want to scale smarter, not harder</p>
+    </div>
+
+    <div class="row g-4 align-items-center">
+        <div class="col-md-6">
+            <div class="benefit-list">
+                <div class="benefit-item">
+                    <div class="benefit-icon">⚡</div>
+                    <div>
+                        <h5 class="benefit-title">Saves Hours Every Week</h5>
+                        <p class="benefit-text">No more typing out listings by hand. AI does it in seconds.</p>
+                    </div>
+                </div>
+                <div class="benefit-item">
+                    <div class="benefit-icon">📍</div>
+                    <div>
+                        <h5 class="benefit-title">Never Lose Inventory</h5>
+                        <p class="benefit-text">Smart location tracking means you always know where items are stored.</p>
+                    </div>
+                </div>
+                <div class="benefit-item">
+                    <div class="benefit-icon">💎</div>
+                    <div>
+                        <h5 class="benefit-title">Boost Your Profits</h5>
+                        <p class="benefit-text">AI-powered pricing suggestions help you price competitively and profitably.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="mockup-placeholder">
+                <i class="fas fa-mobile-alt fa-8x"></i>
+                <p class="mt-3 text-muted">App Screenshot</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SOCIAL PROOF - Dark Background CTA -->
+<div class="section-dark py-5">
+    <div class="container text-center">
+        <div class="social-proof mb-4">
+            <div class="rating-stars mb-2">
+                <i class="fas fa-star"></i>
+                <i class="fas fa-star"></i>
+                <i class="fas fa-star"></i>
+                <i class="fas fa-star"></i>
+                <i class="fas fa-star"></i>
+            </div>
+            <p class="rating-text">4.9/5 rating • Trusted by 127+ resellers</p>
+        </div>
+
+        <h2 class="cta-title mb-3">Ready to transform your reselling business?</h2>
+        <p class="cta-subtitle mb-4">Join hundreds of sellers saving time and making more money</p>
+
+        <div class="cta-buttons">
+            <a href="{{ url_for('create_listing') }}" class="btn btn-light btn-lg me-3 pulse-glow">
+                <i class="fas fa-magic me-2"></i> Try AI Free
+            </a>
+            <a href="{{ url_for('register') }}" class="btn btn-outline-light btn-lg">
+                <i class="fas fa-rocket me-2"></i> Get Started
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- STORAGE TIPS - Final Section -->
+<div class="container my-5">
+    <div class="card storage-tips-card">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h5 class="card-title"><i class="fas fa-box text-primary"></i> Pro Tip: Smart Storage Codes</h5>
+                    <p class="mb-3">Use simple location codes to organize inventory like a pro:</p>
+                    <div class="storage-badges">
+                        <span class="storage-badge">B1</span>
+                        <span class="storage-badge">B2</span>
+                        <span class="storage-badge">C1</span>
+                        <span class="storage-badge">Shelf-3</span>
+                        <span class="storage-badge">Box-A</span>
+                        <span class="storage-badge">Rack-12</span>
+                    </div>
+                </div>
+                <div class="col-md-4 text-center">
+                    <div class="tip-icon">
+                        <i class="fas fa-lightbulb fa-4x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* HERO SECTION */
+.hero-section {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    min-height: 500px;
+    display: flex;
+    align-items: center;
+    margin-top: -20px;
+    margin-left: -15px;
+    margin-right: -15px;
+    border-radius: 0 0 30px 30px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+}
+
+.hero-icon {
+    animation: float 3s ease-in-out infinite;
+}
+
+.hero-icon i {
+    background: linear-gradient(135deg, #fff 0%, #f0f0f0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 5px 15px rgba(255,255,255,0.3));
+}
+
+.hero-tagline {
+    font-size: 2rem;
+    font-weight: 700;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+}
+
+.hero-subtitle {
+    font-size: 1.3rem;
+    opacity: 0.95;
+}
+
+.btn-hero {
+    background: white;
+    color: #667eea;
+    border: none;
+    padding: 15px 40px;
+    border-radius: 50px;
+    font-weight: 600;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+    transition: all 0.3s ease;
+}
+
+.btn-hero:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+    color: #667eea;
+}
+
+.btn-hero-outline {
+    background: transparent;
+    color: white;
+    border: 2px solid white;
+    padding: 15px 40px;
+    border-radius: 50px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.btn-hero-outline:hover {
+    background: white;
+    color: #667eea;
+    transform: translateY(-3px);
+}
+
+.pulse-glow {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+    }
+    50% {
+        box-shadow: 0 5px 30px rgba(255,255,255,0.4);
+    }
+}
+
+@keyframes float {
+    0%, 100% {
+        transform: translateY(0px);
+    }
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+.badge-pill {
+    background: rgba(255,255,255,0.2);
+    padding: 8px 16px;
+    border-radius: 20px;
+    display: inline-block;
+    backdrop-filter: blur(10px);
+}
+
+/* FEATURE CARDS */
+.feature-card {
+    background: white;
+    border-radius: 20px;
+    padding: 40px 30px;
+    text-align: center;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+    transition: all 0.3s ease;
+    height: 100%;
+    border: 1px solid rgba(0,0,0,0.05);
+}
+
+.feature-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 15px 40px rgba(102, 126, 234, 0.25);
+    border-color: #667eea;
+}
+
+.feature-icon {
+    margin-bottom: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    transition: all 0.3s ease;
+}
+
+.feature-icon.warning {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.feature-icon.success {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.feature-card:hover .feature-icon {
+    transform: scale(1.1);
+    filter: drop-shadow(0 5px 15px rgba(102, 126, 234, 0.4));
+}
+
+.feature-title {
+    font-weight: 700;
+    margin-bottom: 15px;
+    color: #2d3748;
+}
+
+.feature-text {
+    color: #718096;
+    line-height: 1.6;
+}
+
+/* SECTION STYLES */
+.section-alt {
+    background: linear-gradient(180deg, #f7fafc 0%, #edf2f7 100%);
+    margin-left: -15px;
+    margin-right: -15px;
+}
+
+.section-title {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: #2d3748;
+    margin-bottom: 10px;
+}
+
+.section-subtitle {
+    font-size: 1.2rem;
+    color: #718096;
+}
+
+/* STEP CARDS */
+.step-card {
+    background: white;
+    padding: 30px;
+    border-radius: 15px;
+    text-align: center;
+    box-shadow: 0 3px 15px rgba(0,0,0,0.05);
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.step-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+}
+
+.step-number {
+    position: absolute;
+    top: -15px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1.2rem;
+    box-shadow: 0 3px 10px rgba(102, 126, 234, 0.4);
+}
+
+.step-icon {
+    font-size: 3rem;
+    margin: 20px 0;
+}
+
+.step-title {
+    font-weight: 700;
+    color: #2d3748;
+    margin-bottom: 10px;
+}
+
+.step-text {
+    color: #718096;
+    margin: 0;
+}
+
+/* BENEFITS */
+.benefit-list {
+    padding: 20px 0;
+}
+
+.benefit-item {
+    display: flex;
+    align-items: start;
+    margin-bottom: 30px;
+    padding: 20px;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 3px 15px rgba(0,0,0,0.05);
+    transition: all 0.3s ease;
+}
+
+.benefit-item:hover {
+    transform: translateX(5px);
+    box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+}
+
+.benefit-icon {
+    font-size: 2.5rem;
+    margin-right: 20px;
+    min-width: 60px;
+    text-align: center;
+}
+
+.benefit-title {
+    font-weight: 700;
+    color: #2d3748;
+    margin-bottom: 5px;
+}
+
+.benefit-text {
+    color: #718096;
+    margin: 0;
+}
+
+/* MOCKUP PLACEHOLDER */
+.mockup-placeholder {
+    background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+    border-radius: 20px;
+    padding: 60px;
+    text-align: center;
+    min-height: 400px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    box-shadow: inset 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.mockup-placeholder i {
+    color: #cbd5e0;
+}
+
+/* DARK CTA SECTION */
+.section-dark {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    margin-left: -15px;
+    margin-right: -15px;
+}
+
+.rating-stars i {
+    color: #ffd700;
+    font-size: 1.5rem;
+    margin: 0 2px;
+}
+
+.rating-text {
+    font-size: 1.1rem;
+    margin: 0;
+    opacity: 0.95;
+}
+
+.cta-title {
+    font-size: 2.5rem;
+    font-weight: 800;
+}
+
+.cta-subtitle {
+    font-size: 1.2rem;
+    opacity: 0.9;
+}
+
+/* STORAGE TIPS */
+.storage-tips-card {
+    border: none;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+    border-radius: 15px;
+    overflow: hidden;
+}
+
+.storage-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.storage-badge {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-weight: 600;
+    display: inline-block;
+    box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3);
+    transition: all 0.3s ease;
+}
+
+.storage-badge:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.5);
+}
+
+.tip-icon i {
+    color: #fbbf24;
+    filter: drop-shadow(0 5px 15px rgba(251, 191, 36, 0.4));
+    animation: pulse-light 2s infinite;
+}
+
+@keyframes pulse-light {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+/* FADE IN ANIMATIONS */
+.hero-content {
+    animation: fadeInUp 0.8s ease-out;
+}
+
+.feature-card {
+    animation: fadeInUp 1s ease-out;
+    animation-fill-mode: both;
+}
+
+.feature-card:nth-child(1) { animation-delay: 0.1s; }
+.feature-card:nth-child(2) { animation-delay: 0.2s; }
+.feature-card:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* RESPONSIVE */
+@media (max-width: 768px) {
+    .hero-tagline {
+        font-size: 1.5rem;
+    }
+
+    .hero-subtitle {
+        font-size: 1rem;
+    }
+
+    .section-title {
+        font-size: 2rem;
+    }
+
+    .mockup-placeholder {
+        padding: 40px;
+        min-height: 300px;
+    }
+}
+</style>
 
 {% else %}
 <!-- Logged-in User Dashboard -->
 <div class="text-center py-4">
     <div class="mb-3">
-        <i class="fas fa-brain fa-3x" style="background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;"></i>
+        <i class="fas fa-brain fa-3x" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;"></i>
     </div>
     <h1 class="display-4 logo">ResellGenie</h1>
     <p class="lead">Create listings with AI and track your inventory</p>
@@ -108,32 +648,4 @@
 </div>
 {% endif %}
 
-<div class="card mt-3">
-    <div class="card-body">
-        <h5 class="card-title"><i class="fas fa-info-circle"></i> How It Works</h5>
-        <ol class="mb-0">
-            <li>📸 Take photos of your item</li>
-            <li>🤖 AI analyzes and creates listing</li>
-            <li>📍 Add storage location (B1, C2, etc.)</li>
-            <li>💾 Save listing with all details</li>
-            <li>📋 Export to CSV to post anywhere</li>
-            <li>💰 Mark as sold to track location!</li>
-        </ol>
-    </div>
-</div>
-
-<div class="card mt-3">
-    <div class="card-body">
-        <h5 class="card-title"><i class="fas fa-box"></i> Storage Location Tips</h5>
-        <p class="mb-2">Use simple codes to organize your items:</p>
-        <div class="d-flex flex-wrap gap-2">
-            <span class="storage-badge">B1</span>
-            <span class="storage-badge">B2</span>
-            <span class="storage-badge">C1</span>
-            <span class="storage-badge">Shelf-3</span>
-            <span class="storage-badge">Box-A</span>
-        </div>
-        <p class="mt-2 text-muted small">When item sells, you'll know exactly where to find it!</p>
-    </div>
-</div>
 {% endblock %}

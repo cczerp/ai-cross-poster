@@ -178,33 +178,6 @@ class Database:
             )
         """))
 
-        # Training data table - Knowledge Distillation (baby bird learns from Claude)
-        cursor.execute(self._sql("""
-            CREATE TABLE IF NOT EXISTS training_data (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                listing_id INTEGER,
-                collectible_id INTEGER,
-                photo_paths TEXT,  -- JSON array of photo paths
-                input_data TEXT,  -- JSON: Gemini's basic analysis (student sees this)
-                teacher_output TEXT,  -- JSON: Claude's deep analysis (student learns from this)
-                student_output TEXT,  -- JSON: Student model's attempt (once trained)
-                student_confidence REAL,  -- How confident was student?
-                used_teacher BOOLEAN DEFAULT 1,  -- Did we use Claude or student?
-                quality_score REAL,  -- Human feedback on quality (optional)
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                FOREIGN KEY (listing_id) REFERENCES listings(id),
-                FOREIGN KEY (collectible_id) REFERENCES collectibles(id)
-            )
-        """))
-
-        # Create index for faster training data queries
-        cursor.execute(self._sql("""
-            CREATE INDEX IF NOT EXISTS idx_training_data_created
-            ON training_data(created_at DESC)
-        """))
-
         # Listings table - tracks all your listings
         cursor.execute(self._sql("""
             CREATE TABLE IF NOT EXISTS listings (
@@ -234,6 +207,34 @@ class Database:
                 FOREIGN KEY (collectible_id) REFERENCES collectibles(id),
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
+        """))
+
+        # Training data table - Knowledge Distillation (baby bird learns from Claude)
+        # MUST be created AFTER listings table due to FK constraint
+        cursor.execute(self._sql("""
+            CREATE TABLE IF NOT EXISTS training_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                listing_id INTEGER,
+                collectible_id INTEGER,
+                photo_paths TEXT,  -- JSON array of photo paths
+                input_data TEXT,  -- JSON: Gemini's basic analysis (student sees this)
+                teacher_output TEXT,  -- JSON: Claude's deep analysis (student learns from this)
+                student_output TEXT,  -- JSON: Student model's attempt (once trained)
+                student_confidence REAL,  -- How confident was student?
+                used_teacher BOOLEAN DEFAULT 1,  -- Did we use Claude or student?
+                quality_score REAL,  -- Human feedback on quality (optional)
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (listing_id) REFERENCES listings(id),
+                FOREIGN KEY (collectible_id) REFERENCES collectibles(id)
+            )
+        """))
+
+        # Create index for faster training data queries
+        cursor.execute(self._sql("""
+            CREATE INDEX IF NOT EXISTS idx_training_data_created
+            ON training_data(created_at DESC)
         """))
 
         # Platform listings - track where each listing is posted

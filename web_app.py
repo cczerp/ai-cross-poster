@@ -57,7 +57,7 @@ db = get_db()
 # Create default admin account if no users exist
 def create_default_admin():
     """Create default admin account (admin/admin) if no users exist"""
-    cursor = db.conn.cursor()
+    cursor = db._get_cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
     user_count = cursor.fetchone()[0]
 

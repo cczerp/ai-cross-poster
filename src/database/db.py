@@ -54,6 +54,7 @@ class Database:
                 password_hash TEXT NOT NULL,
                 is_admin BOOLEAN DEFAULT FALSE,
                 is_active BOOLEAN DEFAULT TRUE,
+                tier TEXT DEFAULT 'FREE',
                 notification_email TEXT,
                 email_verified BOOLEAN DEFAULT FALSE,
                 verification_token TEXT,
@@ -1822,38 +1823,105 @@ class Database:
         }
 
     def _seed_data(self):
-        """Seed initial data - creates admin user if it doesn't exist"""
+        """Seed initial data - creates admin and tier 3 user if they don't exist"""
         from werkzeug.security import generate_password_hash
         
         cursor = self._get_cursor()
         
-        # Check if admin user already exists
+        # Admin user
         cursor.execute("SELECT id FROM users WHERE username = %s", ("lyakGodzilla",))
-        if cursor.fetchone():
-            return  # Admin already exists, skip
+        if not cursor.fetchone():
+            admin_password_hash = generate_password_hash("<3love")
+            cursor.execute("""
+                INSERT INTO users (
+                    username, email, password_hash, is_admin, is_active, 
+                    tier, email_verified
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (
+                "lyakGodzilla",
+                "little.cee.zers@gmail.com",
+                admin_password_hash,
+                True,  # is_admin
+                True,  # is_active
+                "ADMIN",  # tier
+                True   # email_verified
+            ))
+            self.conn.commit()
+            print("✅ Admin user (lyakGodzilla) created")
         
-        # Create admin user
-        admin_password_hash = generate_password_hash("<3love")
-        
-        cursor.execute("""
-            INSERT INTO users (
-                username, email, password_hash, is_admin, is_active, email_verified
-            ) VALUES (%s, %s, %s, %s, %s, %s)
-        """, (
-            "lyakGodzilla",
-            "little.cee.zers@gmail.com",
-            admin_password_hash,
-            True,  # is_admin
-            True,  # is_active
-            True   # email_verified
-        ))
-        
-        self.conn.commit()
-        print("✅ Admin user created successfully")
+        # Tier 3 user (friend)
+        cursor.execute("SELECT id FROM users WHERE username = %s", ("ResellRage",))
+        if not cursor.fetchone():
+            tier3_password_hash = generate_password_hash("Kade031109!")
+            cursor.execute("""
+                INSERT INTO users (
+                    username, email, password_hash, is_admin, is_active, 
+                    tier, email_verified
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (
+                "ResellRage",
+                "resellrage@example.com",
+                tier3_password_hash,
+                False,  # is_admin
+                True,   # is_active
+                "TIER_3",  # tier
+                True    # email_verified
+            ))
+            self.conn.commit()
+            print("✅ Tier 3 user (ResellRage) created")
 
     def close(self):
         """Close database connection"""
         self.conn.close()
+
+
+# ============================================================================
+# TIER-BASED FEATURE PERMISSIONS
+# ============================================================================
+
+TIER_FEATURES = {
+    "ADMIN": {
+        "auto_lister": True,
+        "ai_generation": True,
+        "drafts": True,
+        "csv_export": True,
+        "storage_organizing": True,
+        "collectible_search": True,
+        "multiplatform_notifications": True,
+    },
+    "TIER_3": {
+        "auto_lister": True,
+        "ai_generation": True,
+        "drafts": True,
+        "csv_export": True,
+        "storage_organizing": False,
+        "collectible_search": False,
+        "multiplatform_notifications": False,
+    },
+    "TIER_2": {
+        "auto_lister": True,
+        "ai_generation": True,
+        "drafts": True,
+        "csv_export": True,
+        "storage_organizing": True,
+        "collectible_search": False,
+        "multiplatform_notifications": False,
+    },
+    "FREE": {
+        "auto_lister": True,
+        "ai_generation": True,
+        "drafts": True,
+        "csv_export": True,
+        "storage_organizing": False,
+        "collectible_search": False,
+        "multiplatform_notifications": False,
+    }
+}
+
+def can_access_feature(user_tier: str, feature: str) -> bool:
+    """Check if user tier has access to a feature"""
+    tier_perms = TIER_FEATURES.get(user_tier, TIER_FEATURES["FREE"])
+    return tier_perms.get(feature, False)
 
 
 # Singleton instance

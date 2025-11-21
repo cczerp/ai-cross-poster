@@ -187,7 +187,8 @@ def notifications():
 @login_required
 def storage():
     """Storage overview"""
-    return render_template('storage.html')
+    storage_map = db.get_storage_map(current_user.id)
+    return render_template('storage.html', storage_map=storage_map)
 
 @app.route('/storage/clothing')
 @login_required

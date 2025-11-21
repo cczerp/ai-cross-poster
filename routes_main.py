@@ -6,7 +6,7 @@ Main application routes: listings, drafts, notifications, storage, settings
 from flask import Blueprint, request, jsonify, render_template, redirect, url_for, flash
 from flask_login import login_required, current_user
 from pathlib import Path
-from app_core import admin_required
+from functools import wraps
 
 
 # Create blueprint
@@ -19,6 +19,24 @@ def init_routes(database):
     """Initialize routes with database"""
     global db
     db = database
+
+
+# ============================================================================
+# ADMIN DECORATOR
+# ============================================================================
+
+def admin_required(f):
+    """Decorator to require admin access"""
+    @wraps(f)
+    @login_required
+    def decorated_function(*args, **kwargs):
+        from flask_login import current_user
+        from flask import redirect, url_for, flash
+        if not current_user.is_admin:
+            flash('You need administrator privileges to access this page.', 'error')
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 # -------------------------------------------------------------------------

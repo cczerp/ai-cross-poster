@@ -942,109 +942,116 @@
         {% block content %}{% endblock %}
     </div>
 
-    <!-- Bottom Navigation -->
-    {% if current_user.is_authenticated %}
-    <nav class="bottom-nav">
-        <div class="d-flex">
-            <div class="nav-item">
-                <a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">
-                    <i class="fas fa-home"></i>
-                    <span>Home</span>
-                </a>
-            </div>
-            <div class="nav-item">
-                <a href="{{ url_for('create_listing') }}" class="nav-link {% if request.endpoint == 'create_listing' %}active{% endif %}">
-                    <i class="fas fa-plus-circle"></i>
-                    <span>Create</span>
-                </a>
-            </div>
-            <div class="nav-item">
-                <a href="{{ url_for('drafts') }}" class="nav-link {% if request.endpoint == 'drafts' %}active{% endif %}">
-                    <i class="fas fa-folder"></i>
-                    <span>Drafts</span>
-                </a>
-            </div>
-            <div class="nav-item">
-                <a href="{{ url_for('listings') }}" class="nav-link {% if request.endpoint == 'listings' %}active{% endif %}">
-                    <i class="fas fa-list"></i>
-                    <span>Listings</span>
-                </a>
-            </div>
-            <div class="nav-item">
-                <a href="{{ url_for('storage') }}" class="nav-link {% if request.endpoint in ['storage', 'storage_clothing', 'storage_map'] %}active{% endif %}">
-                    <i class="fas fa-box"></i>
-                    <span>Storage</span>
-                </a>
-            </div>
-            <div class="nav-item">
-                <a href="{{ url_for('main.cards_collection') }}" class="nav-link {% if request.endpoint == 'main.cards_collection' %}active{% endif %}">
-                    <i class="fas fa-id-card"></i>
-                    <span>Cards</span>
-                </a>
-            </div>
-            <div class="nav-item">
-                <a href="{{ url_for('notifications') }}" class="nav-link {% if request.endpoint == 'notifications' %}active{% endif %}">
-                    <i class="fas fa-bell"></i>
-                    <span>Alerts</span>
-                </a>
-            </div>
-            <div class="nav-item">
-                <a href="{{ url_for('auth.logout') }}" class="nav-link" style="color: #ef4444 !important;">
-                    <i class="fas fa-sign-out-alt"></i>
-                    <span>Logout</span>
-                </a>
-            </div>
+
+  
+  
+  
+  
+  
+  
+  
+  
+  {% if current_user.is_authenticated and current_user.is_admin %}
+<div class="bg-danger text-white text-center py-2">
+    <small>
+        <i class="fas fa-shield-alt"></i> Admin Mode
+        <a href="{{ url_for('admin.dashboard') }}" class="text-white ms-3">
+            <u>Go to Admin Dashboard</u>
+        </a>
+    </small>
+</div>
+{% endif %}
+
+<!-- Bottom Navigation -->
+{% if current_user.is_authenticated %}
+<nav class="bottom-nav">
+    <div class="d-flex">
+        <div class="nav-item">
+            <a href="{{ url_for('main.index') }}" class="nav-link {% if request.endpoint == 'main.index' %}active{% endif %}">
+                <i class="fas fa-home"></i>
+                <span>Home</span>
+            </a>
         </div>
-    </nav>
-    {% else %}
-    <!-- Guest Navigation -->
-    <nav class="bottom-nav">
-        <div class="d-flex">
-            <div class="nav-item">
-                <a href="{{ url_for('index') }}" class="nav-link active">
-                    <i class="fas fa-home"></i>
-                    <span>Home</span>
-                </a>
-            </div>
-            <div class="nav-item">
-                <a href="{{ url_for('auth.register') }}" class="nav-link">
-                    <i class="fas fa-user-plus"></i>
-                    <span>Sign Up</span>
-                </a>
-            </div>
-            <div class="nav-item">
-                <a href="{{ url_for('auth.login') }}" class="nav-link">
-                    <i class="fas fa-sign-in-alt"></i>
-                    <span>Login</span>
-                </a>
-            </div>
+
+        <div class="nav-item">
+            <a href="{{ url_for('listings.create_listing') }}" class="nav-link {% if request.endpoint == 'listings.create_listing' %}active{% endif %}">
+                <i class="fas fa-plus-circle"></i>
+                <span>Create</span>
+            </a>
         </div>
-    </nav>
-    {% endif %}
 
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+        <div class="nav-item">
+            <a href="{{ url_for('listings.drafts') }}" class="nav-link {% if request.endpoint == 'listings.drafts' %}active{% endif %}">
+                <i class="fas fa-folder"></i>
+                <span>Drafts</span>
+            </a>
+        </div>
 
-    <!-- Cropper.js for photo editing (FREE!) -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
+        <div class="nav-item">
+            <a href="{{ url_for('listings.listings') }}" class="nav-link {% if request.endpoint == 'listings.listings' %}active{% endif %}">
+                <i class="fas fa-list"></i>
+                <span>Listings</span>
+            </a>
+        </div>
 
-    <script>
-        // Helper functions
-        function showLoading() {
-            document.getElementById('loading').classList.add('show');
-        }
+        <div class="nav-item">
+            <a href="{{ url_for('storage.storage') }}" class="nav-link {% if request.endpoint in ['storage.storage','storage.storage_clothing','storage.storage_map'] %}active{% endif %}">
+                <i class="fas fa-box"></i>
+                <span>Storage</span>
+            </a>
+        </div>
 
-        function hideLoading() {
-            document.getElementById('loading').classList.remove('show');
-        }
+        <div class="nav-item">
+            <a href="{{ url_for('cards.cards_collection') }}" class="nav-link {% if request.endpoint == 'cards.cards_collection' %}active{% endif %}">
+                <i class="fas fa-id-card"></i>
+                <span>Cards</span>
+            </a>
+        </div>
 
-        function showAlert(message, type = 'success') {
-            const alertDiv = document.createElement('div');
-            alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-            alertDiv.innerHTML = `
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <div class="nav-item">
+            <a href="{{ url_for('notifications.notifications') }}" class="nav-link {% if request.endpoint == 'notifications.notifications' %}active{% endif %}">
+                <i class="fas fa-bell"></i>
+                <span>Alerts</span>
+            </a>
+        </div>
+
+        <div class="nav-item">
+            <a href="{{ url_for('auth.logout') }}" class="nav-link" style="color: #ef4444 !important;">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Logout</span>
+            </a>
+        </div>
+    </div>
+</nav>
+
+{% else %}
+<!-- Guest Navigation -->
+<nav class="bottom-nav">
+    <div class="d-flex">
+        <div class="nav-item">
+            <a href="{{ url_for('main.index') }}" class="nav-link active">
+                <i class="fas fa-home"></i>
+                <span>Home</span>
+            </a>
+        </div>
+
+        <div class="nav-item">
+            <a href="{{ url_for('auth.register') }}" class="nav-link">
+                <i class="fas fa-user-plus"></i>
+                <span>Sign Up</span>
+            </a>
+        </div>
+
+        <div class="nav-item">
+            <a href="{{ url_for('auth.login') }}" class="nav-link">
+                <i class="fas fa-sign-in-alt"></i>
+                <span>Login</span>
+            </a>
+        </div>
+    </div>
+</nav>
+{% endif %}
+
             `;
             document.querySelector('.container').insertBefore(alertDiv, document.querySelector('.container').firstChild);
 

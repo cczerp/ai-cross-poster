@@ -55,7 +55,8 @@ def login():
         user_data['username'],
         user_data['email'],
         user_data.get('is_admin', False),
-        user_data.get('is_active', True)
+        user_data.get('is_active', True),
+        user_data.get('tier', 'FREE')
     )
 
     login_user(user)
@@ -109,7 +110,8 @@ def register():
         user_data['username'],
         user_data['email'],
         user_data.get('is_admin', False),
-        user_data.get('is_active', True)
+        user_data.get('is_active', True),
+        user_data.get('tier', 'FREE')
     )
     login_user(user)
 
@@ -194,7 +196,8 @@ def api_login():
         user_data['username'],
         user_data['email'],
         user_data.get('is_admin', False),
-        user_data.get('is_active', True)
+        user_data.get('is_active', True),
+        user_data.get('tier', 'FREE')
     )
     login_user(user)
 

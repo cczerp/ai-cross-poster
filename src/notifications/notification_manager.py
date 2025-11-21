@@ -612,7 +612,7 @@ class NotificationManager:
 
     def get_recent_notifications(self, limit: int = 10) -> List[Dict]:
         """Get recent notifications"""
-        cursor = self.db.conn.cursor()
+        cursor = self.db._get_cursor()
         cursor.execute("""
             SELECT * FROM notifications
             ORDER BY created_at DESC

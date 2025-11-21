@@ -25,7 +25,7 @@ class CancellationScheduler:
 
     def get_pending_cancellations(self) -> List[Dict[str, Any]]:
         """Get all platform listings that are ready to be canceled"""
-        cursor = self.db.conn.cursor()
+        cursor = self.db._get_cursor()
 
         cursor.execute("""
             SELECT pl.*, l.title, l.listing_uuid
@@ -67,7 +67,7 @@ class CancellationScheduler:
             #     self.cancel_on_mercari(platform_listing_id)
 
             # Mark as canceled in database
-            cursor = self.db.conn.cursor()
+            cursor = self.db._get_cursor()
             cursor.execute("""
                 UPDATE platform_listings
                 SET status = 'canceled',
@@ -101,7 +101,7 @@ class CancellationScheduler:
             )
 
             # Update error message
-            cursor = self.db.conn.cursor()
+            cursor = self.db._get_cursor()
             cursor.execute("""
                 UPDATE platform_listings
                 SET error_message = ?

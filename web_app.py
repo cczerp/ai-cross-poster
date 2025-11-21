@@ -74,7 +74,7 @@ def create_default_admin():
         cursor.execute("""
             INSERT INTO users (username, email, password_hash, is_admin, is_active, email_verified)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, ('admin', 'admin@resellgenius.local', password_hash, 1, 1, 1))
+        """, ('admin', 'admin@resellgenius.local', password_hash, True, True, True))
         db.conn.commit()
 
 create_default_admin()

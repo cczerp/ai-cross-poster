@@ -230,6 +230,13 @@ class Database:
             ON platform_activity(user_id, is_read, created_at DESC)
         """)
 
+        # ===== MIGRATION: Add tier column if it doesn't exist =====
+        cursor.execute("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS tier TEXT DEFAULT 'FREE'
+        """)
+        self.conn.commit()
+
         # Storage bins - for physical organization
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS storage_bins (

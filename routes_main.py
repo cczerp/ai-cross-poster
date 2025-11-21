@@ -44,6 +44,30 @@ def admin_required(f):
 # DELETE DRAFT
 # -------------------------------------------------------------------------
 
+# -------------------------------------------------------------------------
+# STORAGE API ENDPOINTS
+# -------------------------------------------------------------------------
+
+@main_bp.route("/api/storage/find", methods=["GET"])
+@login_required
+def api_find_storage_item():
+    """Find a storage item by ID"""
+    try:
+        storage_id = request.args.get("storage_id", "").strip()
+        if not storage_id:
+            return jsonify({"error": "Storage ID required"}), 400
+
+        item = db.find_storage_item(current_user.id, storage_id)
+
+        if item:
+            return jsonify({"success": True, "item": item})
+        else:
+            return jsonify({"success": False, "error": "Item not found"}), 404
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @main_bp.route("/api/delete-draft/<int:listing_id>", methods=["DELETE"])
 @login_required
 def delete_draft(listing_id):

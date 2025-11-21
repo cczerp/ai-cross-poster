@@ -955,7 +955,7 @@
 <div class="bg-danger text-white text-center py-2">
     <small>
         <i class="fas fa-shield-alt"></i> Admin Mode
-        <a href="{{ url_for('admin.dashboard') }}" class="text-white ms-3">
+        <a href="{{ url_for('admin.admin_dashboard') }}" class="text-white ms-3">
             <u>Go to Admin Dashboard</u>
         </a>
     </small>
@@ -974,28 +974,28 @@
         </div>
 
         <div class="nav-item">
-            <a href="{{ url_for('listings.create_listing') }}" class="nav-link {% if request.endpoint == 'listings.create_listing' %}active{% endif %}">
+            <a href="{{ url_for('create_listing') }}" class="nav-link {% if request.endpoint == 'create_listing' %}active{% endif %}">
                 <i class="fas fa-plus-circle"></i>
                 <span>Create</span>
             </a>
         </div>
 
         <div class="nav-item">
-            <a href="{{ url_for('listings.drafts') }}" class="nav-link {% if request.endpoint == 'listings.drafts' %}active{% endif %}">
+            <a href="{{ url_for('drafts') }}" class="nav-link {% if request.endpoint == 'drafts' %}active{% endif %}">
                 <i class="fas fa-folder"></i>
                 <span>Drafts</span>
             </a>
         </div>
 
         <div class="nav-item">
-            <a href="{{ url_for('listings.listings') }}" class="nav-link {% if request.endpoint == 'listings.listings' %}active{% endif %}">
+            <a href="{{ url_for('listings') }}" class="nav-link {% if request.endpoint == 'listings' %}active{% endif %}">
                 <i class="fas fa-list"></i>
                 <span>Listings</span>
             </a>
         </div>
 
         <div class="nav-item">
-            <a href="{{ url_for('storage.storage') }}" class="nav-link {% if request.endpoint in ['storage.storage','storage.storage_clothing','storage.storage_map'] %}active{% endif %}">
+            <a href="{{ url_for('storage') }}" class="nav-link {% if request.endpoint in ['storage','storage_clothing','storage_map'] %}active{% endif %}">
                 <i class="fas fa-box"></i>
                 <span>Storage</span>
             </a>
@@ -1009,7 +1009,7 @@
         </div>
 
         <div class="nav-item">
-            <a href="{{ url_for('notifications.notifications') }}" class="nav-link {% if request.endpoint == 'notifications.notifications' %}active{% endif %}">
+            <a href="{{ url_for('notifications') }}" class="nav-link {% if request.endpoint == 'notifications' %}active{% endif %}">
                 <i class="fas fa-bell"></i>
                 <span>Alerts</span>
             </a>

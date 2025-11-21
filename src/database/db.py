@@ -1,7 +1,6 @@
 """
-Database Schema for AI Cross-Poster
-====================================
-Supports both SQLite (local dev) and PostgreSQL (production).
+PostgreSQL Database Handler for AI Cross-Poster
+All SQLite code removed - PostgreSQL only
 """
 
 import os
@@ -9,155 +8,78 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 import json
+import psycopg2
+import psycopg2.extras
 
 
 class Database:
-    """Main database handler for AI Cross-Poster"""
+    """Main database handler for AI Cross-Poster - PostgreSQL only"""
 
-    def __init__(self, db_path: str = "./data/cross_poster.db"):
-        """Initialize database connection"""
-        self.db_path = db_path
-
-        # Check for PostgreSQL DATABASE_URL
+    def __init__(self, db_path: str = None):
+        """Initialize PostgreSQL database connection"""
+        # Get DATABASE_URL from environment
         database_url = os.getenv('DATABASE_URL')
+        
+        if not database_url:
+            raise ValueError(
+                "DATABASE_URL environment variable is required. "
+                "Set it to your PostgreSQL connection string:\n"
+                "postgresql://user:password@host:5432/database"
+            )
 
-        if database_url:
-            # Use PostgreSQL
-            print("🐘 Connecting to PostgreSQL database...")
-            import psycopg2
-            import psycopg2.extras
-
-            self.is_postgres = True
-            self.conn = psycopg2.connect(database_url)
-            # Use RealDictCursor for dict-like row access
-            self.cursor_factory = psycopg2.extras.RealDictCursor
-        else:
-            # Use SQLite
-            print("📁 Using SQLite database...")
-            import sqlite3
-
-            self.is_postgres = False
-
-            # Ensure data directory exists
-            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-
-            # Initialize connection
-            self.conn = sqlite3.connect(db_path, check_same_thread=False)
-            self.conn.row_factory = sqlite3.Row
+        print("🐘 Connecting to PostgreSQL database...")
+        self.conn = psycopg2.connect(database_url)
+        self.cursor_factory = psycopg2.extras.RealDictCursor
 
         # Create tables
         self._create_tables()
 
     def _get_cursor(self):
-        """Get appropriate cursor for database type with auto-converting execute"""
-        if self.is_postgres:
-            cursor = self.conn.cursor(cursor_factory=self.cursor_factory)
-        else:
-            cursor = self.conn.cursor()
-
-        # Wrap execute to auto-convert SQL and handle RETURNING for lastrowid
-        original_execute = cursor.execute
-        cursor._last_insert_id = None
-
-        def converting_execute(sql, params=None):
-            converted_sql = sql.replace('?', '%s') if self.is_postgres else sql
-
-            # For PostgreSQL INSERT statements, add RETURNING id if not present
-            # Only match statements that START with INSERT, not ones that contain the word elsewhere
-            if self.is_postgres and converted_sql.strip().upper().startswith('INSERT') and 'RETURNING' not in converted_sql.upper():
-                converted_sql = converted_sql.rstrip().rstrip(';') + ' RETURNING id'
-
-            if params:
-                result = original_execute(converted_sql, params)
-            else:
-                result = original_execute(converted_sql)
-
-            # Fetch the RETURNING id for PostgreSQL
-            if self.is_postgres and 'RETURNING' in converted_sql.upper():
-                try:
-                    row = cursor.fetchone()
-                    if row:
-                        cursor._last_insert_id = row.get('id') if isinstance(row, dict) else row[0]
-                except:
-                    pass
-
-            return result
-
-        cursor.execute = converting_execute
-
-        # Add lastrowid property for PostgreSQL compatibility
-        if self.is_postgres:
-            cursor.__class__.lastrowid = property(lambda self: self._last_insert_id or 0)
-
-        return cursor
-
-    def _sql(self, sqlite_sql: str, postgres_sql: Optional[str] = None) -> str:
-        """Return appropriate SQL for database type"""
-        if self.is_postgres and postgres_sql:
-            return postgres_sql
-        elif self.is_postgres:
-            # Auto-convert common SQLite -> PostgreSQL patterns
-            sql = sqlite_sql
-            sql = sql.replace('INTEGER PRIMARY KEY AUTOINCREMENT', 'SERIAL PRIMARY KEY')
-            sql = sql.replace('BOOLEAN DEFAULT 0', 'BOOLEAN DEFAULT FALSE')
-            sql = sql.replace('BOOLEAN DEFAULT 1', 'BOOLEAN DEFAULT TRUE')
-            # Convert ? placeholders to %s for PostgreSQL
-            sql = sql.replace('?', '%s')
-            return sql
-        else:
-            return sqlite_sql
-
-    def _execute(self, cursor, sql: str, params=None):
-        """Execute SQL with automatic conversion for PostgreSQL"""
-        converted_sql = self._sql(sql)
-        if params:
-            cursor.execute(converted_sql, params)
-        else:
-            cursor.execute(converted_sql)
-        return cursor
+        """Get PostgreSQL cursor with RealDictCursor for dict-like row access"""
+        return self.conn.cursor(cursor_factory=self.cursor_factory)
 
     def _create_tables(self):
         """Create all database tables"""
         cursor = self._get_cursor()
 
         # Users table - for authentication
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 username TEXT UNIQUE NOT NULL,
                 email TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
-                is_admin BOOLEAN DEFAULT 0,  -- Admin role flag
-                is_active BOOLEAN DEFAULT 1,  -- Account active status
-                notification_email TEXT,  -- Where to send sale notifications
-                email_verified BOOLEAN DEFAULT 0,  -- Email verification status
-                verification_token TEXT,  -- Token for email verification
-                reset_token TEXT,  -- Token for password reset
-                reset_token_expiry TIMESTAMP,  -- When reset token expires
+                is_admin BOOLEAN DEFAULT FALSE,
+                is_active BOOLEAN DEFAULT TRUE,
+                notification_email TEXT,
+                email_verified BOOLEAN DEFAULT FALSE,
+                verification_token TEXT,
+                reset_token TEXT,
+                reset_token_expiry TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_login TIMESTAMP
             )
-        """))
+        """)
 
         # Marketplace credentials - per user
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS marketplace_credentials (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
-                platform TEXT NOT NULL,  -- 'poshmark', 'depop', 'varagesale', etc.
+                platform TEXT NOT NULL,
                 username TEXT,
-                password TEXT,  -- Encrypted or use secure storage in production
+                password TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id),
                 UNIQUE(user_id, platform)
             )
-        """))
+        """)
 
         # Collectibles database table
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS collectibles (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 name TEXT NOT NULL,
                 category TEXT,
                 brand TEXT,
@@ -167,187 +89,187 @@ class Database:
                 estimated_value_low REAL,
                 estimated_value_high REAL,
                 estimated_value_avg REAL,
-                market_data TEXT,  -- JSON blob with pricing history
-                attributes TEXT,   -- JSON blob with item attributes
-                image_urls TEXT,   -- JSON array of image URLs
-                identified_by TEXT,  -- 'claude', 'gpt4', 'manual'
+                market_data TEXT,
+                attributes TEXT,
+                image_urls TEXT,
+                identified_by TEXT,
                 confidence_score REAL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 times_found INTEGER DEFAULT 1,
-                notes TEXT
+                notes TEXT,
+                deep_analysis TEXT,
+                embedding TEXT,
+                franchise TEXT,
+                rarity_level TEXT
             )
-        """))
+        """)
 
         # Listings table - tracks all your listings
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS listings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                listing_uuid TEXT UNIQUE NOT NULL,  -- Internal unique ID
-                user_id INTEGER NOT NULL,  -- FK to users (owner of listing)
-                collectible_id INTEGER,  -- FK to collectibles
+                id SERIAL PRIMARY KEY,
+                listing_uuid TEXT UNIQUE NOT NULL,
+                user_id INTEGER NOT NULL,
+                collectible_id INTEGER,
                 title TEXT NOT NULL,
                 description TEXT,
                 price REAL NOT NULL,
-                cost REAL,  -- What you paid for it
+                cost REAL,
                 condition TEXT,
                 category TEXT,
-                item_type TEXT,  -- trading_card, clothing, electronics, collectible, general
-                attributes TEXT,  -- JSON blob
-                photos TEXT,  -- JSON array of photo paths
-                quantity INTEGER DEFAULT 1,  -- Quantity available
-                storage_location TEXT,  -- Physical location (B1, C2, etc.)
-                sku TEXT,  -- Stock keeping unit / custom ID
-                upc TEXT,  -- UPC / barcode
-                status TEXT DEFAULT 'draft',  -- draft, active, sold, canceled
-                sold_platform TEXT,  -- Which platform it sold on
+                item_type TEXT,
+                attributes TEXT,
+                photos TEXT,
+                quantity INTEGER DEFAULT 1,
+                storage_location TEXT,
+                sku TEXT,
+                upc TEXT,
+                status TEXT DEFAULT 'draft',
+                sold_platform TEXT,
                 sold_date TIMESTAMP,
                 sold_price REAL,
+                platform_statuses TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (collectible_id) REFERENCES collectibles(id),
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
-        """))
+        """)
 
-        # Training data table - Knowledge Distillation (baby bird learns from Claude)
-        # MUST be created AFTER listings table due to FK constraint
-        cursor.execute(self._sql("""
+        # Training data table - Knowledge Distillation
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS training_data (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 user_id INTEGER,
                 listing_id INTEGER,
                 collectible_id INTEGER,
-                photo_paths TEXT,  -- JSON array of photo paths
-                input_data TEXT,  -- JSON: Gemini's basic analysis (student sees this)
-                teacher_output TEXT,  -- JSON: Claude's deep analysis (student learns from this)
-                student_output TEXT,  -- JSON: Student model's attempt (once trained)
-                student_confidence REAL,  -- How confident was student?
-                used_teacher BOOLEAN DEFAULT 1,  -- Did we use Claude or student?
-                quality_score REAL,  -- Human feedback on quality (optional)
+                photo_paths TEXT,
+                input_data TEXT,
+                teacher_output TEXT,
+                student_output TEXT,
+                student_confidence REAL,
+                used_teacher BOOLEAN DEFAULT TRUE,
+                quality_score REAL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id),
                 FOREIGN KEY (listing_id) REFERENCES listings(id),
                 FOREIGN KEY (collectible_id) REFERENCES collectibles(id)
             )
-        """))
+        """)
 
         # Create index for faster training data queries
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_training_data_created
             ON training_data(created_at DESC)
-        """))
+        """)
 
         # Platform listings - track where each listing is posted
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS platform_listings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 listing_id INTEGER NOT NULL,
-                platform TEXT NOT NULL,  -- ebay, mercari, facebook, poshmark
-                platform_listing_id TEXT,  -- ID from the platform
+                platform TEXT NOT NULL,
+                platform_listing_id TEXT,
                 platform_url TEXT,
-                status TEXT DEFAULT 'pending',  -- pending, active, sold, failed, canceled, pending_cancel
+                status TEXT DEFAULT 'pending',
                 posted_at TIMESTAMP,
                 last_synced TIMESTAMP,
-                cancel_scheduled_at TIMESTAMP,  -- When to auto-cancel (15 min cooldown)
+                cancel_scheduled_at TIMESTAMP,
                 error_message TEXT,
                 retry_count INTEGER DEFAULT 0,
                 FOREIGN KEY (listing_id) REFERENCES listings(id),
                 UNIQUE(listing_id, platform)
             )
-        """))
+        """)
 
         # Sync log - track all sync operations
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS sync_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 listing_id INTEGER NOT NULL,
                 platform TEXT NOT NULL,
-                action TEXT NOT NULL,  -- create, update, cancel, check_status
-                status TEXT,  -- success, failed
-                details TEXT,  -- JSON blob with details
+                action TEXT NOT NULL,
+                status TEXT,
+                details TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (listing_id) REFERENCES listings(id)
             )
-        """))
+        """)
 
-        # Platform activity - monitor external platforms for sold items & messages
-        cursor.execute(self._sql("""
+        # Platform activity - monitor external platforms
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS platform_activity (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
-                platform TEXT NOT NULL,  -- ebay, mercari, etc.
-                activity_type TEXT NOT NULL,  -- 'sold', 'message', 'offer', 'view', 'favorite'
-                platform_listing_id TEXT,  -- ID of the listing on that platform
-                listing_id INTEGER,  -- FK to our listings table (if matched)
-                title TEXT,  -- Title of the item
-                buyer_username TEXT,  -- Username of buyer (if applicable)
-                message_text TEXT,  -- Message content (for 'message' type)
-                sold_price REAL,  -- Sale price (for 'sold' type)
-                activity_date TIMESTAMP,  -- When the activity occurred
-                is_read BOOLEAN DEFAULT 0,  -- Has user acknowledged this?
-                is_synced_to_inventory BOOLEAN DEFAULT 0,  -- Has sold item been marked in our system?
-                raw_data TEXT,  -- JSON: Full data from platform API/scrape
+                platform TEXT NOT NULL,
+                activity_type TEXT NOT NULL,
+                platform_listing_id TEXT,
+                listing_id INTEGER,
+                title TEXT,
+                buyer_username TEXT,
+                message_text TEXT,
+                sold_price REAL,
+                activity_date TIMESTAMP,
+                is_read BOOLEAN DEFAULT FALSE,
+                is_synced_to_inventory BOOLEAN DEFAULT FALSE,
+                raw_data TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id),
                 FOREIGN KEY (listing_id) REFERENCES listings(id)
             )
-        """))
+        """)
 
         # Create index for faster activity queries
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_platform_activity_user_unread
             ON platform_activity(user_id, is_read, created_at DESC)
-        """))
+        """)
 
-        # ========================================
-        # STORAGE SYSTEM (Standalone Organization Tool)
-        # ========================================
-
-        # Storage bins - for physical organization (clothing, cards, etc.)
-        cursor.execute(self._sql("""
+        # Storage bins - for physical organization
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS storage_bins (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
-                bin_name TEXT NOT NULL,  -- 'A', 'B', 'C' or custom name
-                bin_type TEXT NOT NULL,  -- 'clothing', 'cards'
+                bin_name TEXT NOT NULL,
+                bin_type TEXT NOT NULL,
                 description TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id),
                 UNIQUE(user_id, bin_name, bin_type)
             )
-        """))
+        """)
 
         # Storage sections - compartments within bins
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS storage_sections (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 bin_id INTEGER NOT NULL,
-                section_name TEXT NOT NULL,  -- 'A1', 'A2', 'A3' or '1', '2', '3'
-                capacity INTEGER,  -- Max items (optional)
-                item_count INTEGER DEFAULT 0,  -- Current items
+                section_name TEXT NOT NULL,
+                capacity INTEGER,
+                item_count INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (bin_id) REFERENCES storage_bins(id),
                 UNIQUE(bin_id, section_name)
             )
-        """))
+        """)
 
-        # Storage items - physical items in storage (NOT listings)
-        cursor.execute(self._sql("""
+        # Storage items - physical items in storage
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS storage_items (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
-                storage_id TEXT UNIQUE NOT NULL,  -- A2-14, FB-A1-12, etc.
+                storage_id TEXT UNIQUE NOT NULL,
                 bin_id INTEGER NOT NULL,
                 section_id INTEGER,
-                item_type TEXT,  -- 'clothing', 'shoes', 'accessories', 'card', 'collectible'
-                category TEXT,  -- For cards: 'FB' (Football), 'PKMN' (Pokemon), etc.
+                item_type TEXT,
+                category TEXT,
                 title TEXT,
                 description TEXT,
                 quantity INTEGER DEFAULT 1,
-                photos TEXT,  -- JSON array of photo paths
+                photos TEXT,
                 notes TEXT,
-                listing_id INTEGER,  -- Optional link to listing (if user lists it later)
+                listing_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id),
@@ -355,369 +277,223 @@ class Database:
                 FOREIGN KEY (section_id) REFERENCES storage_sections(id),
                 FOREIGN KEY (listing_id) REFERENCES listings(id)
             )
-        """))
+        """)
 
         # Create indexes for faster storage queries
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_storage_items_user
             ON storage_items(user_id, created_at DESC)
-        """))
+        """)
 
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_storage_items_bin_section
             ON storage_items(bin_id, section_id)
-        """))
+        """)
 
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_storage_items_storage_id
             ON storage_items(storage_id)
-        """))
+        """)
 
-        # ========================================
-        # CARD COLLECTION SYSTEM (Standalone Collection Manager)
-        # ========================================
-
-        # Card collections - unified card data for all card types
-        cursor.execute(self._sql("""
+        # Card collections - unified card data
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS card_collections (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
-
-                -- Universal Fields (all cards)
-                card_uuid TEXT UNIQUE NOT NULL,  -- Internal unique ID
-                card_type TEXT NOT NULL,  -- 'pokemon', 'mtg', 'yugioh', 'sports_nfl', 'sports_nba', 'sports_mlb', etc.
-                title TEXT NOT NULL,  -- Full card name/title
-                card_number TEXT,  -- Card number in set
+                card_uuid TEXT UNIQUE NOT NULL,
+                card_type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                card_number TEXT,
                 quantity INTEGER DEFAULT 1,
-
-                -- Organization Fields
-                organization_mode TEXT,  -- Current organization: 'by_set', 'by_year', 'by_sport', 'by_brand', 'by_game', 'by_rarity', 'by_number', 'by_grading', 'by_value', 'by_binder', 'custom'
-                primary_category TEXT,  -- Auto-assigned based on organization mode
-                custom_categories TEXT,  -- JSON array of custom tags
-
-                -- Physical Location (optional link to storage)
-                storage_location TEXT,  -- Free-form location (Binder A Page 1, Box 3, etc.)
-                storage_item_id INTEGER,  -- Optional FK to storage_items
-
-                -- TCG Fields (Pokémon, MTG, Yu-Gi-Oh, etc.)
-                game_name TEXT,  -- 'Pokemon', 'Magic: The Gathering', 'Yu-Gi-Oh!', etc.
-                set_name TEXT,  -- Set name
-                set_code TEXT,  -- Set abbreviation/code
-                set_symbol TEXT,  -- Set symbol description
-                rarity TEXT,  -- Common, Uncommon, Rare, Ultra Rare, Secret Rare, etc.
-                card_subtype TEXT,  -- Trainer, Energy, Creature Type, Spell Type, etc.
-                format_legality TEXT,  -- JSON: Standard, Expanded, Legacy, Modern, Vintage, etc.
-
-                -- Sports Card Fields (NFL, NBA, MLB, etc.)
-                sport TEXT,  -- 'NFL', 'NBA', 'MLB', 'NHL', etc.
-                year INTEGER,  -- Card year
-                brand TEXT,  -- Topps, Panini, Upper Deck, etc.
-                series TEXT,  -- Series/product line
-                player_name TEXT,  -- Player name (for sports cards)
-                team TEXT,  -- Team name
-                is_rookie_card BOOLEAN DEFAULT 0,  -- RC flag
-                parallel_color TEXT,  -- Parallel/variant color
-                insert_series TEXT,  -- Insert/special series
-
-                -- Grading & Value
-                grading_company TEXT,  -- PSA, BGS, CGC, etc.
-                grading_score REAL,  -- 9.5, 10, etc.
-                grading_serial TEXT,  -- Grading serial number
-                estimated_value REAL,  -- Current estimated value (optional)
-                value_tier TEXT,  -- 'under_10', '10_50', '50_100', '100_500', 'over_500'
-                purchase_price REAL,  -- What you paid (optional)
-
-                -- Photos & Notes
-                photos TEXT,  -- JSON array of photo paths
-                notes TEXT,  -- User notes
-
-                -- Metadata
-                ai_identified BOOLEAN DEFAULT 0,  -- Was this auto-identified by AI?
-                ai_confidence REAL,  -- Confidence score
+                organization_mode TEXT,
+                primary_category TEXT,
+                custom_categories TEXT,
+                storage_location TEXT,
+                storage_item_id INTEGER,
+                game_name TEXT,
+                set_name TEXT,
+                set_code TEXT,
+                set_symbol TEXT,
+                rarity TEXT,
+                card_subtype TEXT,
+                format_legality TEXT,
+                sport TEXT,
+                year INTEGER,
+                brand TEXT,
+                series TEXT,
+                player_name TEXT,
+                team TEXT,
+                is_rookie_card BOOLEAN DEFAULT FALSE,
+                parallel_color TEXT,
+                insert_series TEXT,
+                grading_company TEXT,
+                grading_score REAL,
+                grading_serial TEXT,
+                estimated_value REAL,
+                value_tier TEXT,
+                purchase_price REAL,
+                photos TEXT,
+                notes TEXT,
+                ai_identified BOOLEAN DEFAULT FALSE,
+                ai_confidence REAL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
                 FOREIGN KEY (user_id) REFERENCES users(id),
                 FOREIGN KEY (storage_item_id) REFERENCES storage_items(id)
             )
-        """))
+        """)
 
-        # Organization presets - saved organization modes per user
-        cursor.execute(self._sql("""
+        # Organization presets
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS card_organization_presets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
-                preset_name TEXT NOT NULL,  -- 'My Pokemon Sets', 'NFL by Year', etc.
-                card_type_filter TEXT,  -- Filter by card type (optional)
-                organization_mode TEXT NOT NULL,  -- 'by_set', 'by_year', etc.
-                sort_order TEXT,  -- 'asc' or 'desc'
-                filters TEXT,  -- JSON: Additional filters
-                is_active BOOLEAN DEFAULT 0,  -- Currently active preset
+                preset_name TEXT NOT NULL,
+                card_type_filter TEXT,
+                organization_mode TEXT NOT NULL,
+                sort_order TEXT,
+                filters TEXT,
+                is_active BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id),
                 UNIQUE(user_id, preset_name)
             )
-        """))
+        """)
 
-        # Custom categories - user-defined categories/tags
-        cursor.execute(self._sql("""
+        # Custom categories
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS card_custom_categories (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
-                category_name TEXT NOT NULL,  -- 'Trade', 'Keep', 'Sell', 'Duplicates', etc.
-                category_color TEXT,  -- Hex color for UI
-                category_icon TEXT,  -- Icon name
+                category_name TEXT NOT NULL,
+                category_color TEXT,
+                category_icon TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id),
                 UNIQUE(user_id, category_name)
             )
-        """))
+        """)
 
         # Card collection indexes
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_card_collections_user
             ON card_collections(user_id, created_at DESC)
-        """))
+        """)
 
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_card_collections_type
             ON card_collections(card_type)
-        """))
+        """)
 
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_card_collections_org_mode
             ON card_collections(organization_mode, primary_category)
-        """))
+        """)
 
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_card_collections_set
             ON card_collections(set_code, card_number)
-        """))
+        """)
 
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_card_collections_sport_year
             ON card_collections(sport, year, brand)
-        """))
+        """)
 
         # Notifications/alerts table
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS notifications (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                type TEXT NOT NULL,  -- sale, offer, listing_failed, price_alert
+                id SERIAL PRIMARY KEY,
+                type TEXT NOT NULL,
                 listing_id INTEGER,
                 platform TEXT,
                 title TEXT NOT NULL,
                 message TEXT,
-                data TEXT,  -- JSON blob with notification data
-                is_read BOOLEAN DEFAULT 0,
-                sent_email BOOLEAN DEFAULT 0,
+                data TEXT,
+                is_read BOOLEAN DEFAULT FALSE,
+                sent_email BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (listing_id) REFERENCES listings(id)
             )
-        """))
+        """)
 
-        # Price alerts - track collectibles you're watching
-        cursor.execute(self._sql("""
+        # Price alerts
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS price_alerts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 collectible_id INTEGER NOT NULL,
                 target_price REAL NOT NULL,
                 condition TEXT,
-                is_active BOOLEAN DEFAULT 1,
+                is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (collectible_id) REFERENCES collectibles(id)
             )
-        """))
+        """)
 
-        # Activity logs - track user actions for security and debugging
-        cursor.execute(self._sql("""
+        # Activity logs
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS activity_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 user_id INTEGER,
-                action TEXT NOT NULL,  -- login, logout, create_listing, delete_listing, etc.
-                resource_type TEXT,  -- listing, user, credential, etc.
+                action TEXT NOT NULL,
+                resource_type TEXT,
                 resource_id INTEGER,
-                details TEXT,  -- JSON blob with additional details
+                details TEXT,
                 ip_address TEXT,
                 user_agent TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
-        """))
+        """)
 
         # Create indexes for better performance
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_listings_uuid
             ON listings(listing_uuid)
-        """))
+        """)
 
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_listings_status
             ON listings(status)
-        """))
+        """)
 
-        cursor.execute(self._sql("""
-            CREATE INDEX IF NOT EXISTS idx_platform_listings_status
-            ON platform_listings(status)
-        """))
-
-        cursor.execute(self._sql("""
-            CREATE INDEX IF NOT EXISTS idx_collectibles_name
-            ON collectibles(name)
-        """))
-
-        cursor.execute(self._sql("""
-            CREATE INDEX IF NOT EXISTS idx_notifications_unread
-            ON notifications(is_read)
-        """))
-
-        cursor.execute(self._sql("""
-            CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id
-            ON activity_logs(user_id)
-        """))
-
-        cursor.execute(self._sql("""
-            CREATE INDEX IF NOT EXISTS idx_activity_logs_action
-            ON activity_logs(action)
-        """))
-
-        # Run migrations BEFORE creating indexes on migrated columns
-        self._run_migrations()
-
-        # Create indexes on migrated columns (after migrations complete)
-        cursor.execute(self._sql("""
-            CREATE INDEX IF NOT EXISTS idx_users_is_admin
-            ON users(is_admin)
-        """))
-
-        # Create user_id index after migration (in case column didn't exist)
-        cursor.execute(self._sql("""
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_listings_user_id
             ON listings(user_id)
-        """))
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_platform_listings_status
+            ON platform_listings(status)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_collectibles_name
+            ON collectibles(name)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_notifications_unread
+            ON notifications(is_read)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id
+            ON activity_logs(user_id)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_activity_logs_action
+            ON activity_logs(action)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_users_is_admin
+            ON users(is_admin)
+        """)
 
         self.conn.commit()
-
-    def _run_migrations(self):
-        """Run database migrations for existing databases"""
-        # PostgreSQL creates fresh tables with latest schema, no migrations needed
-        if self.is_postgres:
-            print("📊 PostgreSQL: Using latest schema (no migrations needed)")
-            return
-
-        cursor = self._get_cursor()
-        import sqlite3
-
-        # Migration: Add quantity and storage_location to listings table
-        try:
-            cursor.execute("SELECT quantity FROM listings LIMIT 1")
-        except sqlite3.OperationalError:
-            # Column doesn't exist, add it
-            print("Running migration: Adding quantity column to listings table")
-            cursor.execute("ALTER TABLE listings ADD COLUMN quantity INTEGER DEFAULT 1")
-            self.conn.commit()
-
-        try:
-            cursor.execute("SELECT storage_location FROM listings LIMIT 1")
-        except sqlite3.OperationalError:
-            # Column doesn't exist, add it
-            print("Running migration: Adding storage_location column to listings table")
-            cursor.execute("ALTER TABLE listings ADD COLUMN storage_location TEXT")
-            self.conn.commit()
-
-        # Migration: Add cancel_scheduled_at to platform_listings table
-        try:
-            cursor.execute("SELECT cancel_scheduled_at FROM platform_listings LIMIT 1")
-        except sqlite3.OperationalError:
-            # Column doesn't exist, add it
-            print("Running migration: Adding cancel_scheduled_at column to platform_listings table")
-            cursor.execute("ALTER TABLE platform_listings ADD COLUMN cancel_scheduled_at TIMESTAMP")
-            self.conn.commit()
-
-        # Migration: Add user_id to listings table
-        try:
-            cursor.execute("SELECT user_id FROM listings LIMIT 1")
-        except sqlite3.OperationalError:
-            # Column doesn't exist, add it
-            print("Running migration: Adding user_id column to listings table")
-            # Add column with default value 1 (for existing listings, assume first user)
-            cursor.execute("ALTER TABLE listings ADD COLUMN user_id INTEGER DEFAULT 1")
-            self.conn.commit()
-            # Create a default admin user if no users exist
-            cursor.execute("SELECT COUNT(*) FROM users")
-            if cursor.fetchone()[0] == 0:
-                print("Creating default user for existing listings")
-                # Create default user with a secure random password (user should change this)
-                import secrets
-                default_password = secrets.token_urlsafe(16)
-                from werkzeug.security import generate_password_hash
-                cursor.execute("""
-                    INSERT INTO users (id, username, email, password_hash)
-                    VALUES (1, 'admin', 'admin@localhost', ?)
-                """, (generate_password_hash(default_password),))
-                self.conn.commit()
-                print(f"Default user created: username='admin', password='{default_password}'")
-                print("IMPORTANT: Please change this password after first login!")
-
-        # Migration: Add notification_email to users table
-        try:
-            cursor.execute("SELECT notification_email FROM users LIMIT 1")
-        except sqlite3.OperationalError:
-            # Column doesn't exist, add it
-            print("Running migration: Adding notification_email column to users table")
-            cursor.execute("ALTER TABLE users ADD COLUMN notification_email TEXT")
-            self.conn.commit()
-
-        # Migration: Add admin and security columns to users table
-        for col_name, col_def, default_msg in [
-            ("is_admin", "BOOLEAN DEFAULT 0", "is_admin"),
-            ("is_active", "BOOLEAN DEFAULT 1", "is_active"),
-            ("email_verified", "BOOLEAN DEFAULT 0", "email_verified"),
-            ("verification_token", "TEXT", "verification_token"),
-            ("reset_token", "TEXT", "reset_token"),
-            ("reset_token_expiry", "TIMESTAMP", "reset_token_expiry"),
-        ]:
-            try:
-                cursor.execute(f"SELECT {col_name} FROM users LIMIT 1")
-            except sqlite3.OperationalError:
-                print(f"Running migration: Adding {default_msg} column to users table")
-                cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
-                self.conn.commit()
-
-        # Migration: Add SKU, UPC, and item_type to listings table
-        for col_name, col_def, default_msg in [
-            ("sku", "TEXT", "sku"),
-            ("upc", "TEXT", "upc"),
-            ("item_type", "TEXT", "item_type"),
-        ]:
-            try:
-                cursor.execute(f"SELECT {col_name} FROM listings LIMIT 1")
-            except sqlite3.OperationalError:
-                print(f"Running migration: Adding {default_msg} column to listings table")
-                cursor.execute(f"ALTER TABLE listings ADD COLUMN {col_name} {col_def}")
-                self.conn.commit()
-
-        # Migration: Add deep_analysis and embedding to collectibles table (for RAG)
-        for col_name, col_def, default_msg in [
-            ("deep_analysis", "TEXT", "deep_analysis (Claude analysis JSON)"),
-            ("embedding", "TEXT", "embedding (vector for similarity search)"),
-            ("franchise", "TEXT", "franchise (Pokemon, Star Wars, etc.)"),
-            ("rarity_level", "TEXT", "rarity_level (Common, Rare, Ultra Rare)"),
-        ]:
-            try:
-                cursor.execute(f"SELECT {col_name} FROM collectibles LIMIT 1")
-            except sqlite3.OperationalError:
-                print(f"Running migration: Adding {default_msg} column to collectibles table")
-                cursor.execute(f"ALTER TABLE collectibles ADD COLUMN {col_name} {col_def}")
-                self.conn.commit()
-
-        # Migration: Add platform_statuses to listings table (for bulk posting)
-        try:
-            cursor.execute("SELECT platform_statuses FROM listings LIMIT 1")
-        except sqlite3.OperationalError:
-            print("Running migration: Adding platform_statuses column to listings table")
-            cursor.execute("ALTER TABLE listings ADD COLUMN platform_statuses TEXT")
-            self.conn.commit()
+        print("✅ PostgreSQL tables created successfully")
 
     # ========================================================================
     # COLLECTIBLES METHODS
@@ -754,7 +530,8 @@ class Database:
                 estimated_value_low, estimated_value_high, estimated_value_avg,
                 market_data, attributes, image_urls,
                 identified_by, confidence_score, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
         """, (
             name, category, brand, model, year, condition,
             estimated_value_low, estimated_value_high, avg_value,
@@ -764,8 +541,9 @@ class Database:
             identified_by, confidence_score, notes
         ))
 
+        result = cursor.fetchone()
         self.conn.commit()
-        return cursor.lastrowid
+        return result['id']
 
     def find_collectible(self, name: str, brand: Optional[str] = None) -> Optional[Dict]:
         """Find a collectible by name and optional brand"""
@@ -774,14 +552,14 @@ class Database:
         if brand:
             cursor.execute("""
                 SELECT * FROM collectibles
-                WHERE name LIKE ? AND brand LIKE ?
+                WHERE name ILIKE %s AND brand ILIKE %s
                 ORDER BY times_found DESC, confidence_score DESC
                 LIMIT 1
             """, (f"%{name}%", f"%{brand}%"))
         else:
             cursor.execute("""
                 SELECT * FROM collectibles
-                WHERE name LIKE ?
+                WHERE name ILIKE %s
                 ORDER BY times_found DESC, confidence_score DESC
                 LIMIT 1
             """, (f"%{name}%",))
@@ -798,7 +576,7 @@ class Database:
             UPDATE collectibles
             SET times_found = times_found + 1,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
+            WHERE id = %s
         """, (collectible_id,))
         self.conn.commit()
 
@@ -817,23 +595,23 @@ class Database:
         params = []
 
         if query:
-            sql += " AND (name LIKE ? OR brand LIKE ? OR model LIKE ?)"
+            sql += " AND (name ILIKE %s OR brand ILIKE %s OR model ILIKE %s)"
             params.extend([f"%{query}%", f"%{query}%", f"%{query}%"])
 
         if category:
-            sql += " AND category LIKE ?"
+            sql += " AND category ILIKE %s"
             params.append(f"%{category}%")
 
         if brand:
-            sql += " AND brand LIKE ?"
+            sql += " AND brand ILIKE %s"
             params.append(f"%{brand}%")
 
         if min_value:
-            sql += " AND estimated_value_avg >= ?"
+            sql += " AND estimated_value_avg >= %s"
             params.append(min_value)
 
         if max_value:
-            sql += " AND estimated_value_avg <= ?"
+            sql += " AND estimated_value_avg <= %s"
             params.append(max_value)
 
         sql += " ORDER BY times_found DESC, confidence_score DESC"
@@ -850,10 +628,8 @@ class Database:
         """Save Claude's deep analysis to a collectible (for RAG)"""
         cursor = self._get_cursor()
 
-        # Convert embedding to JSON string if provided
         embedding_str = json.dumps(embedding) if embedding else None
 
-        # Extract key fields from deep_analysis for quick search
         franchise = None
         rarity_level = None
         if deep_analysis:
@@ -863,12 +639,12 @@ class Database:
 
         cursor.execute("""
             UPDATE collectibles
-            SET deep_analysis = ?,
-                embedding = ?,
-                franchise = ?,
-                rarity_level = ?,
+            SET deep_analysis = %s,
+                embedding = %s,
+                franchise = %s,
+                rarity_level = %s,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
+            WHERE id = %s
         """, (
             json.dumps(deep_analysis),
             embedding_str,
@@ -882,7 +658,7 @@ class Database:
     def get_collectible(self, collectible_id: int) -> Optional[Dict]:
         """Get a collectible by ID"""
         cursor = self._get_cursor()
-        cursor.execute("SELECT * FROM collectibles WHERE id = ?", (collectible_id,))
+        cursor.execute("SELECT * FROM collectibles WHERE id = %s", (collectible_id,))
         row = cursor.fetchone()
         if row:
             return dict(row)
@@ -896,15 +672,9 @@ class Database:
         condition: Optional[str] = None,
         limit: int = 10
     ) -> List[Dict]:
-        """
-        Find similar collectibles for RAG context (similarity search).
-
-        This is a simple similarity search based on metadata.
-        For production, you'd use vector embeddings + cosine similarity.
-        """
+        """Find similar collectibles for RAG context"""
         cursor = self._get_cursor()
 
-        # Build query to find similar items
         sql = """
             SELECT *
             FROM collectibles
@@ -912,30 +682,28 @@ class Database:
         """
         params = []
 
-        # Priority matching: franchise > brand > category
         if franchise:
-            sql += " AND franchise LIKE ?"
+            sql += " AND franchise ILIKE %s"
             params.append(f"%{franchise}%")
         elif brand:
-            sql += " AND brand LIKE ?"
+            sql += " AND brand ILIKE %s"
             params.append(f"%{brand}%")
         elif category:
-            sql += " AND category LIKE ?"
+            sql += " AND category ILIKE %s"
             params.append(f"%{category}%")
 
-        # Optional condition matching
         if condition:
-            sql += " AND condition = ?"
+            sql += " AND condition = %s"
             params.append(condition)
 
-        sql += " ORDER BY times_found DESC, confidence_score DESC LIMIT ?"
+        sql += " ORDER BY times_found DESC, confidence_score DESC LIMIT %s"
         params.append(limit)
 
         cursor.execute(sql, params)
         return [dict(row) for row in cursor.fetchall()]
 
     # ========================================================================
-    # TRAINING DATA METHODS (Knowledge Distillation - Baby Bird Learning)
+    # TRAINING DATA METHODS
     # ========================================================================
 
     def save_training_sample(
@@ -950,14 +718,7 @@ class Database:
         student_confidence: Optional[float] = None,
         used_teacher: bool = True
     ) -> int:
-        """
-        Save a training sample (Claude's analysis as ground truth).
-
-        This builds the dataset for knowledge distillation where:
-        - input_data = What the student model will see (Gemini's basic analysis)
-        - teacher_output = What Claude said (the correct answer to learn from)
-        - student_output = What student model predicted (filled in later during training)
-        """
+        """Save a training sample"""
         cursor = self._get_cursor()
 
         cursor.execute("""
@@ -965,7 +726,8 @@ class Database:
                 user_id, listing_id, collectible_id,
                 photo_paths, input_data, teacher_output,
                 student_output, student_confidence, used_teacher
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
         """, (
             user_id,
             listing_id,
@@ -978,8 +740,9 @@ class Database:
             used_teacher
         ))
 
+        result = cursor.fetchone()
         self.conn.commit()
-        return cursor.lastrowid
+        return result['id']
 
     def get_training_samples(
         self,
@@ -994,40 +757,33 @@ class Database:
         params = []
 
         if min_quality:
-            sql += " AND quality_score >= ?"
+            sql += " AND quality_score >= %s"
             params.append(min_quality)
 
-        sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        sql += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
         params.extend([limit, offset])
 
         cursor.execute(sql, params)
         return [dict(row) for row in cursor.fetchall()]
 
     def count_training_samples(self) -> int:
-        """Count total training samples (to see if baby bird is ready to fly!)"""
+        """Count total training samples"""
         cursor = self._get_cursor()
-        cursor.execute("SELECT COUNT(*) FROM training_data WHERE teacher_output IS NOT NULL")
-        return cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) as count FROM training_data WHERE teacher_output IS NOT NULL")
+        return cursor.fetchone()['count']
 
     def export_training_dataset(self, output_path: str, format: str = "jsonl"):
-        """
-        Export training data for fine-tuning student model.
-
-        Format options:
-        - jsonl: One JSON object per line (for LLaVA, Mistral fine-tuning)
-        - hf: HuggingFace datasets format
-        """
+        """Export training data for fine-tuning"""
         import json
         from pathlib import Path
 
-        samples = self.get_training_samples(limit=100000)  # Get all
+        samples = self.get_training_samples(limit=100000)
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
         if format == "jsonl":
             with open(output_file, 'w') as f:
                 for sample in samples:
-                    # Format for vision-language model training
                     training_sample = {
                         "id": sample['id'],
                         "images": json.loads(sample['photo_paths']) if sample['photo_paths'] else [],
@@ -1075,7 +831,8 @@ class Database:
                 listing_uuid, user_id, collectible_id, title, description, price,
                 cost, condition, category, item_type, attributes, photos, quantity,
                 storage_location, sku, upc, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
         """, (
             listing_uuid, user_id, collectible_id, title, description, price,
             cost, condition, category, item_type,
@@ -1088,39 +845,40 @@ class Database:
             status,
         ))
 
+        result = cursor.fetchone()
         self.conn.commit()
-        return cursor.lastrowid
+        return result['id']
 
     def get_listing(self, listing_id: int) -> Optional[Dict]:
         """Get a listing by ID"""
         cursor = self._get_cursor()
-        cursor.execute("SELECT * FROM listings WHERE id = ?", (listing_id,))
+        cursor.execute("SELECT * FROM listings WHERE id = %s", (listing_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
 
     def get_listing_by_uuid(self, listing_uuid: str) -> Optional[Dict]:
         """Get a listing by UUID"""
         cursor = self._get_cursor()
-        cursor.execute("SELECT * FROM listings WHERE listing_uuid = ?", (listing_uuid,))
+        cursor.execute("SELECT * FROM listings WHERE listing_uuid = %s", (listing_uuid,))
         row = cursor.fetchone()
         return dict(row) if row else None
 
     def get_drafts(self, limit: int = 100, user_id: Optional[int] = None) -> List[Dict]:
-        """Get all draft listings, optionally filtered by user"""
+        """Get all draft listings"""
         cursor = self._get_cursor()
         if user_id is not None:
             cursor.execute("""
                 SELECT * FROM listings
-                WHERE status = 'draft' AND user_id = ?
+                WHERE status = 'draft' AND user_id = %s
                 ORDER BY created_at DESC
-                LIMIT ?
+                LIMIT %s
             """, (user_id, limit))
         else:
             cursor.execute("""
                 SELECT * FROM listings
                 WHERE status = 'draft'
                 ORDER BY created_at DESC
-                LIMIT ?
+                LIMIT %s
             """, (limit,))
         return [dict(row) for row in cursor.fetchall()]
 
@@ -1129,18 +887,16 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             UPDATE listings
-            SET status = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
+            SET status = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
         """, (status, listing_id))
         self.conn.commit()
 
     def delete_listing(self, listing_id: int):
         """Delete a listing and its platform listings"""
         cursor = self._get_cursor()
-        # Delete platform listings first
-        cursor.execute("DELETE FROM platform_listings WHERE listing_id = ?", (listing_id,))
-        # Delete listing
-        cursor.execute("DELETE FROM listings WHERE id = ?", (listing_id,))
+        cursor.execute("DELETE FROM platform_listings WHERE listing_id = %s", (listing_id,))
+        cursor.execute("DELETE FROM listings WHERE id = %s", (listing_id,))
         self.conn.commit()
 
     def mark_listing_sold(
@@ -1152,26 +908,24 @@ class Database:
         """Mark a listing as sold"""
         cursor = self._get_cursor()
 
-        # Update main listing
         cursor.execute("""
             UPDATE listings
             SET status = 'sold',
-                sold_platform = ?,
+                sold_platform = %s,
                 sold_date = CURRENT_TIMESTAMP,
-                sold_price = ?,
+                sold_price = %s,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
+            WHERE id = %s
         """, (platform, sold_price, listing_id))
 
-        # Update all platform listings to canceled (except the one that sold)
         cursor.execute("""
             UPDATE platform_listings
             SET status = CASE
-                WHEN platform = ? THEN 'sold'
+                WHEN platform = %s THEN 'sold'
                 ELSE 'canceled'
             END,
             last_synced = CURRENT_TIMESTAMP
-            WHERE listing_id = ?
+            WHERE listing_id = %s
         """, (platform, listing_id))
 
         self.conn.commit()
@@ -1191,28 +945,22 @@ class Database:
         """Add a platform listing"""
         cursor = self._get_cursor()
 
-        if self.is_postgres:
-            cursor.execute("""
-                INSERT INTO platform_listings (
-                    listing_id, platform, platform_listing_id,
-                    platform_url, status, posted_at
-                ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT (listing_id, platform) DO UPDATE SET
-                    platform_listing_id = EXCLUDED.platform_listing_id,
-                    platform_url = EXCLUDED.platform_url,
-                    status = EXCLUDED.status,
-                    posted_at = CURRENT_TIMESTAMP
-            """, (listing_id, platform, platform_listing_id, platform_url, status))
-        else:
-            cursor.execute("""
-                INSERT OR REPLACE INTO platform_listings (
-                    listing_id, platform, platform_listing_id,
-                    platform_url, status, posted_at
-                ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (listing_id, platform, platform_listing_id, platform_url, status))
+        cursor.execute("""
+            INSERT INTO platform_listings (
+                listing_id, platform, platform_listing_id,
+                platform_url, status, posted_at
+            ) VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (listing_id, platform) DO UPDATE SET
+                platform_listing_id = EXCLUDED.platform_listing_id,
+                platform_url = EXCLUDED.platform_url,
+                status = EXCLUDED.status,
+                posted_at = CURRENT_TIMESTAMP
+            RETURNING id
+        """, (listing_id, platform, platform_listing_id, platform_url, status))
 
+        result = cursor.fetchone()
         self.conn.commit()
-        return cursor.lastrowid
+        return result['id']
 
     def update_platform_listing_status(
         self,
@@ -1228,12 +976,12 @@ class Database:
 
         cursor.execute("""
             UPDATE platform_listings
-            SET status = ?,
-                platform_listing_id = COALESCE(?, platform_listing_id),
-                platform_url = COALESCE(?, platform_url),
-                error_message = ?,
+            SET status = %s,
+                platform_listing_id = COALESCE(%s, platform_listing_id),
+                platform_url = COALESCE(%s, platform_url),
+                error_message = %s,
                 last_synced = CURRENT_TIMESTAMP
-            WHERE listing_id = ? AND platform = ?
+            WHERE listing_id = %s AND platform = %s
         """, (status, platform_listing_id, platform_url, error_message, listing_id, platform))
 
         self.conn.commit()
@@ -1242,7 +990,7 @@ class Database:
         """Get all platform listings for a listing"""
         cursor = self._get_cursor()
         cursor.execute("""
-            SELECT * FROM platform_listings WHERE listing_id = ?
+            SELECT * FROM platform_listings WHERE listing_id = %s
         """, (listing_id,))
         return [dict(row) for row in cursor.fetchall()]
 
@@ -1253,7 +1001,7 @@ class Database:
             SELECT l.*, pl.platform_listing_id, pl.platform_url, pl.status as platform_status
             FROM listings l
             JOIN platform_listings pl ON l.id = pl.listing_id
-            WHERE pl.platform = ? AND pl.status = 'active'
+            WHERE pl.platform = %s AND pl.status = 'active'
         """, (platform,))
         return [dict(row) for row in cursor.fetchall()]
 
@@ -1273,7 +1021,7 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             INSERT INTO sync_log (listing_id, platform, action, status, details)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
         """, (listing_id, platform, action, status, json.dumps(details) if details else None))
         self.conn.commit()
 
@@ -1295,17 +1043,19 @@ class Database:
         cursor.execute("""
             INSERT INTO notifications (
                 type, listing_id, platform, title, message, data
-            ) VALUES (?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
         """, (type, listing_id, platform, title, message, json.dumps(data) if data else None))
+        result = cursor.fetchone()
         self.conn.commit()
-        return cursor.lastrowid
+        return result['id']
 
     def get_unread_notifications(self) -> List[Dict]:
         """Get all unread notifications"""
         cursor = self._get_cursor()
         cursor.execute("""
             SELECT * FROM notifications
-            WHERE is_read = 0
+            WHERE is_read = FALSE
             ORDER BY created_at DESC
         """)
         return [dict(row) for row in cursor.fetchall()]
@@ -1315,8 +1065,8 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             UPDATE notifications
-            SET is_read = 1
-            WHERE id = ?
+            SET is_read = TRUE
+            WHERE id = %s
         """, (notification_id,))
         self.conn.commit()
 
@@ -1325,8 +1075,8 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             UPDATE notifications
-            SET sent_email = 1
-            WHERE id = ?
+            SET sent_email = TRUE
+            WHERE id = %s
         """, (notification_id,))
         self.conn.commit()
 
@@ -1344,10 +1094,12 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             INSERT INTO price_alerts (collectible_id, target_price, condition)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
+            RETURNING id
         """, (collectible_id, target_price, condition))
+        result = cursor.fetchone()
         self.conn.commit()
-        return cursor.lastrowid
+        return result['id']
 
     def get_active_price_alerts(self) -> List[Dict]:
         """Get all active price alerts"""
@@ -1356,7 +1108,7 @@ class Database:
             SELECT pa.*, c.name as collectible_name, c.brand, c.estimated_value_avg
             FROM price_alerts pa
             JOIN collectibles c ON pa.collectible_id = c.id
-            WHERE pa.is_active = 1
+            WHERE pa.is_active = TRUE
         """)
         return [dict(row) for row in cursor.fetchall()]
 
@@ -1369,29 +1121,31 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             INSERT INTO users (username, email, password_hash)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
+            RETURNING id
         """, (username, email, password_hash))
+        result = cursor.fetchone()
         self.conn.commit()
-        return cursor.lastrowid
+        return result['id']
 
     def get_user_by_username(self, username: str) -> Optional[Dict]:
         """Get user by username"""
         cursor = self._get_cursor()
-        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+        cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
         row = cursor.fetchone()
         return dict(row) if row else None
 
     def get_user_by_email(self, email: str) -> Optional[Dict]:
         """Get user by email"""
         cursor = self._get_cursor()
-        cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
+        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
         row = cursor.fetchone()
         return dict(row) if row else None
 
     def get_user_by_id(self, user_id: int) -> Optional[Dict]:
         """Get user by ID"""
         cursor = self._get_cursor()
-        cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
 
@@ -1401,7 +1155,7 @@ class Database:
         cursor.execute("""
             UPDATE users
             SET last_login = CURRENT_TIMESTAMP
-            WHERE id = ?
+            WHERE id = %s
         """, (user_id,))
         self.conn.commit()
 
@@ -1410,8 +1164,8 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             UPDATE users
-            SET notification_email = ?
-            WHERE id = ?
+            SET notification_email = %s
+            WHERE id = %s
         """, (notification_email, user_id))
         self.conn.commit()
 
@@ -1420,25 +1174,18 @@ class Database:
     # ========================================================================
 
     def save_marketplace_credentials(self, user_id: int, platform: str, username: str, password: str):
-        """Save or update marketplace credentials for a user"""
+        """Save or update marketplace credentials"""
         cursor = self._get_cursor()
 
-        if self.is_postgres:
-            cursor.execute("""
-                INSERT INTO marketplace_credentials
-                (user_id, platform, username, password, updated_at)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT (user_id, platform) DO UPDATE SET
-                    username = EXCLUDED.username,
-                    password = EXCLUDED.password,
-                    updated_at = CURRENT_TIMESTAMP
-            """, (user_id, platform, username, password))
-        else:
-            cursor.execute("""
-                INSERT OR REPLACE INTO marketplace_credentials
-                (user_id, platform, username, password, updated_at)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (user_id, platform, username, password))
+        cursor.execute("""
+            INSERT INTO marketplace_credentials
+            (user_id, platform, username, password, updated_at)
+            VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (user_id, platform) DO UPDATE SET
+                username = EXCLUDED.username,
+                password = EXCLUDED.password,
+                updated_at = CURRENT_TIMESTAMP
+        """, (user_id, platform, username, password))
 
         self.conn.commit()
 
@@ -1447,7 +1194,7 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             SELECT * FROM marketplace_credentials
-            WHERE user_id = ? AND platform = ?
+            WHERE user_id = %s AND platform = %s
         """, (user_id, platform))
         row = cursor.fetchone()
         return dict(row) if row else None
@@ -1457,7 +1204,7 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             SELECT * FROM marketplace_credentials
-            WHERE user_id = ?
+            WHERE user_id = %s
             ORDER BY platform
         """, (user_id,))
         return [dict(row) for row in cursor.fetchall()]
@@ -1467,7 +1214,7 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             DELETE FROM marketplace_credentials
-            WHERE user_id = ? AND platform = ?
+            WHERE user_id = %s AND platform = %s
         """, (user_id, platform))
         self.conn.commit()
 
@@ -1491,7 +1238,7 @@ class Database:
             INSERT INTO activity_logs (
                 user_id, action, resource_type, resource_id, details,
                 ip_address, user_agent
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (
             user_id, action, resource_type, resource_id,
             json.dumps(details) if details else None,
@@ -1512,14 +1259,14 @@ class Database:
         params = []
 
         if user_id is not None:
-            sql += " AND user_id = ?"
+            sql += " AND user_id = %s"
             params.append(user_id)
 
         if action:
-            sql += " AND action = ?"
+            sql += " AND action = %s"
             params.append(action)
 
-        sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        sql += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
         params.extend([limit, offset])
 
         cursor.execute(sql, params)
@@ -1529,9 +1276,9 @@ class Database:
         """Get total activity count for a user"""
         cursor = self._get_cursor()
         cursor.execute("""
-            SELECT COUNT(*) FROM activity_logs WHERE user_id = ?
+            SELECT COUNT(*) as count FROM activity_logs WHERE user_id = %s
         """, (user_id,))
-        return cursor.fetchone()[0]
+        return cursor.fetchone()['count']
 
     # ========================================================================
     # ADMIN METHODS
@@ -1543,82 +1290,72 @@ class Database:
         if include_inactive:
             cursor.execute("SELECT * FROM users ORDER BY created_at DESC")
         else:
-            cursor.execute("SELECT * FROM users WHERE is_active = 1 ORDER BY created_at DESC")
+            cursor.execute("SELECT * FROM users WHERE is_active = TRUE ORDER BY created_at DESC")
         return [dict(row) for row in cursor.fetchall()]
 
     def toggle_user_admin(self, user_id: int) -> bool:
         """Toggle admin status for a user"""
         cursor = self._get_cursor()
-        cursor.execute("SELECT is_admin FROM users WHERE id = ?", (user_id,))
+        cursor.execute("SELECT is_admin FROM users WHERE id = %s", (user_id,))
         row = cursor.fetchone()
         if not row:
             return False
 
-        new_status = 0 if row[0] else 1
-        cursor.execute("UPDATE users SET is_admin = ? WHERE id = ?", (new_status, user_id))
+        new_status = not row['is_admin']
+        cursor.execute("UPDATE users SET is_admin = %s WHERE id = %s", (new_status, user_id))
         self.conn.commit()
         return True
 
     def toggle_user_active(self, user_id: int) -> bool:
         """Toggle active status for a user"""
         cursor = self._get_cursor()
-        cursor.execute("SELECT is_active FROM users WHERE id = ?", (user_id,))
+        cursor.execute("SELECT is_active FROM users WHERE id = %s", (user_id,))
         row = cursor.fetchone()
         if not row:
             return False
 
-        new_status = 0 if row[0] else 1
-        cursor.execute("UPDATE users SET is_active = ? WHERE id = ?", (new_status, user_id))
+        new_status = not row['is_active']
+        cursor.execute("UPDATE users SET is_active = %s WHERE id = %s", (new_status, user_id))
         self.conn.commit()
         return True
 
     def delete_user(self, user_id: int):
-        """Delete a user and all their data (admin function)"""
+        """Delete a user and all their data"""
         cursor = self._get_cursor()
 
-        # Delete user's marketplace credentials
-        cursor.execute("DELETE FROM marketplace_credentials WHERE user_id = ?", (user_id,))
-
-        # Delete user's listings
-        cursor.execute("DELETE FROM listings WHERE user_id = ?", (user_id,))
-
-        # Delete user's activity logs
-        cursor.execute("DELETE FROM activity_logs WHERE user_id = ?", (user_id,))
-
-        # Delete the user
-        cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        cursor.execute("DELETE FROM marketplace_credentials WHERE user_id = %s", (user_id,))
+        cursor.execute("DELETE FROM listings WHERE user_id = %s", (user_id,))
+        cursor.execute("DELETE FROM activity_logs WHERE user_id = %s", (user_id,))
+        cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
 
         self.conn.commit()
 
     def get_system_stats(self) -> Dict:
-        """Get system statistics (admin function)"""
+        """Get system statistics"""
         cursor = self._get_cursor()
 
         stats = {}
 
-        # User counts
-        cursor.execute("SELECT COUNT(*) FROM users")
-        stats['total_users'] = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) as count FROM users")
+        stats['total_users'] = cursor.fetchone()['count']
 
-        cursor.execute("SELECT COUNT(*) FROM users WHERE is_admin = 1")
-        stats['admin_users'] = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) as count FROM users WHERE is_admin = TRUE")
+        stats['admin_users'] = cursor.fetchone()['count']
 
-        cursor.execute("SELECT COUNT(*) FROM users WHERE is_active = 1")
-        stats['active_users'] = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) as count FROM users WHERE is_active = TRUE")
+        stats['active_users'] = cursor.fetchone()['count']
 
-        # Listing counts
-        cursor.execute("SELECT COUNT(*) FROM listings")
-        stats['total_listings'] = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) as count FROM listings")
+        stats['total_listings'] = cursor.fetchone()['count']
 
-        cursor.execute("SELECT COUNT(*) FROM listings WHERE status = 'draft'")
-        stats['draft_listings'] = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) as count FROM listings WHERE status = 'draft'")
+        stats['draft_listings'] = cursor.fetchone()['count']
 
-        cursor.execute("SELECT COUNT(*) FROM listings WHERE status = 'sold'")
-        stats['sold_listings'] = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) as count FROM listings WHERE status = 'sold'")
+        stats['sold_listings'] = cursor.fetchone()['count']
 
-        # Activity count
-        cursor.execute("SELECT COUNT(*) FROM activity_logs WHERE created_at > datetime('now', '-7 days')")
-        stats['activity_last_7_days'] = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) as count FROM activity_logs WHERE created_at > NOW() - INTERVAL '7 days'")
+        stats['activity_last_7_days'] = cursor.fetchone()['count']
 
         return stats
 
@@ -1631,8 +1368,8 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             UPDATE users
-            SET verification_token = ?
-            WHERE id = ?
+            SET verification_token = %s
+            WHERE id = %s
         """, (token, user_id))
         self.conn.commit()
 
@@ -1641,8 +1378,8 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             UPDATE users
-            SET email_verified = 1, verification_token = NULL
-            WHERE verification_token = ?
+            SET email_verified = TRUE, verification_token = NULL
+            WHERE verification_token = %s
         """, (token,))
         self.conn.commit()
         return cursor.rowcount > 0
@@ -1652,9 +1389,9 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             UPDATE users
-            SET reset_token = ?,
-                reset_token_expiry = datetime('now', '+' || ? || ' hours')
-            WHERE id = ?
+            SET reset_token = %s,
+                reset_token_expiry = NOW() + INTERVAL '%s hours'
+            WHERE id = %s
         """, (token, expiry_hours, user_id))
         self.conn.commit()
 
@@ -1663,8 +1400,8 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             SELECT * FROM users
-            WHERE reset_token = ?
-            AND reset_token_expiry > datetime('now')
+            WHERE reset_token = %s
+            AND reset_token_expiry > NOW()
         """, (token,))
         row = cursor.fetchone()
         return dict(row) if row else None
@@ -1674,10 +1411,10 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             UPDATE users
-            SET password_hash = ?,
+            SET password_hash = %s,
                 reset_token = NULL,
                 reset_token_expiry = NULL
-            WHERE id = ?
+            WHERE id = %s
         """, (new_password_hash, user_id))
         self.conn.commit()
 
@@ -1699,39 +1436,23 @@ class Database:
         activity_date: Optional[str] = None,
         raw_data: Optional[str] = None
     ) -> int:
-        """
-        Add platform activity (sold item, message, offer, etc.)
-
-        Args:
-            user_id: User ID
-            platform: Platform name (ebay, mercari, etc.)
-            activity_type: Type of activity (sold, message, offer, view, favorite)
-            platform_listing_id: ID of listing on that platform
-            listing_id: Our internal listing ID (if matched)
-            title: Item title
-            buyer_username: Buyer's username (if applicable)
-            message_text: Message content (for messages)
-            sold_price: Sale price (for sold items)
-            activity_date: When activity occurred
-            raw_data: JSON with full data from platform
-
-        Returns:
-            Activity ID
-        """
+        """Add platform activity"""
         cursor = self._get_cursor()
         cursor.execute("""
             INSERT INTO platform_activity (
                 user_id, platform, activity_type, platform_listing_id,
                 listing_id, title, buyer_username, message_text,
                 sold_price, activity_date, raw_data
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
         """, (
             user_id, platform, activity_type, platform_listing_id,
             listing_id, title, buyer_username, message_text,
             sold_price, activity_date or datetime.now().isoformat(), raw_data
         ))
+        result = cursor.fetchone()
         self.conn.commit()
-        return cursor.lastrowid
+        return result['id']
 
     def get_platform_activity(
         self,
@@ -1740,34 +1461,23 @@ class Database:
         unread_only: bool = False,
         activity_type: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """
-        Get platform activity for a user
-
-        Args:
-            user_id: User ID
-            limit: Max activities to return
-            unread_only: Only return unread activities
-            activity_type: Filter by type (sold, message, etc.)
-
-        Returns:
-            List of activity dicts
-        """
+        """Get platform activity for a user"""
         cursor = self._get_cursor()
 
         query = """
             SELECT * FROM platform_activity
-            WHERE user_id = ?
+            WHERE user_id = %s
         """
         params = [user_id]
 
         if unread_only:
-            query += " AND is_read = 0"
+            query += " AND is_read = FALSE"
 
         if activity_type:
-            query += " AND activity_type = ?"
+            query += " AND activity_type = %s"
             params.append(activity_type)
 
-        query += " ORDER BY activity_date DESC LIMIT ?"
+        query += " ORDER BY activity_date DESC LIMIT %s"
         params.append(limit)
 
         cursor.execute(query, params)
@@ -1779,25 +1489,16 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             UPDATE platform_activity
-            SET is_read = 1
-            WHERE id = ?
+            SET is_read = TRUE
+            WHERE id = %s
         """, (activity_id,))
         self.conn.commit()
 
     def sync_sold_activity_to_inventory(self, activity_id: int):
-        """
-        Sync sold activity to inventory (mark listing as sold)
-
-        Args:
-            activity_id: Platform activity ID
-
-        Returns:
-            True if successful
-        """
+        """Sync sold activity to inventory"""
         cursor = self._get_cursor()
 
-        # Get activity
-        cursor.execute("SELECT * FROM platform_activity WHERE id = ?", (activity_id,))
+        cursor.execute("SELECT * FROM platform_activity WHERE id = %s", (activity_id,))
         activity = cursor.fetchone()
 
         if not activity or activity['activity_type'] != 'sold':
@@ -1807,14 +1508,13 @@ class Database:
         if not listing_id:
             return False
 
-        # Mark listing as sold
         cursor.execute("""
             UPDATE listings
             SET status = 'sold',
-                sold_platform = ?,
-                sold_date = ?,
-                sold_price = ?
-            WHERE id = ?
+                sold_platform = %s,
+                sold_date = %s,
+                sold_price = %s
+            WHERE id = %s
         """, (
             activity['platform'],
             activity['activity_date'],
@@ -1822,11 +1522,10 @@ class Database:
             listing_id
         ))
 
-        # Mark activity as synced
         cursor.execute("""
             UPDATE platform_activity
-            SET is_synced_to_inventory = 1
-            WHERE id = ?
+            SET is_synced_to_inventory = TRUE
+            WHERE id = %s
         """, (activity_id,))
 
         self.conn.commit()
@@ -1840,31 +1539,18 @@ class Database:
         upc: Optional[str] = None,
         sku: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
-        """
-        Check if item already exists on a platform (duplicate detection)
-
-        Args:
-            user_id: User ID
-            platform: Platform to check
-            title: Item title
-            upc: UPC code (stronger match)
-            sku: SKU (stronger match)
-
-        Returns:
-            Existing listing dict if duplicate found, None otherwise
-        """
+        """Check if item already exists on a platform"""
         cursor = self._get_cursor()
 
-        # First try exact match by UPC or SKU (strongest signal)
         if upc or sku:
             query = """
                 SELECT l.*
                 FROM listings l
                 JOIN platform_listings pl ON l.id = pl.listing_id
-                WHERE l.user_id = ?
-                AND pl.platform = ?
+                WHERE l.user_id = %s
+                AND pl.platform = %s
                 AND pl.status IN ('active', 'pending')
-                AND (l.upc = ? OR l.sku = ?)
+                AND (l.upc = %s OR l.sku = %s)
                 LIMIT 1
             """
             cursor.execute(query, (user_id, platform, upc or '', sku or ''))
@@ -1872,17 +1558,15 @@ class Database:
             if row:
                 return dict(row)
 
-        # Fuzzy match by title (title similarity > 80%)
         query = """
             SELECT l.*, pl.platform_listing_id, pl.status as platform_status
             FROM listings l
             JOIN platform_listings pl ON l.id = pl.listing_id
-            WHERE l.user_id = ?
-            AND pl.platform = ?
+            WHERE l.user_id = %s
+            AND pl.platform = %s
             AND pl.status IN ('active', 'pending')
-            AND LOWER(l.title) LIKE LOWER(?)
+            AND LOWER(l.title) LIKE LOWER(%s)
         """
-        # Simple fuzzy match - look for titles that contain most of the words
         search_pattern = f"%{title[:50]}%"
         cursor.execute(query, (user_id, platform, search_pattern))
         row = cursor.fetchone()
@@ -1890,7 +1574,7 @@ class Database:
         return dict(row) if row else None
 
     # ========================================================================
-    # STORAGE SYSTEM METHODS (Standalone Organization Tool)
+    # STORAGE SYSTEM METHODS
     # ========================================================================
 
     def create_storage_bin(
@@ -1900,25 +1584,16 @@ class Database:
         bin_type: str,
         description: Optional[str] = None
     ) -> int:
-        """
-        Create a new storage bin
-
-        Args:
-            user_id: User ID
-            bin_name: Bin name (e.g., 'A', 'B', 'Shoes')
-            bin_type: 'clothing' or 'cards'
-            description: Optional description
-
-        Returns:
-            Bin ID
-        """
+        """Create a new storage bin"""
         cursor = self._get_cursor()
         cursor.execute("""
             INSERT INTO storage_bins (user_id, bin_name, bin_type, description)
-            VALUES (?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
         """, (user_id, bin_name, bin_type, description))
+        result = cursor.fetchone()
         self.conn.commit()
-        return cursor.lastrowid
+        return result['id']
 
     def get_storage_bins(self, user_id: int, bin_type: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get all storage bins for a user"""
@@ -1927,13 +1602,13 @@ class Database:
         if bin_type:
             cursor.execute("""
                 SELECT * FROM storage_bins
-                WHERE user_id = ? AND bin_type = ?
+                WHERE user_id = %s AND bin_type = %s
                 ORDER BY bin_name
             """, (user_id, bin_type))
         else:
             cursor.execute("""
                 SELECT * FROM storage_bins
-                WHERE user_id = ?
+                WHERE user_id = %s
                 ORDER BY bin_type, bin_name
             """, (user_id,))
 
@@ -1946,31 +1621,23 @@ class Database:
         section_name: str,
         capacity: Optional[int] = None
     ) -> int:
-        """
-        Create a section within a bin
-
-        Args:
-            bin_id: Bin ID
-            section_name: Section name (e.g., 'A1', '1')
-            capacity: Max items (optional)
-
-        Returns:
-            Section ID
-        """
+        """Create a section within a bin"""
         cursor = self._get_cursor()
         cursor.execute("""
             INSERT INTO storage_sections (bin_id, section_name, capacity)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
+            RETURNING id
         """, (bin_id, section_name, capacity))
+        result = cursor.fetchone()
         self.conn.commit()
-        return cursor.lastrowid
+        return result['id']
 
     def get_storage_sections(self, bin_id: int) -> List[Dict[str, Any]]:
         """Get all sections for a bin"""
         cursor = self._get_cursor()
         cursor.execute("""
             SELECT * FROM storage_sections
-            WHERE bin_id = ?
+            WHERE bin_id = %s
             ORDER BY section_name
         """, (bin_id,))
         rows = cursor.fetchall()
@@ -1983,35 +1650,19 @@ class Database:
         section_name: Optional[str] = None,
         category: Optional[str] = None
     ) -> str:
-        """
-        Generate next available storage ID
-
-        Args:
-            user_id: User ID
-            bin_name: Bin name (e.g., 'A')
-            section_name: Section name (e.g., 'A1', optional)
-            category: Card category (e.g., 'FB', 'PKMN', optional)
-
-        Returns:
-            Storage ID (e.g., 'A2-14', 'FB-A1-12')
-        """
+        """Generate next available storage ID"""
         cursor = self._get_cursor()
 
-        # Build pattern based on inputs
         if category:
-            # Card format: FB-A1-##
             pattern = f"{category}-{bin_name}{section_name or ''}-%"
         elif section_name:
-            # Bin+Section format: A1-##
             pattern = f"{bin_name}{section_name}-%"
         else:
-            # Bin only format: A-##
             pattern = f"{bin_name}-%"
 
-        # Find highest existing number
         cursor.execute("""
             SELECT storage_id FROM storage_items
-            WHERE user_id = ? AND storage_id LIKE ?
+            WHERE user_id = %s AND storage_id LIKE %s
             ORDER BY storage_id DESC
             LIMIT 1
         """, (user_id, pattern))
@@ -2019,10 +1670,8 @@ class Database:
         row = cursor.fetchone()
 
         if row:
-            # Extract number from last ID and increment
             last_id = row['storage_id']
             try:
-                # Get the number after the last dash
                 last_num = int(last_id.split('-')[-1])
                 next_num = last_num + 1
             except (ValueError, IndexError):
@@ -2030,7 +1679,6 @@ class Database:
         else:
             next_num = 1
 
-        # Generate new ID
         if category:
             return f"{category}-{bin_name}{section_name or ''}-{next_num:02d}"
         elif section_name:
@@ -2052,25 +1700,7 @@ class Database:
         photos: Optional[List[str]] = None,
         notes: Optional[str] = None
     ) -> int:
-        """
-        Add item to storage
-
-        Args:
-            user_id: User ID
-            storage_id: Unique storage ID (e.g., 'A2-14')
-            bin_id: Bin ID
-            section_id: Section ID (optional)
-            item_type: Item type (clothing, shoes, card, etc.)
-            category: Card category (FB, PKMN, etc.)
-            title: Item title/name
-            description: Description
-            quantity: Quantity
-            photos: Photo paths
-            notes: Additional notes
-
-        Returns:
-            Storage item ID
-        """
+        """Add item to storage"""
         cursor = self._get_cursor()
 
         photos_json = json.dumps(photos) if photos else None
@@ -2079,22 +1709,24 @@ class Database:
             INSERT INTO storage_items (
                 user_id, storage_id, bin_id, section_id, item_type,
                 category, title, description, quantity, photos, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
         """, (
             user_id, storage_id, bin_id, section_id, item_type,
             category, title, description, quantity, photos_json, notes
         ))
 
-        # Update section item count
+        result = cursor.fetchone()
+
         if section_id:
             cursor.execute("""
                 UPDATE storage_sections
-                SET item_count = item_count + ?
-                WHERE id = ?
+                SET item_count = item_count + %s
+                WHERE id = %s
             """, (quantity, section_id))
 
         self.conn.commit()
-        return cursor.lastrowid
+        return result['id']
 
     def find_storage_item(self, user_id: int, storage_id: str) -> Optional[Dict[str, Any]]:
         """Find item by storage ID"""
@@ -2104,7 +1736,7 @@ class Database:
             FROM storage_items si
             JOIN storage_bins sb ON si.bin_id = sb.id
             LEFT JOIN storage_sections ss ON si.section_id = ss.id
-            WHERE si.user_id = ? AND si.storage_id = ?
+            WHERE si.user_id = %s AND si.storage_id = %s
         """, (user_id, storage_id))
         row = cursor.fetchone()
         return dict(row) if row else None
@@ -2117,19 +1749,7 @@ class Database:
         item_type: Optional[str] = None,
         limit: int = 100
     ) -> List[Dict[str, Any]]:
-        """
-        Get storage items with filters
-
-        Args:
-            user_id: User ID
-            bin_id: Filter by bin
-            section_id: Filter by section
-            item_type: Filter by type
-            limit: Max items to return
-
-        Returns:
-            List of storage items
-        """
+        """Get storage items with filters"""
         cursor = self._get_cursor()
 
         query = """
@@ -2137,23 +1757,23 @@ class Database:
             FROM storage_items si
             JOIN storage_bins sb ON si.bin_id = sb.id
             LEFT JOIN storage_sections ss ON si.section_id = ss.id
-            WHERE si.user_id = ?
+            WHERE si.user_id = %s
         """
         params = [user_id]
 
         if bin_id:
-            query += " AND si.bin_id = ?"
+            query += " AND si.bin_id = %s"
             params.append(bin_id)
 
         if section_id:
-            query += " AND si.section_id = ?"
+            query += " AND si.section_id = %s"
             params.append(section_id)
 
         if item_type:
-            query += " AND si.item_type = ?"
+            query += " AND si.item_type = %s"
             params.append(item_type)
 
-        query += " ORDER BY si.created_at DESC LIMIT ?"
+        query += " ORDER BY si.created_at DESC LIMIT %s"
         params.append(limit)
 
         cursor.execute(query, params)
@@ -2161,19 +1781,9 @@ class Database:
         return [dict(row) for row in rows]
 
     def get_storage_map(self, user_id: int) -> Dict[str, Any]:
-        """
-        Get complete storage map (bins, sections, item counts)
-
-        Returns:
-            {
-                'clothing_bins': [...],
-                'card_bins': [...],
-                'total_items': 123
-            }
-        """
+        """Get complete storage map"""
         cursor = self._get_cursor()
 
-        # Get all bins with section counts
         cursor.execute("""
             SELECT
                 sb.*,
@@ -2181,27 +1791,24 @@ class Database:
                 COALESCE(SUM(ss.item_count), 0) as total_items
             FROM storage_bins sb
             LEFT JOIN storage_sections ss ON sb.id = ss.bin_id
-            WHERE sb.user_id = ?
+            WHERE sb.user_id = %s
             GROUP BY sb.id
             ORDER BY sb.bin_type, sb.bin_name
         """, (user_id,))
 
         bins = [dict(row) for row in cursor.fetchall()]
 
-        # Group by type
         clothing_bins = [b for b in bins if b['bin_type'] == 'clothing']
         card_bins = [b for b in bins if b['bin_type'] == 'cards']
 
-        # Get sections for each bin
         for bin_data in bins:
             sections = self.get_storage_sections(bin_data['id'])
             bin_data['sections'] = sections
 
-        # Total items
         cursor.execute("""
             SELECT COUNT(*) as total
             FROM storage_items
-            WHERE user_id = ?
+            WHERE user_id = %s
         """, (user_id,))
         total_items = cursor.fetchone()['total']
 

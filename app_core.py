@@ -13,7 +13,6 @@ from dotenv import load_dotenv
 from flask import Flask, flash, redirect, url_for
 from flask_login import LoginManager, UserMixin, current_user
 from werkzeug.security import generate_password_hash
-from app_core import admin_required
 
 
 # Load environment variables

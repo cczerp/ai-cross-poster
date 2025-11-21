@@ -7,6 +7,7 @@ from flask import Blueprint, request, jsonify, render_template, redirect, url_fo
 from flask_login import login_required, current_user
 from pathlib import Path
 from functools import wraps
+import json
 
 
 # Create blueprint

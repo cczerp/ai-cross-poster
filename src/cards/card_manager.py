@@ -73,8 +73,9 @@ class CardCollectionManager:
                 grading_company, grading_score, grading_serial, estimated_value, value_tier, purchase_price,
                 photos, notes, ai_identified, ai_confidence
             ) VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
+            RETURNING id
         """, (
             card_dict['user_id'], card_dict['card_uuid'], card_dict['card_type'], card_dict['title'],
             card_dict['card_number'], card_dict['quantity'],
@@ -90,13 +91,14 @@ class CardCollectionManager:
             card_dict['photos'], card_dict['notes'], card_dict['ai_identified'], card_dict['ai_confidence']
         ))
 
+        result = cursor.fetchone()
         self.db.conn.commit()
-        return cursor.lastrowid
+        return result['id']
 
     def get_card(self, card_id: int) -> Optional[UnifiedCard]:
         """Get a card by ID"""
         cursor = self.db._get_cursor()
-        cursor.execute("SELECT * FROM card_collections WHERE id = ?", (card_id,))
+        cursor.execute("SELECT * FROM card_collections WHERE id = %s", (card_id,))
         row = cursor.fetchone()
 
         if row:
@@ -110,14 +112,14 @@ class CardCollectionManager:
 
         cursor.execute("""
             UPDATE card_collections SET
-                title = ?, card_number = ?, quantity = ?,
-                organization_mode = ?, primary_category = ?, custom_categories = ?,
-                storage_location = ?, storage_item_id = ?,
-                game_name = ?, set_name = ?, set_code = ?, set_symbol = ?, rarity = ?, card_subtype = ?, format_legality = ?,
-                sport = ?, year = ?, brand = ?, series = ?, player_name = ?, team = ?, is_rookie_card = ?, parallel_color = ?, insert_series = ?,
-                grading_company = ?, grading_score = ?, grading_serial = ?, estimated_value = ?, value_tier = ?, purchase_price = ?,
-                photos = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
+                title = %s, card_number = %s, quantity = %s,
+                organization_mode = %s, primary_category = %s, custom_categories = %s,
+                storage_location = %s, storage_item_id = %s,
+                game_name = %s, set_name = %s, set_code = %s, set_symbol = %s, rarity = %s, card_subtype = %s, format_legality = %s,
+                sport = %s, year = %s, brand = %s, series = %s, player_name = %s, team = %s, is_rookie_card = %s, parallel_color = %s, insert_series = %s,
+                grading_company = %s, grading_score = %s, grading_serial = %s, estimated_value = %s, value_tier = %s, purchase_price = %s,
+                photos = %s, notes = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
         """, (
             card_dict['title'], card_dict['card_number'], card_dict['quantity'],
             card_dict['organization_mode'], card_dict['primary_category'], card_dict['custom_categories'],
@@ -138,7 +140,7 @@ class CardCollectionManager:
     def delete_card(self, card_id: int):
         """Delete a card"""
         cursor = self.db._get_cursor()
-        cursor.execute("DELETE FROM card_collections WHERE id = ?", (card_id,))
+        cursor.execute("DELETE FROM card_collections WHERE id = %s", (card_id,))
         self.db.conn.commit()
 
     # ==========================================
@@ -168,18 +170,18 @@ class CardCollectionManager:
         """
         cursor = self.db._get_cursor()
 
-        query = "SELECT * FROM card_collections WHERE user_id = ?"
+        query = "SELECT * FROM card_collections WHERE user_id = %s"
         params = [user_id]
 
         if card_type:
-            query += " AND card_type = ?"
+            query += " AND card_type = %s"
             params.append(card_type)
 
         if organization_mode:
-            query += " AND organization_mode = ?"
+            query += " AND organization_mode = %s"
             params.append(organization_mode)
 
-        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
         params.extend([limit, offset])
 
         cursor.execute(query, params)
@@ -244,18 +246,18 @@ class CardCollectionManager:
 
         sql = """
             SELECT * FROM card_collections
-            WHERE user_id = ?
+            WHERE user_id = %s
             AND (
-                title LIKE ? OR
-                player_name LIKE ? OR
-                set_name LIKE ? OR
-                notes LIKE ?
+                title ILIKE %s OR
+                player_name ILIKE %s OR
+                set_name ILIKE %s OR
+                notes ILIKE %s
             )
         """
         params = [user_id, f"%{query}%", f"%{query}%", f"%{query}%", f"%{query}%"]
 
         if card_type:
-            sql += " AND card_type = ?"
+            sql += " AND card_type = %s"
             params.append(card_type)
 
         sql += " ORDER BY created_at DESC LIMIT 100"
@@ -403,7 +405,7 @@ class CardCollectionManager:
                 SUM(estimated_value) as total_value,
                 COUNT(CASE WHEN grading_company IS NOT NULL THEN 1 END) as graded_cards
             FROM card_collections
-            WHERE user_id = ?
+            WHERE user_id = %s
         """, (user_id,))
 
         row = cursor.fetchone()

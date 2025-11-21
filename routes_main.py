@@ -1,8 +1,29 @@
+"""
+routes_main.py
+Main application routes: listings, drafts, notifications, storage, settings
+"""
+
+from flask import Blueprint, request, jsonify, render_template, redirect, url_for, flash
+from flask_login import login_required, current_user
+from pathlib import Path
+
+# Create blueprint
+main_bp = Blueprint('main', __name__)
+
+# db will be set by init_routes() in web_app.py
+db = None
+
+def init_routes(database):
+    """Initialize routes with database"""
+    global db
+    db = database
+
+
 # -------------------------------------------------------------------------
 # DELETE DRAFT
 # -------------------------------------------------------------------------
 
-@main.route("/api/delete-draft/<int:listing_id>", methods=["DELETE"])
+@main_bp.route("/api/delete-draft/<int:listing_id>", methods=["DELETE"])
 @login_required
 def delete_draft(listing_id):
     """Delete a draft and all stored photos."""
@@ -34,7 +55,7 @@ def delete_draft(listing_id):
 # USER SETTINGS — NOTIFICATION EMAIL
 # -------------------------------------------------------------------------
 
-@main.route("/api/settings/notification-email", methods=["POST"])
+@main_bp.route("/api/settings/notification-email", methods=["POST"])
 @login_required
 def update_notification_email():
     try:
@@ -63,7 +84,7 @@ VALID_MARKETPLATFORMS = [
 ]
 
 
-@main.route("/api/settings/marketplace-credentials", methods=["POST"])
+@main_bp.route("/api/settings/marketplace-credentials", methods=["POST"])
 @login_required
 def save_marketplace_credentials():
     try:
@@ -86,7 +107,7 @@ def save_marketplace_credentials():
         return jsonify({"error": str(e)}), 500
 
 
-@main.route("/api/settings/marketplace-credentials/<platform>", methods=["DELETE"])
+@main_bp.route("/api/settings/marketplace-credentials/<platform>", methods=["DELETE"])
 @login_required
 def delete_marketplace_credentials(platform):
     try:
@@ -104,7 +125,7 @@ def delete_marketplace_credentials(platform):
 VALID_API_PLATFORMS = ["etsy", "shopify", "woocommerce", "facebook"]
 
 
-@main.route("/api/settings/api-credentials", methods=["POST"])
+@main_bp.route("/api/settings/api-credentials", methods=["POST"])
 @login_required
 def save_api_credentials():
     try:
@@ -130,7 +151,7 @@ def save_api_credentials():
         return jsonify({"error": str(e)}), 500
 
 
-@main.route("/api/settings/api-credentials/<platform>", methods=["GET"])
+@main_bp.route("/api/settings/api-credentials/<platform>", methods=["GET"])
 @login_required
 def get_api_credentials(platform):
     try:
@@ -155,7 +176,7 @@ def get_api_credentials(platform):
 # BABY BIRD — KNOWLEDGE DISTILLATION API
 # -------------------------------------------------------------------------
 
-@main.route("/api/baby-bird/status", methods=["GET"])
+@main_bp.route("/api/baby-bird/status", methods=["GET"])
 @login_required
 def baby_bird_status():
     try:
@@ -165,7 +186,7 @@ def baby_bird_status():
         return jsonify({"error": str(e)}), 500
 
 
-@main.route("/api/baby-bird/export", methods=["POST"])
+@main_bp.route("/api/baby-bird/export", methods=["POST"])
 @admin_required
 def baby_bird_export():
     try:
@@ -185,7 +206,7 @@ def baby_bird_export():
 # CARD COLLECTION DASHBOARD
 # -------------------------------------------------------------------------
 
-@main.route("/cards")
+@main_bp.route("/cards")
 @login_required
 def cards_collection():
     return render_template("cards.html")
@@ -195,7 +216,7 @@ def cards_collection():
 # CARD ANALYSIS (TCG + Sports)
 # -------------------------------------------------------------------------
 
-@main.route("/api/analyze-card", methods=["POST"])
+@main_bp.route("/api/analyze-card", methods=["POST"])
 @login_required
 def api_analyze_card():
     try:
@@ -223,7 +244,7 @@ def api_analyze_card():
 # ADD CARD (AI or Manual)
 # -------------------------------------------------------------------------
 
-@main.route("/api/cards/add", methods=["POST"])
+@main_bp.route("/api/cards/add", methods=["POST"])
 @login_required
 def api_add_card():
     try:
@@ -292,7 +313,7 @@ def api_add_card():
 # LIST CARDS
 # -------------------------------------------------------------------------
 
-@main.route("/api/cards/list", methods=["GET"])
+@main_bp.route("/api/cards/list", methods=["GET"])
 @login_required
 def api_list_cards():
     try:
@@ -322,7 +343,7 @@ def api_list_cards():
 # ORGANIZED CARD GROUPS
 # -------------------------------------------------------------------------
 
-@main.route("/api/cards/organized", methods=["GET"])
+@main_bp.route("/api/cards/organized", methods=["GET"])
 @login_required
 def api_get_organized_cards():
     try:
@@ -356,7 +377,7 @@ def api_get_organized_cards():
 # CARD SEARCH
 # -------------------------------------------------------------------------
 
-@main.route("/api/cards/search", methods=["GET"])
+@main_bp.route("/api/cards/search", methods=["GET"])
 @login_required
 def api_search_cards():
     try:
@@ -386,7 +407,7 @@ def api_search_cards():
 # EXPORT CARDS CSV
 # -------------------------------------------------------------------------
 
-@main.route("/api/cards/export", methods=["GET"])
+@main_bp.route("/api/cards/export", methods=["GET"])
 @login_required
 def api_export_cards():
     try:
@@ -416,7 +437,7 @@ def api_export_cards():
 # IMPORT CARDS CSV
 # -------------------------------------------------------------------------
 
-@main.route("/api/cards/import", methods=["POST"])
+@main_bp.route("/api/cards/import", methods=["POST"])
 @login_required
 def api_import_cards():
     try:
@@ -452,7 +473,7 @@ def api_import_cards():
 # SWITCH ORGANIZATION MODE
 # -------------------------------------------------------------------------
 
-@main.route("/api/cards/switch-organization", methods=["POST"])
+@main_bp.route("/api/cards/switch-organization", methods=["POST"])
 @login_required
 def api_switch_organization():
     try:
@@ -488,7 +509,7 @@ def api_switch_organization():
 # CARD STATS
 # -------------------------------------------------------------------------
 
-@main.route("/api/cards/stats", methods=["GET"])
+@main_bp.route("/api/cards/stats", methods=["GET"])
 @login_required
 def api_card_stats():
     try:
@@ -503,7 +524,7 @@ def api_card_stats():
 # GET CARD BY ID
 # -------------------------------------------------------------------------
 
-@main.route("/api/cards/<int:card_id>", methods=["GET"])
+@main_bp.route("/api/cards/<int:card_id>", methods=["GET"])
 @login_required
 def api_get_card(card_id):
     try:
@@ -526,7 +547,7 @@ def api_get_card(card_id):
 # UPDATE CARD
 # -------------------------------------------------------------------------
 
-@main.route("/api/cards/<int:card_id>", methods=["PUT"])
+@main_bp.route("/api/cards/<int:card_id>", methods=["PUT"])
 @login_required
 def api_update_card(card_id):
     try:
@@ -561,7 +582,7 @@ def api_update_card(card_id):
 # DELETE CARD
 # -------------------------------------------------------------------------
 
-@main.route("/api/cards/<int:card_id>", methods=["DELETE"])
+@main_bp.route("/api/cards/<int:card_id>", methods=["DELETE"])
 @login_required
 def api_delete_card(card_id):
     try:

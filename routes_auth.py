@@ -1,18 +1,30 @@
-# routes_auth.py
-# Authentication, login, logout, register, and session utilities.
-# NO BLUEPRINTS — uses app directly.
-
-from flask import request, jsonify, redirect, render_template, url_for, flash
+"""
+routes_auth.py
+Authentication routes: login, logout, register, password reset
+"""
+from flask import Blueprint, request, jsonify, redirect, render_template, url_for, flash
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from app import app, db, User
+
+# Create blueprint
+auth_bp = Blueprint('auth', __name__)
+
+# db and User will be set by init_routes() in web_app.py
+db = None
+User = None
+
+def init_routes(database, user_class):
+    """Initialize routes with database and User class"""
+    global db, User
+    db = database
+    User = user_class
 
 
 # =============================================================================
 # LOGIN PAGE
 # =============================================================================
 
-@app.route('/login', methods=['GET', 'POST'])
+@auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
     """Handle user login."""
     if request.method == 'GET':
@@ -27,15 +39,24 @@ def login():
         flash("Username and password required.", "error")
         return render_template('login.html')
 
-    user = db.get_user_by_username(username)
+    user_data = db.get_user_by_username(username)
 
-    if not user:
+    if not user_data:
         flash("User not found.", "error")
         return render_template('login.html')
 
-    if not check_password_hash(user.password_hash, password):
+    if not check_password_hash(user_data['password_hash'], password):
         flash("Incorrect password.", "error")
         return render_template('login.html')
+
+    # Create User object for Flask-Login
+    user = User(
+        user_data['id'],
+        user_data['username'],
+        user_data['email'],
+        user_data.get('is_admin', False),
+        user_data.get('is_active', True)
+    )
 
     login_user(user)
     db.log_activity(
@@ -54,7 +75,7 @@ def login():
 # REGISTER PAGE
 # =============================================================================
 
-@app.route('/register', methods=['GET', 'POST'])
+@auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
     """Register a new user."""
     if request.method == 'GET':
@@ -82,7 +103,14 @@ def register():
     password_hash = generate_password_hash(password)
     user_id = db.create_user(username, email, password_hash)
 
-    user = db.get_user_by_id(user_id)
+    user_data = db.get_user_by_id(user_id)
+    user = User(
+        user_data['id'],
+        user_data['username'],
+        user_data['email'],
+        user_data.get('is_admin', False),
+        user_data.get('is_active', True)
+    )
     login_user(user)
 
     db.log_activity(
@@ -101,7 +129,7 @@ def register():
 # LOGOUT
 # =============================================================================
 
-@app.route('/logout')
+@auth_bp.route('/logout')
 @login_required
 def logout():
     """Log out the current user."""
@@ -115,14 +143,14 @@ def logout():
     )
 
     logout_user()
-    return redirect(url_for('login'))
+    return redirect(url_for('auth.login'))
 
 
 # =============================================================================
 # API — CHECK SESSION
 # =============================================================================
 
-@app.route('/api/auth/session')
+@auth_bp.route('/api/auth/session')
 def api_check_session():
     """Check whether user is currently logged in."""
     if current_user.is_authenticated:
@@ -143,7 +171,7 @@ def api_check_session():
 # API LOGIN (JSON)
 # =============================================================================
 
-@app.route('/api/auth/login', methods=['POST'])
+@auth_bp.route('/api/auth/login', methods=['POST'])
 def api_login():
     """Login through fetch/XHR with JSON."""
     data = request.json or {}
@@ -154,13 +182,20 @@ def api_login():
     if not username or not password:
         return jsonify({"error": "Missing credentials"}), 400
 
-    user = db.get_user_by_username(username)
-    if not user:
+    user_data = db.get_user_by_username(username)
+    if not user_data:
         return jsonify({"error": "User not found"}), 404
 
-    if not check_password_hash(user.password_hash, password):
+    if not check_password_hash(user_data['password_hash'], password):
         return jsonify({"error": "Invalid password"}), 401
 
+    user = User(
+        user_data['id'],
+        user_data['username'],
+        user_data['email'],
+        user_data.get('is_admin', False),
+        user_data.get('is_active', True)
+    )
     login_user(user)
 
     db.log_activity(
@@ -187,7 +222,7 @@ def api_login():
 # API LOGOUT
 # =============================================================================
 
-@app.route('/api/auth/logout')
+@auth_bp.route('/api/auth/logout')
 @login_required
 def api_logout():
     """Logout via fetch request."""
@@ -196,10 +231,10 @@ def api_logout():
 
 
 # =============================================================================
-# FORGOT PASSWORD (Optional — included if in your original code)
+# FORGOT PASSWORD
 # =============================================================================
 
-@app.route('/forgot-password', methods=['GET', 'POST'])
+@auth_bp.route('/forgot-password', methods=['GET', 'POST'])
 def forgot_password():
     """Show password reset form OR handle reset requests."""
     if request.method == 'GET':
@@ -210,20 +245,40 @@ def forgot_password():
         flash("Email is required", "error")
         return render_template('forgot_password.html')
 
-    user = db.get_user_by_email(email)
-    if not user:
+    user_data = db.get_user_by_email(email)
+    if not user_data:
         flash("No account with that email.", "error")
         return render_template('forgot_password.html')
 
     # In full version, generate token + email instructions here
     db.log_activity(
         action="password_reset_requested",
-        user_id=user.id,
+        user_id=user_data['id'],
         resource_type="user",
-        resource_id=user.id,
+        resource_id=user_data['id'],
         ip_address=request.remote_addr,
         user_agent=request.headers.get("User-Agent")
     )
 
     flash("Password reset instructions sent to your email.", "info")
     return render_template('forgot_password.html')
+
+
+# =============================================================================
+# RESET PASSWORD
+# =============================================================================
+
+@auth_bp.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    """Handle password reset with token."""
+    if request.method == 'GET':
+        return render_template('reset_password.html', token=token)
+
+    new_password = request.form.get('password')
+    if not new_password:
+        flash("Password is required", "error")
+        return render_template('reset_password.html', token=token)
+
+    # In full version, validate token and reset password
+    flash("Password reset successful. Please login.", "success")
+    return redirect(url_for('auth.login'))

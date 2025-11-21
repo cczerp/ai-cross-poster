@@ -1,14 +1,22 @@
-# routes_admin.py
-# -------------------------------------------------------------------------
-# Admin-only routes & admin API endpoints
-# -------------------------------------------------------------------------
+"""
+routes_admin.py
+Admin-only routes & admin API endpoints
+"""
 
 from flask import Blueprint, render_template, jsonify, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from functools import wraps
-from app import db  # same db instance imported from app.py
 
-admin_bp = Blueprint("admin_bp", __name__)
+# Create blueprint
+admin_bp = Blueprint("admin", __name__)
+
+# db will be set by init_routes() in web_app.py
+db = None
+
+def init_routes(database):
+    """Initialize routes with database"""
+    global db
+    db = database
 
 
 # -------------------------------------------------------------------------
@@ -21,7 +29,7 @@ def admin_required(f):
     def wrapper(*args, **kwargs):
         if not current_user.is_admin:
             flash("Admin access required", "error")
-            return redirect(url_for("main.index"))
+            return redirect(url_for("index"))
         return f(*args, **kwargs)
     return wrapper
 
@@ -66,7 +74,7 @@ def admin_user_detail(user_id):
     user = db.get_user_by_id(user_id)
     if not user:
         flash("User not found", "error")
-        return redirect(url_for("admin_bp.admin_users"))
+        return redirect(url_for("admin.admin_users"))
 
     # Get recent listings
     cursor = db._get_cursor()

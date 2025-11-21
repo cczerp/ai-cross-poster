@@ -187,13 +187,13 @@ def notifications():
 @login_required
 def storage():
     """Storage overview"""
-    return render_template('storage/index.html')
+    return render_template('storage.html')
 
 @app.route('/storage/clothing')
 @login_required
 def storage_clothing():
     """Clothing storage"""
-    return render_template('storage/clothing.html')
+    return render_template('storage_clothing.html')
 
 @app.route('/storage/cards')
 @login_required
@@ -205,7 +205,7 @@ def storage_cards():
 @login_required
 def storage_map():
     """Storage map"""
-    return render_template('storage/map.html')
+    return render_template('storage_map.html')
 
 @app.route('/settings')
 @login_required

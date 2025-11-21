@@ -4,7 +4,7 @@ services:
     env: python
     region: oregon
     plan: free
-    branch: claude/fix-draft-images-01QE3wmE4voZh8EkkvKAsvyP
+    branch: claude/investigate-landing-page-01Ncg5Bwtm44WFZjQ62UTdp8
     buildCommand: pip install --upgrade pip && pip install gunicorn && pip install -r requirements.txt
     startCommand: gunicorn web_app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
     envVars:

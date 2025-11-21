@@ -366,7 +366,7 @@ async def get_my_listings(
 ):
     """Get user's listings"""
     # TODO: Filter by user_id when multi-user is implemented
-    cursor = db.conn.cursor()
+    cursor = db._get_cursor()
 
     if status:
         cursor.execute("""

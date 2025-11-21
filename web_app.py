@@ -344,8 +344,173 @@ def index():
 from routes.listing_routes import listing_bp
 from routes.admin_routes import admin_bp
 
-app.register_blueprint(listing_bp)
-app.register_blueprint(admin_bp)
+@app.route('/drafts')
+@login_required
+def drafts():
+    drafts_list = db.get_drafts(limit=100, user_id=current_user.id)
+    return render_template('drafts.html', drafts=drafts_list)
+
+
+@app.route('/listings')
+@login_required
+def listings():
+    cursor = db._get_cursor()
+    cursor.execute("""
+        SELECT l.*, STRING_AGG(pl.platform || ':' || pl.status, ',') as platform_statuses
+        FROM listings l
+        LEFT JOIN platform_listings pl ON l.id = pl.listing_id
+        WHERE l.status != 'draft' AND l.user_id = %s
+        GROUP BY l.id
+        ORDER BY l.created_at DESC
+        LIMIT 50
+    """, (current_user.id,))
+    listings_list = [dict(row) for row in cursor.fetchall()]
+    return render_template('listings.html', listings=listings_list)
+
+
+@app.route('/notifications')
+@login_required
+def notifications():
+    if notification_manager:
+        try:
+            notifs = notification_manager.get_recent_notifications(limit=50)
+            for notif in notifs:
+                if notif.get('data') and isinstance(notif['data'], str):
+                    try:
+                        notif['data'] = json.loads(notif['data'])
+                    except:
+                        notif['data'] = {}
+        except Exception as e:
+            print(f"Error loading notifications: {e}")
+            notifs = []
+    else:
+        notifs = []
+    return render_template('notifications.html', notifications=notifs)
+
+
+@app.route('/storage')
+@login_required
+def storage():
+    storage_map = db.get_storage_map(current_user.id)
+    return render_template('storage.html', storage_map=storage_map)
+
+
+@app.route('/storage/clothing')
+@login_required
+def storage_clothing():
+    bins = db.get_storage_bins(current_user.id, bin_type='clothing')
+    return render_template('storage_clothing.html', bins=bins)
+
+
+@app.route('/storage/cards')
+@login_required
+def storage_cards():
+    bins = db.get_storage_bins(current_user.id, bin_type='cards')
+    if not bins:
+        bin_id = db.create_storage_bin(current_user.id, 'A', 'cards', 'Default card bin')
+        bins = db.get_storage_bins(current_user.id, bin_type='cards')
+    return render_template('storage_cards.html', bins=bins)
+
+
+@app.route('/storage/map')
+@login_required
+def storage_map():
+    storage_map = db.get_storage_map(current_user.id)
+    return render_template('storage_map.html', storage_map=storage_map)
+
+
+@app.route('/settings')
+@login_required
+def settings():
+    user = db.get_user_by_id(current_user.id)
+    marketplace_creds = db.get_all_marketplace_credentials(current_user.id)
+    creds_dict = {cred['platform']: cred for cred in marketplace_creds}
+
+    platforms = [
+        {'id': 'etsy', 'name': 'Etsy', 'icon': 'fas fa-shopping-cart', 'color': 'text-warning'},
+        {'id': 'poshmark', 'name': 'Poshmark', 'icon': 'fas fa-shopping-bag', 'color': 'text-primary'},
+        {'id': 'depop', 'name': 'Depop', 'icon': 'fas fa-tshirt', 'color': 'text-info'},
+        {'id': 'offerup', 'name': 'OfferUp', 'icon': 'fas fa-handshake', 'color': 'text-success'},
+        {'id': 'shopify', 'name': 'Shopify', 'icon': 'fas fa-store', 'color': 'text-success'},
+        {'id': 'craigslist', 'name': 'Craigslist', 'icon': 'fas fa-list', 'color': 'text-secondary'},
+        {'id': 'facebook', 'name': 'Facebook Marketplace', 'icon': 'fab fa-facebook', 'color': 'text-primary'},
+        {'id': 'tiktok_shop', 'name': 'TikTok Shop', 'icon': 'fab fa-tiktok', 'color': 'text-dark'},
+        {'id': 'woocommerce', 'name': 'WooCommerce', 'icon': 'fab fa-wordpress', 'color': 'text-purple'},
+        {'id': 'nextdoor', 'name': 'Nextdoor', 'icon': 'fas fa-home', 'color': 'text-success'},
+        {'id': 'varagesale', 'name': 'VarageSale', 'icon': 'fas fa-store-alt', 'color': 'text-warning'},
+        {'id': 'ruby_lane', 'name': 'Ruby Lane', 'icon': 'fas fa-gem', 'color': 'text-danger'},
+        {'id': 'ecrater', 'name': 'eCRATER', 'icon': 'fas fa-box', 'color': 'text-info'},
+        {'id': 'bonanza', 'name': 'Bonanza', 'icon': 'fas fa-star', 'color': 'text-warning'},
+        {'id': 'kijiji', 'name': 'Kijiji', 'icon': 'fas fa-newspaper', 'color': 'text-danger'},
+        {'id': 'grailed', 'name': 'Grailed', 'icon': 'fas fa-user-tie', 'color': 'text-dark'},
+        {'id': 'vinted', 'name': 'Vinted', 'icon': 'fas fa-recycle', 'color': 'text-success'},
+        {'id': 'mercado_libre', 'name': 'Mercado Libre', 'icon': 'fas fa-globe-americas', 'color': 'text-warning'},
+        {'id': 'tradesy', 'name': 'Tradesy', 'icon': 'fas fa-exchange-alt', 'color': 'text-info'},
+        {'id': 'vestiaire', 'name': 'Vestiaire Collective', 'icon': 'fas fa-crown', 'color': 'text-purple'},
+        {'id': 'rebag', 'name': 'Rebag', 'icon': 'fas fa-shopping-bag', 'color': 'text-danger'},
+        {'id': 'thredup', 'name': 'ThredUp', 'icon': 'fas fa-tshirt', 'color': 'text-primary'},
+        {'id': 'personal_website', 'name': 'Personal Website', 'icon': 'fas fa-globe', 'color': 'text-secondary'},
+        {'id': 'other', 'name': 'Other Platform', 'icon': 'fas fa-ellipsis-h', 'color': 'text-muted'},
+    ]
+
+    return render_template('settings.html', user=user, credentials=creds_dict, platforms=platforms)
+
+
+@app.route('/admin')
+@admin_required
+def admin_dashboard():
+    stats = db.get_system_stats()
+    users = db.get_all_users(include_inactive=True)
+    recent_activity = db.get_activity_logs(limit=20)
+    return render_template('admin/dashboard.html', stats=stats, users=users, recent_activity=recent_activity)
+
+
+@app.route('/admin/users')
+@admin_required
+def admin_users():
+    users = db.get_all_users(include_inactive=True)
+    return render_template('admin/users.html', users=users)
+
+
+@app.route('/admin/activity')
+@admin_required
+def admin_activity():
+    page = request.args.get('page', 1, type=int)
+    limit = 50
+    offset = (page - 1) * limit
+    user_id = request.args.get('user_id', type=int)
+    action = request.args.get('action')
+    logs = db.get_activity_logs(user_id=user_id, action=action, limit=limit, offset=offset)
+    return render_template('admin/activity.html', logs=logs, page=page)
+
+
+@app.route('/admin/user/<int:user_id>')
+@admin_required
+def admin_user_detail(user_id):
+    user = db.get_user_by_id(user_id)
+    if not user:
+        flash('User not found', 'error')
+        return redirect(url_for('admin_users'))
+
+    cursor = db._get_cursor()
+    cursor.execute("SELECT * FROM listings WHERE user_id = %s ORDER BY created_at DESC LIMIT 50", (user_id,))
+    listings = [dict(row) for row in cursor.fetchall()]
+    activity = db.get_activity_logs(user_id=user_id, limit=50)
+
+    return render_template('admin/user_detail.html', user=user, listings=listings, activity=activity)
+
+
+@app.route('/cards')
+@login_required  
+def cards_collection():
+    return render_template('cards.html')
+
+
+# Note: API routes are split across routes_main.py, routes_cards.py, etc.
+# They should be registered as blueprints. If you get "blueprint not registered" errors,
+# uncomment and add:
+# from routes_main import main as main_bp
+# app.register_blueprint(main_bp)
 
 # ============================================================================
 # RUN SERVER

@@ -1595,7 +1595,7 @@ Return ONLY the description text, no JSON, no formatting, just the description."
                     print(f"Deleted draft photos directory: {draft_photos_dir}")
 
             # Delete from database
-            cursor = self.db.conn.cursor()
+            cursor = self.db._get_cursor()
             cursor.execute("DELETE FROM listings WHERE id = ?", (draft['id'],))
             self.db.conn.commit()
 
@@ -2084,7 +2084,7 @@ Return ONLY the description text, no JSON, no formatting, just the description."
 
         def refresh():
             try:
-                cursor = self.db.conn.cursor()
+                cursor = self.db._get_cursor()
                 cursor.execute("""
                     SELECT l.*, GROUP_CONCAT(pl.platform || ':' || pl.status) as platform_statuses
                     FROM listings l
@@ -2224,7 +2224,7 @@ Return ONLY the description text, no JSON, no formatting, just the description."
         """Mark all notifications as read"""
         def mark():
             try:
-                cursor = self.db.conn.cursor()
+                cursor = self.db._get_cursor()
                 cursor.execute("UPDATE notifications SET is_read = 1 WHERE is_read = 0")
                 self.db.conn.commit()
 

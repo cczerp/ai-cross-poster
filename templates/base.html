@@ -919,7 +919,7 @@
     <div class="bg-danger text-white text-center py-2">
         <small>
             <i class="fas fa-shield-alt"></i> Admin Mode
-            <a href="{{ url_for('admin_dashboard') }}" class="text-white ms-3">
+            <a href="{{ url_for('admin.admin_dashboard') }}" class="text-white ms-3">
                 <u>Go to Admin Dashboard</u>
             </a>
         </small>
@@ -977,7 +977,7 @@
                 </a>
             </div>
             <div class="nav-item">
-                <a href="{{ url_for('cards_collection') }}" class="nav-link {% if request.endpoint == 'cards_collection' %}active{% endif %}">
+                <a href="{{ url_for('main.cards_collection') }}" class="nav-link {% if request.endpoint == 'main.cards_collection' %}active{% endif %}">
                     <i class="fas fa-id-card"></i>
                     <span>Cards</span>
                 </a>
@@ -989,7 +989,7 @@
                 </a>
             </div>
             <div class="nav-item">
-                <a href="{{ url_for('logout') }}" class="nav-link" style="color: #ef4444 !important;">
+                <a href="{{ url_for('auth.logout') }}" class="nav-link" style="color: #ef4444 !important;">
                     <i class="fas fa-sign-out-alt"></i>
                     <span>Logout</span>
                 </a>
@@ -1007,13 +1007,13 @@
                 </a>
             </div>
             <div class="nav-item">
-                <a href="{{ url_for('register') }}" class="nav-link">
+                <a href="{{ url_for('auth.register') }}" class="nav-link">
                     <i class="fas fa-user-plus"></i>
                     <span>Sign Up</span>
                 </a>
             </div>
             <div class="nav-item">
-                <a href="{{ url_for('login') }}" class="nav-link">
+                <a href="{{ url_for('auth.login') }}" class="nav-link">
                     <i class="fas fa-sign-in-alt"></i>
                     <span>Login</span>
                 </a>

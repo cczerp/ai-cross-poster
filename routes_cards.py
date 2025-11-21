@@ -1,20 +1,31 @@
 
-# routes_cards.py
-# All card-collection related endpoints extracted from your original web_app.py
-# NO BLUEPRINTS — uses @app.route directly exactly like your original setup.
+"""
+routes_cards.py
+All card-collection related endpoints
+"""
 
-from flask import request, jsonify, render_template, make_response
+from flask import Blueprint, request, jsonify, render_template, make_response
 from flask_login import login_required, current_user
 from pathlib import Path
-from app import app, db
 import json
+
+# Create blueprint
+cards_bp = Blueprint('cards', __name__)
+
+# db will be set by init_routes() in web_app.py
+db = None
+
+def init_routes(database):
+    """Initialize routes with database"""
+    global db
+    db = database
 
 
 # =============================================================================
 # CARD COLLECTION PAGE
 # =============================================================================
 
-@app.route('/cards')
+@cards_bp.route('/cards')
 @login_required
 def cards_collection():
     """Render card collection management page."""
@@ -25,7 +36,7 @@ def cards_collection():
 # ANALYZE CARD (Gemini-based)
 # =============================================================================
 
-@app.route('/api/analyze-card', methods=['POST'])
+@cards_bp.route('/api/analyze-card', methods=['POST'])
 @login_required
 def api_analyze_card():
     """Analyze uploaded photos to detect and classify cards."""
@@ -56,7 +67,7 @@ def api_analyze_card():
 # ADD CARD
 # =============================================================================
 
-@app.route('/api/cards/add', methods=['POST'])
+@cards_bp.route('/api/cards/add', methods=['POST'])
 @login_required
 def api_add_card():
     """Add card to collection manually or using AI analysis."""
@@ -137,7 +148,7 @@ def api_add_card():
 # LIST CARDS
 # =============================================================================
 
-@app.route('/api/cards/list', methods=['GET'])
+@cards_bp.route('/api/cards/list', methods=['GET'])
 @login_required
 def api_list_cards():
     """Return user cards with optional filters."""
@@ -173,7 +184,7 @@ def api_list_cards():
 # ORGANIZED CARDS
 # =============================================================================
 
-@app.route('/api/cards/organized', methods=['GET'])
+@cards_bp.route('/api/cards/organized', methods=['GET'])
 @login_required
 def api_get_organized_cards():
     """Return cards grouped by organization mode."""
@@ -205,7 +216,7 @@ def api_get_organized_cards():
 # SEARCH CARDS
 # =============================================================================
 
-@app.route('/api/cards/search', methods=['GET'])
+@cards_bp.route('/api/cards/search', methods=['GET'])
 @login_required
 def api_search_cards():
     """Search cards by title, player, set, sport, etc."""
@@ -236,7 +247,7 @@ def api_search_cards():
 # EXPORT CARDS
 # =============================================================================
 
-@app.route('/api/cards/export', methods=['GET'])
+@cards_bp.route('/api/cards/export', methods=['GET'])
 @login_required
 def api_export_cards():
     """Export user cards to CSV."""
@@ -270,7 +281,7 @@ def api_export_cards():
 # IMPORT CARDS
 # =============================================================================
 
-@app.route('/api/cards/import', methods=['POST'])
+@cards_bp.route('/api/cards/import', methods=['POST'])
 @login_required
 def api_import_cards():
     """Import cards from uploaded CSV."""
@@ -302,7 +313,7 @@ def api_import_cards():
 # SWITCH ORG MODE
 # =============================================================================
 
-@app.route('/api/cards/switch-organization', methods=['POST'])
+@cards_bp.route('/api/cards/switch-organization', methods=['POST'])
 @login_required
 def api_switch_organization():
     """Switch organization mode for user cards."""
@@ -336,7 +347,7 @@ def api_switch_organization():
 # CARD STATS
 # =============================================================================
 
-@app.route('/api/cards/stats', methods=['GET'])
+@cards_bp.route('/api/cards/stats', methods=['GET'])
 @login_required
 def api_card_stats():
     """Get card collection statistics."""
@@ -357,7 +368,7 @@ def api_card_stats():
 # GET CARD
 # =============================================================================
 
-@app.route('/api/cards/<int:card_id>', methods=['GET'])
+@cards_bp.route('/api/cards/<int:card_id>', methods=['GET'])
 @login_required
 def api_get_card(card_id):
     """Retrieve a specific card."""
@@ -383,7 +394,7 @@ def api_get_card(card_id):
 # UPDATE CARD
 # =============================================================================
 
-@app.route('/api/cards/<int:card_id>', methods=['PUT'])
+@cards_bp.route('/api/cards/<int:card_id>', methods=['PUT'])
 @login_required
 def api_update_card(card_id):
     """Update a card."""
@@ -420,7 +431,7 @@ def api_update_card(card_id):
 # DELETE CARD
 # =============================================================================
 
-@app.route('/api/cards/<int:card_id>', methods=['DELETE'])
+@cards_bp.route('/api/cards/<int:card_id>', methods=['DELETE'])
 @login_required
 def api_delete_card(card_id):
     """Delete a card."""

@@ -919,7 +919,7 @@
     <div class="bg-danger text-white text-center py-2">
         <small>
             <i class="fas fa-shield-alt"></i> Admin Mode
-            <a href="{{ url_for('admin_dashboard') }}" class="text-white ms-3">
+            <a href="{{ url_for('admin.admin_dashboard') }}" class="text-white ms-3">
                 <u>Go to Admin Dashboard</u>
             </a>
         </small>
@@ -942,7 +942,16 @@
         {% block content %}{% endblock %}
     </div>
 
- {% if current_user.is_authenticated and current_user.is_admin %}
+
+  
+  
+  
+  
+  
+  
+  
+  
+  {% if current_user.is_authenticated and current_user.is_admin %}
 <div class="bg-danger text-white text-center py-2">
     <small>
         <i class="fas fa-shield-alt"></i> Admin Mode

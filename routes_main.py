@@ -8,6 +8,9 @@ from flask_login import login_required, current_user
 from pathlib import Path
 from functools import wraps
 import json
+import os
+import uuid
+from werkzeug.utils import secure_filename
 
 
 # Create blueprint
@@ -43,6 +46,105 @@ def admin_required(f):
 # -------------------------------------------------------------------------
 # DELETE DRAFT
 # -------------------------------------------------------------------------
+
+# -------------------------------------------------------------------------
+# PHOTO UPLOAD API ENDPOINTS
+# -------------------------------------------------------------------------
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'heic'}
+
+def allowed_file(filename):
+    """Check if file extension is allowed"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@main_bp.route("/api/upload-photos", methods=["POST"])
+@login_required
+def api_upload_photos():
+    """Handle photo uploads for listings"""
+    try:
+        if 'photos' not in request.files:
+            return jsonify({"error": "No photos provided"}), 400
+
+        files = request.files.getlist('photos')
+        if not files or files[0].filename == '':
+            return jsonify({"error": "No files selected"}), 400
+
+        # Create uploads directory if it doesn't exist
+        upload_dir = Path('./data/uploads')
+        upload_dir.mkdir(parents=True, exist_ok=True)
+
+        uploaded_paths = []
+        for file in files:
+            if file and allowed_file(file.filename):
+                # Generate unique filename
+                ext = file.filename.rsplit('.', 1)[1].lower()
+                filename = f"{uuid.uuid4().hex}.{ext}"
+                filepath = upload_dir / filename
+
+                # Save file
+                file.save(str(filepath))
+                uploaded_paths.append(str(filepath))
+
+        if not uploaded_paths:
+            return jsonify({"error": "No valid images uploaded"}), 400
+
+        return jsonify({
+            "success": True,
+            "paths": uploaded_paths,
+            "count": len(uploaded_paths)
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@main_bp.route("/api/edit-photo", methods=["POST"])
+@login_required
+def api_edit_photo():
+    """Handle photo editing (crop, rotate, etc.)"""
+    try:
+        data = request.json
+        operation = data.get('operation')
+        image_path = data.get('image')
+
+        if not operation or not image_path:
+            return jsonify({"error": "Missing parameters"}), 400
+
+        # For now, return success without actual editing
+        # You can add PIL/Pillow image editing here later
+        return jsonify({
+            "success": True,
+            "filepath": image_path,
+            "message": "Photo editing will be implemented soon"
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# -------------------------------------------------------------------------
+# STORAGE API ENDPOINTS
+# -------------------------------------------------------------------------
+
+@main_bp.route("/api/storage/find", methods=["GET"])
+@login_required
+def api_find_storage_item():
+    """Find a storage item by ID"""
+    try:
+        storage_id = request.args.get("storage_id", "").strip()
+        if not storage_id:
+            return jsonify({"error": "Storage ID required"}), 400
+
+        item = db.find_storage_item(current_user.id, storage_id)
+
+        if item:
+            return jsonify({"success": True, "item": item})
+        else:
+            return jsonify({"success": False, "error": "Item not found"}), 404
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 @main_bp.route("/api/delete-draft/<int:listing_id>", methods=["DELETE"])
 @login_required

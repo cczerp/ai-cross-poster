@@ -6,7 +6,7 @@
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2><i class="fas fa-list"></i> Activity Logs</h2>
-        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+        <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-secondary">
             <i class="fas fa-arrow-left"></i> Back to Dashboard
         </a>
     </div>
@@ -34,7 +34,7 @@
                             <td style="font-size: 12px;">{{ log.created_at }}</td>
                             <td>
                                 {% if log.user_id %}
-                                <a href="{{ url_for('admin_user_detail', user_id=log.user_id) }}">
+                                <a href="{{ url_for('admin.admin_user_detail', user_id=log.user_id) }}">
                                     User #{{ log.user_id }}
                                 </a>
                                 {% else %}
@@ -70,7 +70,7 @@
             <div class="d-flex justify-content-between align-items-center mt-3">
                 <div>
                     {% if page > 1 %}
-                    <a href="{{ url_for('admin_activity', page=page-1) }}" class="btn btn-sm btn-outline-primary">
+                    <a href="{{ url_for('admin.admin_activity', page=page-1) }}" class="btn btn-sm btn-outline-primary">
                         <i class="fas fa-arrow-left"></i> Previous
                     </a>
                     {% endif %}
@@ -78,7 +78,7 @@
                 <span class="text-muted">Page {{ page }}</span>
                 <div>
                     {% if logs|length == 50 %}
-                    <a href="{{ url_for('admin_activity', page=page+1) }}" class="btn btn-sm btn-outline-primary">
+                    <a href="{{ url_for('admin.admin_activity', page=page+1) }}" class="btn btn-sm btn-outline-primary">
                         Next <i class="fas fa-arrow-right"></i>
                     </a>
                     {% endif %}

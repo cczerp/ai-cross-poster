@@ -343,7 +343,7 @@ def drafts():
 @app.route('/listings')
 @login_required
 def listings():
-    cursor = db.conn.cursor()
+    cursor = db._get_cursor()
     cursor.execute("""
         SELECT l.*, STRING_AGG(pl.platform || ':' || pl.status, ',') as platform_statuses
         FROM listings l
@@ -481,7 +481,7 @@ def admin_user_detail(user_id):
         flash('User not found', 'error')
         return redirect(url_for('admin_users'))
 
-    cursor = db.conn.cursor()
+    cursor = db._get_cursor()
     cursor.execute("SELECT * FROM listings WHERE user_id = %s ORDER BY created_at DESC LIMIT 50", (user_id,))
     listings = [dict(row) for row in cursor.fetchall()]
     activity = db.get_activity_logs(user_id=user_id, limit=50)
@@ -495,9 +495,11 @@ def cards_collection():
     return render_template('cards.html')
 
 
-# Import API routes from separate file
-from api_routes import register_api_routes
-register_api_routes(app, db, notification_manager, admin_required, current_user, session, secure_filename, uuid, json, Path, base64, BytesIO, Image, csv, StringIO, send_file, request, jsonify, login_required)
+# Note: API routes are split across routes_main.py, routes_cards.py, etc.
+# They should be registered as blueprints. If you get "blueprint not registered" errors,
+# uncomment and add:
+# from routes_main import main as main_bp
+# app.register_blueprint(main_bp)
 
 
 if __name__ == '__main__':

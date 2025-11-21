@@ -69,7 +69,7 @@ def admin_user_detail(user_id):
         return redirect(url_for("admin_bp.admin_users"))
 
     # Get recent listings
-    cursor = db.conn.cursor()
+    cursor = db._get_cursor()
     cursor.execute(
         "SELECT * FROM listings WHERE user_id = ? ORDER BY created_at DESC LIMIT 50",
         (user_id,)

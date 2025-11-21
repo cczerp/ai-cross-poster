@@ -54,17 +54,23 @@ except Exception:
 class User(UserMixin):
     """User model for Flask-Login - PostgreSQL compatible"""
 
-    def __init__(self, user_id, username, email, is_admin=False, is_active=True):
+    def __init__(self, user_id, username, email, is_admin=False, is_active=True, tier="FREE"):
         self.id = user_id
         self.username = username
         self.email = email
         self.is_admin = is_admin
         self._is_active = is_active
+        self.tier = tier
 
     @property
     def is_active(self):
         """Override Flask-Login's is_active to use database value"""
         return self._is_active
+
+    def can_access(self, feature: str) -> bool:
+        """Check if user can access a feature based on tier"""
+        from src.database import can_access_feature
+        return can_access_feature(self.tier, feature)
 
     @staticmethod
     def get(user_id):
@@ -76,7 +82,8 @@ class User(UserMixin):
                 user_data['username'],
                 user_data['email'],
                 user_data.get('is_admin', False),
-                user_data.get('is_active', True)
+                user_data.get('is_active', True),
+                user_data.get('tier', 'FREE')
             )
         return None
 

@@ -6,6 +6,8 @@ Main application routes: listings, drafts, notifications, storage, settings
 from flask import Blueprint, request, jsonify, render_template, redirect, url_for, flash
 from flask_login import login_required, current_user
 from pathlib import Path
+from app_core import admin_required
+
 
 # Create blueprint
 main_bp = Blueprint('main', __name__)

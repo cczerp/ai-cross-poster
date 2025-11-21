@@ -313,7 +313,7 @@ class MultiPlatformSyncManager:
         print(f"\nQuantity: {current_quantity} → {remaining_quantity} (sold {quantity_sold})")
 
         # Update quantity in database
-        cursor = self.db.conn.cursor()
+        cursor = self.db._get_cursor()
         cursor.execute("""
             UPDATE listings
             SET quantity = ?
@@ -424,7 +424,7 @@ class MultiPlatformSyncManager:
         print(f"{'='*70}\n")
 
         # Get all failed platform listings
-        cursor = self.db.conn.cursor()
+        cursor = self.db._get_cursor()
         cursor.execute("""
             SELECT pl.*, l.*
             FROM platform_listings pl

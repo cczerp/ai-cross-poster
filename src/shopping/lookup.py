@@ -103,7 +103,7 @@ class ShoppingLookup:
             Profit analysis dictionary
         """
         # Get collectible
-        cursor = self.db.conn.cursor()
+        cursor = self.db._get_cursor()
         cursor.execute("SELECT * FROM collectibles WHERE id = ?", (collectible_id,))
         collectible = dict(cursor.fetchone())
 
@@ -254,7 +254,7 @@ class ShoppingLookup:
 
     def get_top_collectibles(self, limit: int = 20) -> List[Dict]:
         """Get most frequently found collectibles"""
-        cursor = self.db.conn.cursor()
+        cursor = self.db._get_cursor()
         cursor.execute("""
             SELECT * FROM collectibles
             ORDER BY times_found DESC, estimated_value_avg DESC
@@ -268,7 +268,7 @@ class ShoppingLookup:
         limit: int = 20
     ) -> List[Dict]:
         """Get high-value collectibles to watch for"""
-        cursor = self.db.conn.cursor()
+        cursor = self.db._get_cursor()
         cursor.execute("""
             SELECT * FROM collectibles
             WHERE estimated_value_avg >= ?

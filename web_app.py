@@ -174,6 +174,11 @@ def index():
     else:
         return render_template('index.html')
 
+@app.route('/create')
+def create_listing():
+    """Create new listing page"""
+    return render_template('create.html')
+
 @app.route('/drafts')
 @login_required
 def drafts():

@@ -955,6 +955,85 @@ class Database:
         cursor.execute("DELETE FROM listings WHERE id = %s", (listing_id,))
         self.conn.commit()
 
+    def update_listing(
+        self,
+        listing_id: int,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        price: Optional[float] = None,
+        cost: Optional[float] = None,
+        condition: Optional[str] = None,
+        category: Optional[str] = None,
+        item_type: Optional[str] = None,
+        attributes: Optional[Dict] = None,
+        photos: Optional[List[str]] = None,
+        quantity: Optional[int] = None,
+        storage_location: Optional[str] = None,
+        sku: Optional[str] = None,
+        upc: Optional[str] = None,
+        status: Optional[str] = None,
+    ):
+        """Update a listing with provided fields"""
+        cursor = self._get_cursor()
+
+        # Build dynamic UPDATE query based on provided parameters
+        updates = []
+        values = []
+
+        if title is not None:
+            updates.append("title = %s")
+            values.append(title)
+        if description is not None:
+            updates.append("description = %s")
+            values.append(description)
+        if price is not None:
+            updates.append("price = %s")
+            values.append(price)
+        if cost is not None:
+            updates.append("cost = %s")
+            values.append(cost)
+        if condition is not None:
+            updates.append("condition = %s")
+            values.append(condition)
+        if category is not None:
+            updates.append("category = %s")
+            values.append(category)
+        if item_type is not None:
+            updates.append("item_type = %s")
+            values.append(item_type)
+        if attributes is not None:
+            updates.append("attributes = %s")
+            values.append(json.dumps(attributes))
+        if photos is not None:
+            updates.append("photos = %s")
+            values.append(json.dumps(photos))
+        if quantity is not None:
+            updates.append("quantity = %s")
+            values.append(quantity)
+        if storage_location is not None:
+            updates.append("storage_location = %s")
+            values.append(storage_location)
+        if sku is not None:
+            updates.append("sku = %s")
+            values.append(sku)
+        if upc is not None:
+            updates.append("upc = %s")
+            values.append(upc)
+        if status is not None:
+            updates.append("status = %s")
+            values.append(status)
+
+        # Always update the updated_at timestamp
+        updates.append("updated_at = CURRENT_TIMESTAMP")
+
+        # Add listing_id to values
+        values.append(listing_id)
+
+        # Execute update
+        query = f"UPDATE listings SET {', '.join(updates)} WHERE id = %s"
+        cursor.execute(query, values)
+        self.conn.commit()
+
     def mark_listing_sold(
         self,
         listing_id: int,

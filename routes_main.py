@@ -83,7 +83,8 @@ def api_upload_photos():
 
                 # Save file
                 file.save(str(filepath))
-                uploaded_paths.append(str(filepath))
+                # Return web-accessible path instead of filesystem path
+                uploaded_paths.append(f"/uploads/{filename}")
 
         if not uploaded_paths:
             return jsonify({"error": "No valid images uploaded"}), 400
@@ -96,6 +97,17 @@ def api_upload_photos():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@main_bp.route("/uploads/<filename>")
+def serve_upload(filename):
+    """Serve uploaded files"""
+    try:
+        from flask import send_from_directory
+        upload_dir = Path('./data/uploads')
+        return send_from_directory(upload_dir, filename)
+    except Exception as e:
+        return jsonify({"error": "File not found"}), 404
 
 
 @main_bp.route("/api/edit-photo", methods=["POST"])

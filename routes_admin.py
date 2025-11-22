@@ -45,6 +45,11 @@ def admin_dashboard():
     users = db.get_all_users(include_inactive=True)
     recent_logs = db.get_activity_logs(limit=20)
 
+    # Debug: Log user count
+    print(f"DEBUG: Found {len(users)} users in database")
+    for user in users:
+        print(f"  - {user.get('username')} (ID: {user.get('id')}, Email: {user.get('email')})")
+
     return render_template(
         "admin/dashboard.html",
         stats=stats,
@@ -202,5 +207,24 @@ def api_delete_user(user_id):
         db.delete_user(user_id)
         return jsonify({"success": True})
 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# -------------------------------------------------------------------------
+# Debug: List all users (API)
+# -------------------------------------------------------------------------
+
+@admin_bp.route("/api/admin/debug/users", methods=["GET"])
+@admin_required
+def api_debug_users():
+    """Debug endpoint to see all users in database"""
+    try:
+        users = db.get_all_users(include_inactive=True)
+        return jsonify({
+            "success": True,
+            "count": len(users),
+            "users": users
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

@@ -729,7 +729,10 @@ document.getElementById('analyzeBtn').addEventListener('click', async function()
             // Not a card, do regular item analysis
             const response = await fetch('/api/analyze', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'}
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    photos: uploadedPhotos
+                })
             });
 
             const data = await response.json();

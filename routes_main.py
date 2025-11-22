@@ -282,14 +282,34 @@ def api_save_draft():
     try:
         data = request.json
 
-        # Extract form data
+        # Extract form data with safe type conversions
         title = data.get('title', 'Untitled')
         description = data.get('description', '')
-        price = float(data.get('price', 0))
-        cost = float(data.get('cost', 0)) if data.get('cost') else None
+
+        # Safe float conversion for price
+        try:
+            price_val = data.get('price', '0')
+            price = float(price_val) if price_val not in [None, ''] else 0.0
+        except (ValueError, TypeError):
+            price = 0.0
+
+        # Safe float conversion for cost
+        try:
+            cost_val = data.get('cost', '')
+            cost = float(cost_val) if cost_val not in [None, ''] else None
+        except (ValueError, TypeError):
+            cost = None
+
         condition = data.get('condition', 'good')
         item_type = data.get('item_type', 'general')
-        quantity = int(data.get('quantity', 1))
+
+        # Safe int conversion for quantity
+        try:
+            quantity_val = data.get('quantity', '1')
+            quantity = int(quantity_val) if quantity_val not in [None, ''] else 1
+        except (ValueError, TypeError):
+            quantity = 1
+
         storage_location = data.get('storage_location', '')
         sku = data.get('sku', '')
         upc = data.get('upc', '')
@@ -605,6 +625,32 @@ def cards_collection():
 # -------------------------------------------------------------------------
 # CARD ANALYSIS (TCG + Sports)
 # -------------------------------------------------------------------------
+
+@main_bp.route("/api/analyze", methods=["POST"])
+@login_required
+def api_analyze():
+    """Analyze general items (non-cards) with AI"""
+    try:
+        from src.ai.gemini_classifier import GeminiClassifier
+        from src.schema.unified_listing import Photo
+
+        data = request.get_json()
+        paths = data.get("photos", [])
+        if not paths:
+            return jsonify({"error": "No photos provided"}), 400
+
+        photos = [Photo(local_path=p) for p in paths]
+        classifier = GeminiClassifier.from_env()
+        result = classifier.analyze_item(photos)
+
+        if result.get("error"):
+            return jsonify(result), 500
+
+        return jsonify({"success": True, "analysis": result})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 @main_bp.route("/api/analyze-card", methods=["POST"])
 @login_required

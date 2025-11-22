@@ -224,7 +224,7 @@
 {% block extra_js %}
 <script>
 let uploadedPhotos = [];
-let editingDraftId = {{ draft_id if draft_id else 'null' }};
+let editingDraftId = {% if draft_id %}{{ draft_id }}{% else %}null{% endif %};
 let editingListingUuid = null;
 
 // Generic photo handling function for both camera and file upload

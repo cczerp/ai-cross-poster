@@ -160,7 +160,7 @@ def serve_upload(filename):
 @main_bp.route("/api/edit-photo", methods=["POST"])
 @login_required
 def api_edit_photo():
-    """Handle photo editing (crop, rotate, etc.)"""
+    """Handle photo editing (crop, resize, background removal)"""
     try:
         data = request.json
         operation = data.get('operation')
@@ -169,15 +169,85 @@ def api_edit_photo():
         if not operation or not image_path:
             return jsonify({"error": "Missing parameters"}), 400
 
-        # For now, return success without actual editing
-        # You can add PIL/Pillow image editing here later
+        # Extract filename from path (e.g., "/uploads/abc123.jpg" -> "abc123.jpg")
+        filename = image_path.split('/')[-1]
+        upload_dir = Path('./data/uploads')
+        filepath = upload_dir / filename
+
+        if not filepath.exists():
+            return jsonify({"error": "Image file not found"}), 404
+
+        # Open the image
+        img = Image.open(filepath)
+
+        # Handle different operations
+        if operation == 'crop':
+            # Get crop parameters
+            crop_data = data.get('cropData', {})
+            x = int(crop_data.get('x', 0))
+            y = int(crop_data.get('y', 0))
+            width = int(crop_data.get('width', img.width))
+            height = int(crop_data.get('height', img.height))
+
+            # Crop the image
+            img = img.crop((x, y, x + width, y + height))
+
+        elif operation == 'resize':
+            # Get resize parameters (e.g., 2x = enlarge by 2x)
+            scale = data.get('scale', 2.0)
+            new_size = (int(img.width * scale), int(img.height * scale))
+            img = img.resize(new_size, Image.Resampling.LANCZOS)
+
+        elif operation == 'remove-bg':
+            # Background removal using simple thresholding
+            # For better results, you could integrate rembg library
+            # This is a basic implementation
+            try:
+                # Try to import rembg if available
+                from rembg import remove
+                img_bytes = io.BytesIO()
+                img.save(img_bytes, format='PNG')
+                img_bytes.seek(0)
+                result = remove(img_bytes.read())
+                img = Image.open(io.BytesIO(result))
+            except ImportError:
+                # Fallback: convert to RGBA and make white background transparent
+                img = img.convert('RGBA')
+                data_img = img.getdata()
+                new_data = []
+                for item in data_img:
+                    # Change white (also shades of whites) to transparent
+                    if item[0] > 200 and item[1] > 200 and item[2] > 200:
+                        new_data.append((255, 255, 255, 0))
+                    else:
+                        new_data.append(item)
+                img.putdata(new_data)
+
+        else:
+            return jsonify({"error": f"Unknown operation: {operation}"}), 400
+
+        # Save edited image (create new file to preserve original)
+        new_filename = f"{uuid.uuid4().hex}.{'png' if operation == 'remove-bg' else 'jpg'}"
+        new_filepath = upload_dir / new_filename
+
+        if operation == 'remove-bg':
+            img.save(new_filepath, format='PNG')
+        else:
+            # Convert RGBA to RGB if needed
+            if img.mode == 'RGBA':
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                background.paste(img, mask=img.split()[-1])
+                img = background
+            img.save(new_filepath, format='JPEG', quality=85, optimize=True)
+
         return jsonify({
             "success": True,
-            "filepath": image_path,
-            "message": "Photo editing will be implemented soon"
+            "filepath": f"/uploads/{new_filename}",
+            "message": f"Photo {operation} completed successfully"
         })
 
     except Exception as e:
+        print(f"Photo editing error: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -202,6 +272,144 @@ def api_find_storage_item():
             return jsonify({"success": False, "error": "Item not found"}), 404
 
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@main_bp.route("/api/save-draft", methods=["POST"])
+@login_required
+def api_save_draft():
+    """Save or update a draft listing"""
+    try:
+        data = request.json
+
+        # Extract form data
+        title = data.get('title', 'Untitled')
+        description = data.get('description', '')
+        price = float(data.get('price', 0))
+        cost = float(data.get('cost', 0)) if data.get('cost') else None
+        condition = data.get('condition', 'good')
+        item_type = data.get('item_type', 'general')
+        quantity = int(data.get('quantity', 1))
+        storage_location = data.get('storage_location', '')
+        sku = data.get('sku', '')
+        upc = data.get('upc', '')
+        status = data.get('status', 'draft')
+
+        # Get photos array (should already be web paths like "/uploads/abc123.jpg")
+        photos = data.get('photos', [])
+
+        # Build attributes from additional fields
+        attributes = {
+            'brand': data.get('brand', ''),
+            'size': data.get('size', ''),
+            'color': data.get('color', ''),
+            'shipping_cost': data.get('shipping_cost', 0)
+        }
+
+        # Check if we're updating an existing draft
+        draft_id = data.get('draft_id')
+        listing_uuid = data.get('listing_uuid')
+
+        if draft_id:
+            # Update existing draft
+            db.update_listing(
+                listing_id=draft_id,
+                title=title,
+                description=description,
+                price=price,
+                cost=cost,
+                condition=condition,
+                item_type=item_type,
+                attributes=attributes,
+                photos=photos,
+                quantity=quantity,
+                storage_location=storage_location,
+                sku=sku,
+                upc=upc,
+                status=status
+            )
+            return jsonify({
+                "success": True,
+                "listing_id": draft_id,
+                "listing_uuid": listing_uuid,
+                "message": "Draft updated successfully"
+            })
+        else:
+            # Create new draft
+            listing_uuid = uuid.uuid4().hex
+            listing_id = db.create_listing(
+                listing_uuid=listing_uuid,
+                user_id=current_user.id,
+                title=title,
+                description=description,
+                price=price,
+                cost=cost,
+                condition=condition,
+                item_type=item_type,
+                attributes=attributes,
+                photos=photos,
+                quantity=quantity,
+                storage_location=storage_location,
+                sku=sku,
+                upc=upc,
+                status=status
+            )
+            return jsonify({
+                "success": True,
+                "listing_id": listing_id,
+                "listing_uuid": listing_uuid,
+                "message": "Draft saved successfully"
+            })
+
+    except Exception as e:
+        print(f"Save draft error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@main_bp.route("/api/get-draft/<int:listing_id>", methods=["GET"])
+@login_required
+def api_get_draft(listing_id):
+    """Retrieve a draft listing for editing"""
+    try:
+        listing = db.get_listing(listing_id)
+
+        if not listing:
+            return jsonify({"error": "Draft not found"}), 404
+
+        if listing["user_id"] != current_user.id:
+            return jsonify({"error": "Unauthorized"}), 403
+
+        # Parse JSON fields
+        if listing.get('photos'):
+            if isinstance(listing['photos'], str):
+                listing['photos'] = json.loads(listing['photos'])
+        else:
+            listing['photos'] = []
+
+        if listing.get('attributes'):
+            if isinstance(listing['attributes'], str):
+                attributes = json.loads(listing['attributes'])
+            else:
+                attributes = listing['attributes']
+
+            # Merge attributes into main listing object for frontend
+            listing['brand'] = attributes.get('brand', '')
+            listing['size'] = attributes.get('size', '')
+            listing['color'] = attributes.get('color', '')
+            listing['shipping_cost'] = attributes.get('shipping_cost', 0)
+        else:
+            listing['brand'] = ''
+            listing['size'] = ''
+            listing['color'] = ''
+            listing['shipping_cost'] = 0
+
+        return jsonify({
+            "success": True,
+            "listing": listing
+        })
+
+    except Exception as e:
+        print(f"Get draft error: {e}")
         return jsonify({"error": str(e)}), 500
 
 

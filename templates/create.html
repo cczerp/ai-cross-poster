@@ -219,6 +219,80 @@
         </div>
     </div>
 </div>
+
+<!-- Image Zoom Modal -->
+<div id="imageZoomModal" class="image-zoom-modal" onclick="closeImageZoom()" style="display: none;">
+    <div class="image-zoom-container">
+        <button class="btn btn-outline-light zoom-close-btn" onclick="closeImageZoom()">
+            <i class="fas fa-times"></i>
+        </button>
+        <img id="zoomImage" src="" alt="Zoomed image">
+        <div class="zoom-hint">Click image to zoom | Right-click to see details</div>
+    </div>
+</div>
+
+<style>
+.image-zoom-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.95);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: zoom-out;
+}
+
+.image-zoom-container {
+    position: relative;
+    max-width: 95%;
+    max-height: 95%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.zoom-close-btn {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+    border: 2px solid white;
+}
+
+#zoomImage {
+    max-width: 100%;
+    max-height: 90vh;
+    object-fit: contain;
+    cursor: zoom-in;
+}
+
+.zoom-hint {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: white;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 10px 20px;
+    border-radius: 5px;
+    font-size: 14px;
+}
+
+.photo-preview {
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.photo-preview:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+</style>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -257,12 +331,19 @@ async function handlePhotoSelect(e) {
                 const img = document.createElement('img');
                 img.src = URL.createObjectURL(files[i]);
                 img.className = 'photo-preview';
-                img.title = 'Click to edit photo';
+                img.title = 'Click to edit | Right-click to zoom';
 
                 // Make photo clickable to open editor
                 const photoIndex = uploadedPhotos.length - data.paths.length + i;
-                img.onclick = function() {
+                img.onclick = function(e) {
+                    e.preventDefault();
                     openPhotoEditor(photoIndex, this.src);
+                };
+
+                // Right-click to zoom
+                img.oncontextmenu = function(e) {
+                    e.preventDefault();
+                    openImageZoom(data.paths[i]);
                 };
 
                 previewDiv.appendChild(img);
@@ -458,7 +539,7 @@ async function removeBackground() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                image: currentEditingPhotoSrc,
+                image: uploadedPhotos[currentEditingPhotoIndex],
                 operation: 'remove-bg'
             }),
             signal: controller.signal
@@ -473,7 +554,11 @@ async function removeBackground() {
         const data = await response.json();
 
         if (data.success) {
-            updatePhotoAfterEdit(data.image, data.filepath);
+            // Update the photo in uploadedPhotos array
+            uploadedPhotos[currentEditingPhotoIndex] = data.filepath;
+            // Update the editor image
+            document.getElementById('photoEditorImage').src = data.filepath;
+            currentEditingPhotoSrc = data.filepath;
             showAlert('Background removed! (FREE feature worth $5-20/mo)', 'success');
         } else {
             showAlert('Background removal failed: ' + (data.error || 'Unknown error'), 'danger');
@@ -495,11 +580,6 @@ async function enlargePhoto() {
     showLoading();
 
     try {
-        // Get current image dimensions
-        const img = document.getElementById('photoEditorImage');
-        const currentWidth = img.naturalWidth;
-        const currentHeight = img.naturalHeight;
-
         // Create abort controller for timeout
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 20000); // 20 second timeout
@@ -508,10 +588,9 @@ async function enlargePhoto() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                image: currentEditingPhotoSrc,
+                image: uploadedPhotos[currentEditingPhotoIndex],
                 operation: 'resize',
-                width: currentWidth * 2,
-                height: currentHeight * 2
+                scale: 2.0
             }),
             signal: controller.signal
         });
@@ -525,7 +604,11 @@ async function enlargePhoto() {
         const data = await response.json();
 
         if (data.success) {
-            updatePhotoAfterEdit(data.image, data.filepath);
+            // Update the photo in uploadedPhotos array
+            uploadedPhotos[currentEditingPhotoIndex] = data.filepath;
+            // Update the editor image
+            document.getElementById('photoEditorImage').src = data.filepath;
+            currentEditingPhotoSrc = data.filepath;
             showAlert('Photo enlarged to 2x size!', 'success');
         } else {
             showAlert('Enlarge failed: ' + (data.error || 'Unknown error'), 'danger');
@@ -561,6 +644,37 @@ function resetPhoto() {
 
     showAlert('Photo reset to original', 'info');
 }
+
+// Zoom modal functions
+function openImageZoom(imageSrc) {
+    const modal = document.getElementById('imageZoomModal');
+    const zoomImage = document.getElementById('zoomImage');
+    zoomImage.src = imageSrc;
+    modal.style.display = 'flex';
+
+    // Prevent body scroll when modal is open
+    document.body.style.overflow = 'hidden';
+}
+
+function closeImageZoom(event) {
+    // Prevent closing if clicking on the close button (handled by button's onclick)
+    if (event && event.target.classList.contains('zoom-close-btn')) {
+        return;
+    }
+
+    const modal = document.getElementById('imageZoomModal');
+    modal.style.display = 'none';
+
+    // Restore body scroll
+    document.body.style.overflow = 'auto';
+}
+
+// Close zoom modal on Escape key
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+        closeImageZoom();
+    }
+});
 
 function updatePhotoAfterEdit(newImageData, newFilepath) {
     // Update the modal image
@@ -1014,7 +1128,8 @@ function collectFormData() {
         storage_location: document.getElementById('storage_location').value,
         quantity: document.getElementById('quantity').value,
         sku: document.getElementById('sku').value,
-        upc: document.getElementById('upc').value
+        upc: document.getElementById('upc').value,
+        photos: uploadedPhotos  // CRITICAL: Include photos array
     };
 
     // Include draft_id if editing
@@ -1086,12 +1201,19 @@ async function loadDraftData() {
                     // Convert server path to URL
                     img.src = '/' + photoPath;
                     img.className = 'photo-preview';
-                    img.title = 'Click to edit photo';
+                    img.title = 'Click to edit | Right-click to zoom';
 
                     // Make photo clickable to open editor
                     const photoIndex = i;
-                    img.onclick = function() {
+                    img.onclick = function(e) {
+                        e.preventDefault();
                         openPhotoEditor(photoIndex, this.src);
+                    };
+
+                    // Right-click to zoom
+                    img.oncontextmenu = function(e) {
+                        e.preventDefault();
+                        openImageZoom(this.src);
                     };
 
                     img.onerror = function() {

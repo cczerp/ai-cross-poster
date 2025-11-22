@@ -289,11 +289,24 @@ class Database:
         """)
 
         # ===== MIGRATION: Add tier column if it doesn't exist =====
-        cursor.execute("""
-            ALTER TABLE users
-            ADD COLUMN IF NOT EXISTS tier TEXT DEFAULT 'FREE'
-        """)
-        self.conn.commit()
+        try:
+            # Check if column exists first to avoid locks
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='users' AND column_name='tier'
+            """)
+
+            if not cursor.fetchone():
+                # Column doesn't exist, add it
+                cursor.execute("""
+                    ALTER TABLE users
+                    ADD COLUMN tier TEXT DEFAULT 'FREE'
+                """)
+                self.conn.commit()
+        except Exception as e:
+            print(f"⚠️  Tier column migration skipped: {e}")
+            self.conn.rollback()
 
         # Storage bins - for physical organization
         cursor.execute("""

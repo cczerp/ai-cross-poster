@@ -206,9 +206,6 @@
             <button class="btn btn-warning" onclick="removeBackground()">
                 <i class="fas fa-magic"></i> Remove Background
             </button>
-            <button class="btn btn-info" onclick="enlargePhoto()">
-                <i class="fas fa-search-plus"></i> Enlarge (2x)
-            </button>
             <button class="btn btn-secondary" onclick="resetPhoto()">
                 <i class="fas fa-undo"></i> Reset
             </button>
@@ -328,13 +325,22 @@ async function handlePhotoSelect(e) {
             // Show previews (append to existing)
             const previewDiv = document.getElementById('photoPreview');
             for (let i = 0; i < files.length; i++) {
+                const photoIndex = uploadedPhotos.length - data.paths.length + i;
+
+                // Create container for photo + delete button
+                const container = document.createElement('div');
+                container.className = 'photo-preview-container';
+                container.style.position = 'relative';
+                container.style.display = 'inline-block';
+                container.style.margin = '5px';
+
+                // Create image
                 const img = document.createElement('img');
                 img.src = URL.createObjectURL(files[i]);
                 img.className = 'photo-preview';
                 img.title = 'Click to edit | Right-click to zoom';
 
                 // Make photo clickable to open editor
-                const photoIndex = uploadedPhotos.length - data.paths.length + i;
                 img.onclick = function(e) {
                     e.preventDefault();
                     openPhotoEditor(photoIndex, this.src);
@@ -346,7 +352,24 @@ async function handlePhotoSelect(e) {
                     openImageZoom(data.paths[i]);
                 };
 
-                previewDiv.appendChild(img);
+                // Create delete button
+                const deleteBtn = document.createElement('button');
+                deleteBtn.innerHTML = '<i class="fas fa-times"></i>';
+                deleteBtn.className = 'btn btn-danger btn-sm photo-delete-btn';
+                deleteBtn.style.position = 'absolute';
+                deleteBtn.style.top = '5px';
+                deleteBtn.style.right = '5px';
+                deleteBtn.style.padding = '2px 6px';
+                deleteBtn.style.fontSize = '12px';
+                deleteBtn.title = 'Remove photo';
+                deleteBtn.onclick = function(e) {
+                    e.preventDefault();
+                    removePhoto(photoIndex);
+                };
+
+                container.appendChild(img);
+                container.appendChild(deleteBtn);
+                previewDiv.appendChild(container);
             }
 
             document.getElementById('analyzeBtn').style.display = 'block';
@@ -574,56 +597,6 @@ async function removeBackground() {
     }
 }
 
-async function enlargePhoto() {
-    if (!currentEditingPhotoSrc) return;
-
-    showLoading();
-
-    try {
-        // Create abort controller for timeout
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 20000); // 20 second timeout
-
-        const response = await fetch('/api/edit-photo', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                image: uploadedPhotos[currentEditingPhotoIndex],
-                operation: 'resize',
-                scale: 2.0
-            }),
-            signal: controller.signal
-        });
-
-        clearTimeout(timeout);
-
-        if (!response.ok) {
-            throw new Error(`Server error: ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        if (data.success) {
-            // Update the photo in uploadedPhotos array
-            uploadedPhotos[currentEditingPhotoIndex] = data.filepath;
-            // Update the editor image
-            document.getElementById('photoEditorImage').src = data.filepath;
-            currentEditingPhotoSrc = data.filepath;
-            showAlert('Photo enlarged to 2x size!', 'success');
-        } else {
-            showAlert('Enlarge failed: ' + (data.error || 'Unknown error'), 'danger');
-        }
-    } catch (error) {
-        if (error.name === 'AbortError') {
-            showAlert('Enlarge timed out. The image may be too large.', 'warning');
-        } else {
-            showAlert('Enlarge failed: ' + error.message, 'danger');
-        }
-    } finally {
-        hideLoading();
-    }
-}
-
 function resetPhoto() {
     if (!originalPhotoSrc) return;
 
@@ -643,6 +616,75 @@ function resetPhoto() {
     }
 
     showAlert('Photo reset to original', 'info');
+}
+
+// Remove photo function
+function removePhoto(index) {
+    if (confirm('Remove this photo?')) {
+        // Remove from uploadedPhotos array
+        uploadedPhotos.splice(index, 1);
+
+        // Rebuild preview display
+        const previewDiv = document.getElementById('photoPreview');
+        previewDiv.innerHTML = '';
+
+        // Re-render all photos with updated indices
+        for (let i = 0; i < uploadedPhotos.length; i++) {
+            const photoPath = uploadedPhotos[i];
+
+            // Create container
+            const container = document.createElement('div');
+            container.className = 'photo-preview-container';
+            container.style.position = 'relative';
+            container.style.display = 'inline-block';
+            container.style.margin = '5px';
+
+            // Create image
+            const img = document.createElement('img');
+            img.src = photoPath;
+            img.className = 'photo-preview';
+            img.title = 'Click to edit | Right-click to zoom';
+
+            // Click to edit
+            const photoIndex = i;
+            img.onclick = function(e) {
+                e.preventDefault();
+                openPhotoEditor(photoIndex, this.src);
+            };
+
+            // Right-click to zoom
+            img.oncontextmenu = function(e) {
+                e.preventDefault();
+                openImageZoom(photoPath);
+            };
+
+            // Create delete button
+            const deleteBtn = document.createElement('button');
+            deleteBtn.innerHTML = '<i class="fas fa-times"></i>';
+            deleteBtn.className = 'btn btn-danger btn-sm photo-delete-btn';
+            deleteBtn.style.position = 'absolute';
+            deleteBtn.style.top = '5px';
+            deleteBtn.style.right = '5px';
+            deleteBtn.style.padding = '2px 6px';
+            deleteBtn.style.fontSize = '12px';
+            deleteBtn.title = 'Remove photo';
+            deleteBtn.onclick = function(e) {
+                e.preventDefault();
+                removePhoto(photoIndex);
+            };
+
+            container.appendChild(img);
+            container.appendChild(deleteBtn);
+            previewDiv.appendChild(container);
+        }
+
+        showAlert('Photo removed', 'info');
+
+        // Hide analyze button if no photos left
+        if (uploadedPhotos.length === 0) {
+            document.getElementById('analyzeBtn').style.display = 'none';
+        }
+    }
 }
 
 // Zoom modal functions
@@ -1092,10 +1134,17 @@ async function saveListing(status = 'draft') {
         const data = await response.json();
 
         if (data.success) {
-            const msg = status === 'active' ? 'Listing posted successfully!' : 'Listing saved as draft!';
-            const redirect = status === 'active' ? '/listings' : '/drafts';
+            // Update draft ID so next save is an update, not a new draft
+            editingDraftId = data.listing_id;
+            editingListingUuid = data.listing_uuid;
+
+            const msg = status === 'active' ? 'Listing posted successfully!' : 'Draft saved successfully!';
             showAlert(msg, 'success');
-            setTimeout(() => window.location.href = redirect, 1500);
+
+            // Only redirect if posting as active
+            if (status === 'active') {
+                setTimeout(() => window.location.href = '/listings', 1500);
+            }
         } else {
             showAlert(data.error, 'danger');
         }
@@ -1200,6 +1249,16 @@ async function loadDraftData() {
 
                 for (let i = 0; i < listing.photos.length; i++) {
                     const photoPath = listing.photos[i];
+                    const photoIndex = i;
+
+                    // Create container for photo + delete button
+                    const container = document.createElement('div');
+                    container.className = 'photo-preview-container';
+                    container.style.position = 'relative';
+                    container.style.display = 'inline-block';
+                    container.style.margin = '5px';
+
+                    // Create image
                     const img = document.createElement('img');
                     // Convert server path to URL
                     img.src = '/' + photoPath;
@@ -1207,7 +1266,6 @@ async function loadDraftData() {
                     img.title = 'Click to edit | Right-click to zoom';
 
                     // Make photo clickable to open editor
-                    const photoIndex = i;
                     img.onclick = function(e) {
                         e.preventDefault();
                         openPhotoEditor(photoIndex, this.src);
@@ -1223,7 +1281,25 @@ async function loadDraftData() {
                         // Fallback: try different path formats
                         this.src = '/data/draft_photos/' + listing.listing_uuid + '/' + photoPath.split('/').pop();
                     };
-                    previewDiv.appendChild(img);
+
+                    // Create delete button
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.innerHTML = '<i class="fas fa-times"></i>';
+                    deleteBtn.className = 'btn btn-danger btn-sm photo-delete-btn';
+                    deleteBtn.style.position = 'absolute';
+                    deleteBtn.style.top = '5px';
+                    deleteBtn.style.right = '5px';
+                    deleteBtn.style.padding = '2px 6px';
+                    deleteBtn.style.fontSize = '12px';
+                    deleteBtn.title = 'Remove photo';
+                    deleteBtn.onclick = function(e) {
+                        e.preventDefault();
+                        removePhoto(photoIndex);
+                    };
+
+                    container.appendChild(img);
+                    container.appendChild(deleteBtn);
+                    previewDiv.appendChild(container);
                 }
 
                 document.getElementById('analyzeBtn').style.display = 'block';

@@ -49,14 +49,27 @@ class Database:
                     pass
 
             print("🐘 Connecting to PostgreSQL database...")
-            self.conn = psycopg2.connect(
-                self.database_url,
-                connect_timeout=10,
-                keepalives=1,
-                keepalives_idle=30,
-                keepalives_interval=10,
-                keepalives_count=5
-            )
+
+            # Check if using Supabase pooler (don't use keepalives with pooler)
+            is_supabase_pooler = 'pooler.supabase.com' in self.database_url
+
+            if is_supabase_pooler:
+                # Supabase pooler - use minimal connection parameters
+                self.conn = psycopg2.connect(
+                    self.database_url,
+                    connect_timeout=10
+                )
+            else:
+                # Direct connection - use keepalives
+                self.conn = psycopg2.connect(
+                    self.database_url,
+                    connect_timeout=10,
+                    keepalives=1,
+                    keepalives_idle=30,
+                    keepalives_interval=10,
+                    keepalives_count=5
+                )
+
             self.conn.autocommit = False
 
         except Exception as e:

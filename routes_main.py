@@ -639,7 +639,8 @@ def api_analyze():
         if not paths:
             return jsonify({"error": "No photos provided"}), 400
 
-        photos = [Photo(local_path=p) for p in paths]
+        # Create Photo objects - paths are URLs like "/uploads/abc123.jpg"
+        photos = [Photo(url=p, local_path=f"./data{p}") for p in paths]
         classifier = GeminiClassifier.from_env()
         result = classifier.analyze_item(photos)
 
@@ -664,7 +665,8 @@ def api_analyze_card():
         if not paths:
             return jsonify({"error": "No photos provided"}), 400
 
-        photos = [Photo(local_path=p) for p in paths]
+        # Create Photo objects - paths are URLs like "/uploads/abc123.jpg"
+        photos = [Photo(url=p, local_path=f"./data{p}") for p in paths]
         result = analyze_card(photos)
 
         if result.get("error"):

@@ -579,6 +579,9 @@ def get_api_credentials(platform):
 
         return jsonify({"success": True, "configured": False})
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # -------------------------------------------------------------------------
 # CARD ANALYSIS (TCG + Sports) - QUICK ANALYSIS
 # -------------------------------------------------------------------------

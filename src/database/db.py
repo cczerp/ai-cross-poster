@@ -1175,6 +1175,103 @@ class Database:
         """, (platform,))
         return [dict(row) for row in cursor.fetchall()]
 
+
+    def add_to_public_collectibles(self, item_type: str, data: dict, scanned_by: int) -> Optional[int]:
+    """Add item to public collectibles database"""
+    cursor = self._get_cursor()
+    
+    # Check if already exists
+    if item_type == 'card':
+        identifier = data.get('card_name') or data.get('player_name')
+        set_name = data.get('set_name')
+        card_number = data.get('card_number')
+        
+        cursor.execute("""
+            SELECT id FROM public_collectibles 
+            WHERE item_type = %s AND item_name = %s 
+            AND (set_name = %s OR set_name IS NULL) 
+            AND (card_number = %s OR card_number IS NULL)
+        """, (item_type, identifier, set_name, card_number))
+    else:
+        identifier = data.get('item_name')
+        franchise = data.get('franchise')
+        
+        cursor.execute("""
+            SELECT id FROM public_collectibles 
+            WHERE item_type = %s AND item_name = %s AND franchise = %s
+        """, (item_type, identifier, franchise))
+    
+    existing = cursor.fetchone()
+    
+    if existing:
+        # Update scan count
+        cursor.execute("""
+            UPDATE public_collectibles 
+            SET times_scanned = times_scanned + 1, last_updated = NOW()
+            WHERE id = %s
+        """, (existing['id'],))
+        self.conn.commit()
+        return existing['id']
+    
+    # Insert new
+    cursor.execute("""
+        INSERT INTO public_collectibles (
+            item_type, item_name, franchise, brand, year,
+            set_name, card_number, rarity_info, 
+            authentication_markers, market_data,
+            full_data, first_scanned_by, times_scanned
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
+        RETURNING id
+    """, (
+        item_type,
+        identifier,
+        data.get('franchise') or data.get('game_name') or data.get('sport'),
+        data.get('brand'),
+        data.get('year'),
+        data.get('set_name'),
+        data.get('card_number'),
+        data.get('rarity_info') or data.get('rarity'),
+        json.dumps(data.get('authentication_markers', [])),
+        json.dumps({
+            'estimated_value_low': data.get('estimated_value_low'),
+            'estimated_value_high': data.get('estimated_value_high')
+        }),
+        json.dumps(data),
+        scanned_by
+    ))
+    
+    result = cursor.fetchone()
+    self.conn.commit()
+    return result['id']
+
+def add_to_user_collectibles(self, user_id: int, data: dict, photos: list = None, storage_location: str = None) -> Optional[int]:
+    """Add collectible to user's personal collection"""
+    cursor = self._get_cursor()
+    
+    cursor.execute("""
+        INSERT INTO user_collectibles (
+            user_id, item_name, franchise, brand, year,
+            condition, estimated_value, storage_location,
+            photos, full_data, created_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+        RETURNING id
+    """, (
+        user_id,
+        data.get('item_name'),
+        data.get('franchise'),
+        data.get('brand'),
+        data.get('year'),
+        data.get('item_condition') or data.get('estimated_condition'),
+        data.get('estimated_value_low'),
+        storage_location,
+        json.dumps(photos or []),
+        json.dumps(data)
+    ))
+    
+    result = cursor.fetchone()
+    self.conn.commit()
+    return result['id']
+
     # ========================================================================
     # SYNC LOG METHODS
     # ========================================================================
@@ -2099,3 +2196,4 @@ def get_db() -> Database:
     if _db_instance is None:
         _db_instance = Database()
     return _db_instance
+

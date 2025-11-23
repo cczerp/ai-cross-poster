@@ -804,7 +804,7 @@ def api_add_collectible():
 @main_bp.route("/api/cards/add", methods=["POST"])
 @login_required
 def api_add_card():
-    # ... rest of your existing card add code ...    try:
+    try:
         from src.cards import CardCollectionManager
         stats = CardCollectionManager().get_collection_stats(current_user.id)
         return jsonify({"success": True, "stats": stats})

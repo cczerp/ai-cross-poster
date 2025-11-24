@@ -1,7 +1,7 @@
 {
-  "name": "ResellGenie - Multi-Platform Seller",
-  "short_name": "ResellGenie",
-  "description": "Cross-platform inventory and listing management for resellers",
+  "name": "Resell Rebel - Multi-Platform Seller",
+  "short_name": "Resell Rebel",
+  "description": "Smart selling, bold moves - Cross-platform inventory and listing management for resellers",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

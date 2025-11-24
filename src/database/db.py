@@ -65,13 +65,13 @@ class Database:
 
                 self.conn = psycopg2.connect(
                     connection_params,
-                    connect_timeout=10
+                    connect_timeout=30
                 )
             else:
                 # Direct connection - use keepalives
                 self.conn = psycopg2.connect(
                     self.database_url,
-                    connect_timeout=10,
+                    connect_timeout=30,
                     keepalives=1,
                     keepalives_idle=30,
                     keepalives_interval=10,

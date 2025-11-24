@@ -49,7 +49,7 @@ def api_analyze_card():
         if not photo_paths:
             return jsonify({'error': 'No photos provided'}), 400
         
-        photos = [Photo(local_path=path) for path in photo_paths]
+        photos = [Photo(url="", local_path=path) for path in photo_paths]
         result = analyze_card(photos)
         
         if result.get('error'):

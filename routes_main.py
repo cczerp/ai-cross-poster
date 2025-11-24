@@ -249,7 +249,7 @@ def api_analyze_card():
         if not paths:
             return jsonify({"error": "No photos provided"}), 400
 
-        photos = [Photo(local_path=p) for p in paths]
+        photos = [Photo(url="", local_path=p) for p in paths]
         result = analyze_card(photos)
 
         # Check for API key errors
@@ -297,7 +297,7 @@ def api_analyze():
         if not photo_paths:
             return jsonify({"error": "No photos provided"}), 400
 
-        photos = [Photo(local_path=p) for p in photo_paths]
+        photos = [Photo(url="", local_path=p) for p in photo_paths]
 
         # Run fast classification
         try:

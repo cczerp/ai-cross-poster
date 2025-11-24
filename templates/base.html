@@ -26,11 +26,16 @@
             --primary-dark: #6D28D9;
             --secondary: #A855F7;
             --accent: #C026D3;
+            --crimson: #DC143C;
+            --crimson-dark: #B91C1C;
+            --black: #0A0A0A;
             --success: #10B981;
             --danger: #EF4444;
             --warning: #F59E0B;
             --gradient: linear-gradient(135deg, #7C3AED 0%, #A855F7 50%, #C026D3 100%);
             --gradient-dark: linear-gradient(135deg, #6D28D9 0%, #7C3AED 50%, #A855F7 100%);
+            --gradient-hero: linear-gradient(135deg, #0A0A0A 0%, #6D28D9 25%, #7C3AED 50%, #DC143C 100%);
+            --gradient-red-purple: linear-gradient(135deg, #DC143C 0%, #7C3AED 50%, #C026D3 100%);
         }
 
         .logo {
@@ -94,13 +99,13 @@
 
         .bottom-nav .nav-link.active {
             color: white;
-            background: linear-gradient(135deg, #7C3AED 0%, #A855F7 50%, #C026D3 100%);
-            box-shadow: 0 4px 12px rgba(124, 58, 237, 0.45);
+            background: linear-gradient(135deg, #DC143C 0%, #7C3AED 50%, #C026D3 100%);
+            box-shadow: 0 4px 12px rgba(220, 20, 60, 0.45);
         }
 
         .bottom-nav .nav-link.active:hover {
             transform: translateY(-3px);
-            box-shadow: 0 6px 16px rgba(124, 58, 237, 0.55);
+            box-shadow: 0 6px 16px rgba(220, 20, 60, 0.65);
         }
 
         .bottom-nav .nav-link i {
@@ -269,14 +274,14 @@
 
         /* Hero Section - Full Width Gradient */
         .hero-section {
-            background: linear-gradient(135deg, #6D28D9 0%, #7C3AED 30%, #A855F7 60%, #C026D3 100%);
+            background: linear-gradient(135deg, #0A0A0A 0%, #1a0a1f 20%, #6D28D9 40%, #7C3AED 60%, #DC143C 85%, #B91C1C 100%);
             color: white;
             border-radius: 0 0 30px 30px;
             margin-top: -24px;
             margin-left: calc(-50vw + 50%);
             margin-right: calc(-50vw + 50%);
             padding: 80px 20px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            box-shadow: 0 10px 40px rgba(220, 20, 60, 0.4);
             position: relative;
             overflow: hidden;
         }
@@ -420,7 +425,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: linear-gradient(135deg, #7C3AED 0%, #A855F7 50%, #C026D3 100%);
+            background: linear-gradient(135deg, #DC143C 0%, #7C3AED 50%, #C026D3 100%);
             opacity: 0;
             transition: opacity 0.4s ease;
             z-index: 0;
@@ -437,8 +442,8 @@
 
         .feature-card:hover {
             transform: translateY(-12px) scale(1.02);
-            box-shadow: 0 20px 50px rgba(124, 58, 237, 0.35);
-            border-color: #7C3AED;
+            box-shadow: 0 20px 50px rgba(220, 20, 60, 0.35);
+            border-color: #DC143C;
         }
 
         .feature-card:hover::before {
@@ -446,7 +451,7 @@
         }
 
         .feature-icon {
-            background: linear-gradient(135deg, #7C3AED 0%, #A855F7 50%, #C026D3 100%);
+            background: linear-gradient(135deg, #DC143C 0%, #7C3AED 50%, #C026D3 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -456,7 +461,7 @@
 
         .feature-card:hover .feature-icon {
             transform: scale(1.15) rotate(5deg);
-            filter: drop-shadow(0 8px 20px rgba(124, 58, 237, 0.5));
+            filter: drop-shadow(0 8px 20px rgba(220, 20, 60, 0.5));
         }
 
         .feature-icon.warning {
@@ -507,7 +512,7 @@
         }
 
         .section-dark {
-            background: linear-gradient(135deg, #6D28D9 0%, #7C3AED 30%, #A855F7 60%, #C026D3 100%);
+            background: linear-gradient(135deg, #0A0A0A 0%, #1a0a1f 20%, #6D28D9 40%, #7C3AED 60%, #DC143C 85%, #B91C1C 100%);
             color: white;
             margin-left: calc(-50vw + 50%);
             margin-right: calc(-50vw + 50%);
@@ -567,7 +572,7 @@
             position: absolute;
             top: 15px;
             left: 20px;
-            background: linear-gradient(135deg, #7C3AED 0%, #A855F7 50%, #C026D3 100%);
+            background: linear-gradient(135deg, #DC143C 0%, #7C3AED 50%, #C026D3 100%);
             color: white;
             width: 45px;
             height: 45px;
@@ -577,13 +582,13 @@
             justify-content: center;
             font-weight: 800;
             font-size: 1.2rem;
-            box-shadow: 0 4px 15px rgba(124, 58, 237, 0.4);
+            box-shadow: 0 4px 15px rgba(220, 20, 60, 0.4);
             transition: all 0.3s ease;
         }
 
         .step-card:hover .step-number {
             transform: scale(1.1) rotate(10deg);
-            box-shadow: 0 6px 20px rgba(124, 58, 237, 0.6);
+            box-shadow: 0 6px 20px rgba(220, 20, 60, 0.6);
         }
 
         .step-icon {
@@ -611,21 +616,21 @@
 
         /* Why Section */
         .why-card {
-            background: linear-gradient(135deg, rgba(124, 58, 237, 0.05) 0%, rgba(168, 85, 247, 0.05) 100%);
+            background: linear-gradient(135deg, rgba(220, 20, 60, 0.05) 0%, rgba(124, 58, 237, 0.05) 100%);
             border-radius: 16px;
             padding: 30px;
             margin-bottom: 20px;
-            border-left: 4px solid #7C3AED;
+            border-left: 4px solid #DC143C;
             transition: all 0.3s ease;
         }
 
         .why-card:hover {
             transform: translateX(8px);
-            box-shadow: 0 5px 20px rgba(124, 58, 237, 0.15);
+            box-shadow: 0 5px 20px rgba(220, 20, 60, 0.15);
         }
 
         .why-card h5 {
-            color: #7C3AED;
+            color: #DC143C;
             font-weight: 700;
             margin-bottom: 10px;
         }
@@ -721,7 +726,7 @@
             top: 0;
             bottom: 0;
             width: 5px;
-            background: linear-gradient(135deg, #7C3AED 0%, #A855F7 50%, #C026D3 100%);
+            background: linear-gradient(135deg, #DC143C 0%, #7C3AED 50%, #C026D3 100%);
             transform: scaleY(0);
             transition: transform 0.3s ease;
         }
@@ -827,20 +832,20 @@
         }
 
         .storage-badge {
-            background: linear-gradient(135deg, #7C3AED 0%, #A855F7 50%, #C026D3 100%);
+            background: linear-gradient(135deg, #DC143C 0%, #7C3AED 50%, #C026D3 100%);
             color: white;
             padding: 12px 24px;
             border-radius: 25px;
             font-weight: 600;
             display: inline-block;
-            box-shadow: 0 4px 15px rgba(124, 58, 237, 0.3);
+            box-shadow: 0 4px 15px rgba(220, 20, 60, 0.3);
             transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             font-size: 1.1rem;
         }
 
         .storage-badge:hover {
             transform: translateY(-5px) scale(1.05);
-            box-shadow: 0 8px 25px rgba(124, 58, 237, 0.5);
+            box-shadow: 0 8px 25px rgba(220, 20, 60, 0.5);
         }
 
         .tip-icon i {

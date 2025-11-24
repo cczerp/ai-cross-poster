@@ -96,8 +96,15 @@ class Database:
 
             # Test with a simple query
             cursor = self.conn.cursor()
-            cursor.execute("SELECT 1")
-            cursor.close()
+            try:
+                cursor.execute("SELECT 1")
+                cursor.close()
+            except psycopg2.errors.InFailedSqlTransaction:
+                # Transaction is in failed state, rollback and retry
+                self.conn.rollback()
+                cursor = self.conn.cursor()
+                cursor.execute("SELECT 1")
+                cursor.close()
 
         except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
             print(f"⚠️  Connection error detected: {e}, reconnecting...")
@@ -1461,7 +1468,7 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             SELECT * FROM marketplace_credentials
-            WHERE user_id = %s AND platform = %s
+            WHERE user_id::text = %s::text AND platform = %s
         """, (user_id, platform))
         row = cursor.fetchone()
         return dict(row) if row else None
@@ -1471,7 +1478,7 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             SELECT * FROM marketplace_credentials
-            WHERE user_id = %s
+            WHERE user_id::text = %s::text
             ORDER BY platform
         """, (user_id,))
         return [dict(row) for row in cursor.fetchall()]
@@ -1481,7 +1488,7 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             DELETE FROM marketplace_credentials
-            WHERE user_id = %s AND platform = %s
+            WHERE user_id::text = %s::text AND platform = %s
         """, (user_id, platform))
         self.conn.commit()
 
@@ -1597,9 +1604,9 @@ class Database:
         """Delete a user and all their data"""
         cursor = self._get_cursor()
 
-        cursor.execute("DELETE FROM marketplace_credentials WHERE user_id = %s", (user_id,))
-        cursor.execute("DELETE FROM listings WHERE user_id = %s", (user_id,))
-        cursor.execute("DELETE FROM activity_logs WHERE user_id = %s", (user_id,))
+        cursor.execute("DELETE FROM marketplace_credentials WHERE user_id::text = %s::text", (str(user_id),))
+        cursor.execute("DELETE FROM listings WHERE user_id::text = %s::text", (str(user_id),))
+        cursor.execute("DELETE FROM activity_logs WHERE user_id::text = %s::text", (str(user_id),))
         cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
 
         self.conn.commit()
@@ -1740,7 +1747,7 @@ class Database:
 
         query = """
             SELECT * FROM platform_activity
-            WHERE user_id = %s
+            WHERE user_id::text = %s::text
         """
         params = [user_id]
 
@@ -1876,13 +1883,13 @@ class Database:
         if bin_type:
             cursor.execute("""
                 SELECT * FROM storage_bins
-                WHERE user_id = %s AND bin_type = %s
+                WHERE user_id::text = %s::text AND bin_type = %s
                 ORDER BY bin_name
             """, (user_id, bin_type))
         else:
             cursor.execute("""
                 SELECT * FROM storage_bins
-                WHERE user_id = %s
+                WHERE user_id::text = %s::text
                 ORDER BY bin_type, bin_name
             """, (user_id,))
 
@@ -1936,7 +1943,7 @@ class Database:
 
         cursor.execute("""
             SELECT storage_id FROM storage_items
-            WHERE user_id = %s AND storage_id LIKE %s
+            WHERE user_id::text = %s::text AND storage_id LIKE %s
             ORDER BY storage_id DESC
             LIMIT 1
         """, (user_id, pattern))
@@ -2082,7 +2089,7 @@ class Database:
         cursor.execute("""
             SELECT COUNT(*) as total
             FROM storage_items
-            WHERE user_id = %s
+            WHERE user_id::text = %s::text
         """, (user_id,))
         total_items = cursor.fetchone()['total']
 

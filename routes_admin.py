@@ -84,7 +84,7 @@ def admin_user_detail(user_id):
     # Get recent listings
     cursor = db._get_cursor()
     cursor.execute(
-        "SELECT * FROM listings WHERE user_id = %s ORDER BY created_at DESC LIMIT 50",
+        "SELECT * FROM listings WHERE user_id::text = %s::text ORDER BY created_at DESC LIMIT 50",
         (user_id,)
     )
     listings = [dict(row) for row in cursor.fetchall()]

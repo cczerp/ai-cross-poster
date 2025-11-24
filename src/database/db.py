@@ -1430,7 +1430,7 @@ class Database:
             UPDATE users
             SET last_login = CURRENT_TIMESTAMP
             WHERE id = %s
-        """, (user_id,))
+        """, (str(user_id),))
         self.conn.commit()
 
     def update_notification_email(self, user_id: int, notification_email: str):
@@ -1469,7 +1469,7 @@ class Database:
         cursor.execute("""
             SELECT * FROM marketplace_credentials
             WHERE user_id::text = %s::text AND platform = %s
-        """, (user_id, platform))
+        """, (str(user_id), platform))
         row = cursor.fetchone()
         return dict(row) if row else None
 
@@ -1480,7 +1480,7 @@ class Database:
             SELECT * FROM marketplace_credentials
             WHERE user_id::text = %s::text
             ORDER BY platform
-        """, (user_id,))
+        """, (str(user_id),))
         return [dict(row) for row in cursor.fetchall()]
 
     def delete_marketplace_credentials(self, user_id: int, platform: str):
@@ -1489,7 +1489,7 @@ class Database:
         cursor.execute("""
             DELETE FROM marketplace_credentials
             WHERE user_id::text = %s::text AND platform = %s
-        """, (user_id, platform))
+        """, (str(user_id), platform))
         self.conn.commit()
 
     # ========================================================================
@@ -1558,7 +1558,7 @@ class Database:
         cursor = self._get_cursor()
         cursor.execute("""
             SELECT COUNT(*) as count FROM activity_logs WHERE user_id = %s
-        """, (user_id,))
+        """, (str(user_id),))
         return cursor.fetchone()['count']
 
     # ========================================================================
@@ -1891,7 +1891,7 @@ class Database:
                 SELECT * FROM storage_bins
                 WHERE user_id::text = %s::text
                 ORDER BY bin_type, bin_name
-            """, (user_id,))
+            """, (str(user_id),))
 
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
@@ -2075,7 +2075,7 @@ class Database:
             WHERE sb.user_id = %s
             GROUP BY sb.id
             ORDER BY sb.bin_type, sb.bin_name
-        """, (user_id,))
+        """, (str(user_id),))
 
         bins = [dict(row) for row in cursor.fetchall()]
 
@@ -2090,7 +2090,7 @@ class Database:
             SELECT COUNT(*) as total
             FROM storage_items
             WHERE user_id::text = %s::text
-        """, (user_id,))
+        """, (str(user_id),))
         total_items = cursor.fetchone()['total']
 
         return {

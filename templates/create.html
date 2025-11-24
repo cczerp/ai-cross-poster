@@ -206,6 +206,9 @@
             <button class="btn btn-warning" onclick="removeBackground()">
                 <i class="fas fa-magic"></i> Remove Background
             </button>
+            <button class="btn btn-info" onclick="enlargePhoto()">
+                <i class="fas fa-search-plus"></i> Enlarge (2x)
+            </button>
             <button class="btn btn-secondary" onclick="resetPhoto()">
                 <i class="fas fa-undo"></i> Reset
             </button>
@@ -216,86 +219,12 @@
         </div>
     </div>
 </div>
-
-<!-- Image Zoom Modal -->
-<div id="imageZoomModal" class="image-zoom-modal" onclick="closeImageZoom()" style="display: none;">
-    <div class="image-zoom-container">
-        <button class="btn btn-outline-light zoom-close-btn" onclick="closeImageZoom()">
-            <i class="fas fa-times"></i>
-        </button>
-        <img id="zoomImage" src="" alt="Zoomed image">
-        <div class="zoom-hint">Click image to zoom | Right-click to see details</div>
-    </div>
-</div>
-
-<style>
-.image-zoom-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.95);
-    z-index: 9999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: zoom-out;
-}
-
-.image-zoom-container {
-    position: relative;
-    max-width: 95%;
-    max-height: 95%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.zoom-close-btn {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    z-index: 10000;
-    border: 2px solid white;
-}
-
-#zoomImage {
-    max-width: 100%;
-    max-height: 90vh;
-    object-fit: contain;
-    cursor: zoom-in;
-}
-
-.zoom-hint {
-    position: absolute;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    color: white;
-    background: rgba(0, 0, 0, 0.7);
-    padding: 10px 20px;
-    border-radius: 5px;
-    font-size: 14px;
-}
-
-.photo-preview {
-    cursor: pointer;
-    transition: transform 0.2s;
-}
-
-.photo-preview:hover {
-    transform: scale(1.05);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-}
-</style>
-
 {% endblock %}
 
 {% block extra_js %}
 <script>
 let uploadedPhotos = [];
-let editingDraftId = {% if draft_id %}{{ draft_id }}{% else %}null{% endif %};
+let editingDraftId = {{ draft_id if draft_id else 'null' }};
 let editingListingUuid = null;
 
 // Generic photo handling function for both camera and file upload
@@ -325,51 +254,18 @@ async function handlePhotoSelect(e) {
             // Show previews (append to existing)
             const previewDiv = document.getElementById('photoPreview');
             for (let i = 0; i < files.length; i++) {
-                const photoIndex = uploadedPhotos.length - data.paths.length + i;
-
-                // Create container for photo + delete button
-                const container = document.createElement('div');
-                container.className = 'photo-preview-container';
-                container.style.position = 'relative';
-                container.style.display = 'inline-block';
-                container.style.margin = '5px';
-
-                // Create image
                 const img = document.createElement('img');
                 img.src = URL.createObjectURL(files[i]);
                 img.className = 'photo-preview';
-                img.title = 'Click to edit | Right-click to zoom';
+                img.title = 'Click to edit photo';
 
                 // Make photo clickable to open editor
-                img.onclick = function(e) {
-                    e.preventDefault();
+                const photoIndex = uploadedPhotos.length - data.paths.length + i;
+                img.onclick = function() {
                     openPhotoEditor(photoIndex, this.src);
                 };
 
-                // Right-click to zoom
-                img.oncontextmenu = function(e) {
-                    e.preventDefault();
-                    openImageZoom(data.paths[i]);
-                };
-
-                // Create delete button
-                const deleteBtn = document.createElement('button');
-                deleteBtn.innerHTML = '<i class="fas fa-times"></i>';
-                deleteBtn.className = 'btn btn-danger btn-sm photo-delete-btn';
-                deleteBtn.style.position = 'absolute';
-                deleteBtn.style.top = '5px';
-                deleteBtn.style.right = '5px';
-                deleteBtn.style.padding = '2px 6px';
-                deleteBtn.style.fontSize = '12px';
-                deleteBtn.title = 'Remove photo';
-                deleteBtn.onclick = function(e) {
-                    e.preventDefault();
-                    removePhoto(photoIndex);
-                };
-
-                container.appendChild(img);
-                container.appendChild(deleteBtn);
-                previewDiv.appendChild(container);
+                previewDiv.appendChild(img);
             }
 
             document.getElementById('analyzeBtn').style.display = 'block';
@@ -562,7 +458,7 @@ async function removeBackground() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                image: uploadedPhotos[currentEditingPhotoIndex],
+                image: currentEditingPhotoSrc,
                 operation: 'remove-bg'
             }),
             signal: controller.signal
@@ -577,11 +473,7 @@ async function removeBackground() {
         const data = await response.json();
 
         if (data.success) {
-            // Update the photo in uploadedPhotos array
-            uploadedPhotos[currentEditingPhotoIndex] = data.filepath;
-            // Update the editor image
-            document.getElementById('photoEditorImage').src = data.filepath;
-            currentEditingPhotoSrc = data.filepath;
+            updatePhotoAfterEdit(data.image, data.filepath);
             showAlert('Background removed! (FREE feature worth $5-20/mo)', 'success');
         } else {
             showAlert('Background removal failed: ' + (data.error || 'Unknown error'), 'danger');
@@ -591,6 +483,58 @@ async function removeBackground() {
             showAlert('Background removal timed out. The image may be too large. Try a smaller image or crop it first.', 'warning');
         } else {
             showAlert('Background removal failed: ' + error.message, 'danger');
+        }
+    } finally {
+        hideLoading();
+    }
+}
+
+async function enlargePhoto() {
+    if (!currentEditingPhotoSrc) return;
+
+    showLoading();
+
+    try {
+        // Get current image dimensions
+        const img = document.getElementById('photoEditorImage');
+        const currentWidth = img.naturalWidth;
+        const currentHeight = img.naturalHeight;
+
+        // Create abort controller for timeout
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 20000); // 20 second timeout
+
+        const response = await fetch('/api/edit-photo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                image: currentEditingPhotoSrc,
+                operation: 'resize',
+                width: currentWidth * 2,
+                height: currentHeight * 2
+            }),
+            signal: controller.signal
+        });
+
+        clearTimeout(timeout);
+
+        if (!response.ok) {
+            throw new Error(`Server error: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data.success) {
+            updatePhotoAfterEdit(data.image, data.filepath);
+            showAlert('Photo enlarged to 2x size!', 'success');
+        } else {
+            showAlert('Enlarge failed: ' + (data.error || 'Unknown error'), 'danger');
+        }
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            showAlert('Enlarge timed out. The image may be too large.', 'warning');
+        } else {
+            showAlert('Enlarge failed: ' + error.message, 'danger');
         }
     } finally {
         hideLoading();
@@ -618,106 +562,6 @@ function resetPhoto() {
     showAlert('Photo reset to original', 'info');
 }
 
-// Remove photo function
-function removePhoto(index) {
-    if (confirm('Remove this photo?')) {
-        // Remove from uploadedPhotos array
-        uploadedPhotos.splice(index, 1);
-
-        // Rebuild preview display
-        const previewDiv = document.getElementById('photoPreview');
-        previewDiv.innerHTML = '';
-
-        // Re-render all photos with updated indices
-        for (let i = 0; i < uploadedPhotos.length; i++) {
-            const photoPath = uploadedPhotos[i];
-
-            // Create container
-            const container = document.createElement('div');
-            container.className = 'photo-preview-container';
-            container.style.position = 'relative';
-            container.style.display = 'inline-block';
-            container.style.margin = '5px';
-
-            // Create image
-            const img = document.createElement('img');
-            img.src = photoPath;
-            img.className = 'photo-preview';
-            img.title = 'Click to edit | Right-click to zoom';
-
-            // Click to edit
-            const photoIndex = i;
-            img.onclick = function(e) {
-                e.preventDefault();
-                openPhotoEditor(photoIndex, this.src);
-            };
-
-            // Right-click to zoom
-            img.oncontextmenu = function(e) {
-                e.preventDefault();
-                openImageZoom(photoPath);
-            };
-
-            // Create delete button
-            const deleteBtn = document.createElement('button');
-            deleteBtn.innerHTML = '<i class="fas fa-times"></i>';
-            deleteBtn.className = 'btn btn-danger btn-sm photo-delete-btn';
-            deleteBtn.style.position = 'absolute';
-            deleteBtn.style.top = '5px';
-            deleteBtn.style.right = '5px';
-            deleteBtn.style.padding = '2px 6px';
-            deleteBtn.style.fontSize = '12px';
-            deleteBtn.title = 'Remove photo';
-            deleteBtn.onclick = function(e) {
-                e.preventDefault();
-                removePhoto(photoIndex);
-            };
-
-            container.appendChild(img);
-            container.appendChild(deleteBtn);
-            previewDiv.appendChild(container);
-        }
-
-        showAlert('Photo removed', 'info');
-
-        // Hide analyze button if no photos left
-        if (uploadedPhotos.length === 0) {
-            document.getElementById('analyzeBtn').style.display = 'none';
-        }
-    }
-}
-
-// Zoom modal functions
-function openImageZoom(imageSrc) {
-    const modal = document.getElementById('imageZoomModal');
-    const zoomImage = document.getElementById('zoomImage');
-    zoomImage.src = imageSrc;
-    modal.style.display = 'flex';
-
-    // Prevent body scroll when modal is open
-    document.body.style.overflow = 'hidden';
-}
-
-function closeImageZoom(event) {
-    // Prevent closing if clicking on the close button (handled by button's onclick)
-    if (event && event.target.classList.contains('zoom-close-btn')) {
-        return;
-    }
-
-    const modal = document.getElementById('imageZoomModal');
-    modal.style.display = 'none';
-
-    // Restore body scroll
-    document.body.style.overflow = 'auto';
-}
-
-// Close zoom modal on Escape key
-document.addEventListener('keydown', function(event) {
-    if (event.key === 'Escape') {
-        closeImageZoom();
-    }
-});
-
 function updatePhotoAfterEdit(newImageData, newFilepath) {
     // Update the modal image
     const img = document.getElementById('photoEditorImage');
@@ -737,19 +581,15 @@ function updatePhotoAfterEdit(newImageData, newFilepath) {
 }
 
 // ========================================
-// AI ANALYSIS - TWO-TIER SYSTEM
-// ========================================
+// AI Analysis
+let detectedCardData = null; // Store card data if detected
 
-let detectedCardData = null;
-let detectedCollectibleData = null;
-let enhancedScanData = null;
-
-// TIER 1: Quick Analysis (Gemini - Fast & Cheap)
 document.getElementById('analyzeBtn').addEventListener('click', async function() {
-    showLoading('Running quick analysis...');
+    showLoading();
 
     try {
-        const response = await fetch('/api/analyze', {
+        // Try card analysis first
+        const cardResponse = await fetch('/api/analyze-card', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -757,43 +597,110 @@ document.getElementById('analyzeBtn').addEventListener('click', async function()
             })
         });
 
-        const data = await response.json();
+        const cardData = await cardResponse.json();
 
-        if (!data.success) {
-            showAlert(data.error || 'Analysis failed', 'danger');
-            hideLoading();
-            return;
+        // Check if it's a card
+        if (cardData.success && cardData.card_data && cardData.card_data.is_card) {
+            // Store card data for later
+            detectedCardData = cardData.card_data;
+
+            // Show card detection banner
+            showCardDetectionBanner(cardData.card_data);
+
+            // Fill form with card data
+            fillFormFromCardData(cardData.card_data);
+
+            showAlert('Card detected and analyzed!', 'success');
+        } else {
+            // Not a card, do regular item analysis
+            const response = await fetch('/api/analyze', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ photos: uploadedPhotos })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                const analysis = data.analysis;
+
+                // Fill form
+                if (analysis.suggested_title) document.getElementById('title').value = analysis.suggested_title;
+                if (analysis.description) document.getElementById('description').value = analysis.description;
+                if (analysis.brand) document.getElementById('brand').value = analysis.brand;
+                if (analysis.size) document.getElementById('size').value = analysis.size;
+                if (analysis.color) document.getElementById('color').value = analysis.color;
+                if (analysis.suggested_price) document.getElementById('price').value = analysis.suggested_price;
+                if (analysis.condition) {
+                    const condition = analysis.condition.replace(' ', '_').toLowerCase();
+                    document.getElementById('condition').value = condition;
+                }
+
+                // Check for collectible items
+                if (analysis.collectible) {
+                    const confidence = analysis.collectible_confidence || 0;
+                    const indicators = analysis.collectible_indicators || [];
+                    const franchise = analysis.franchise || '';
+
+                    let collectibleMsg = `🎯 <strong>COLLECTIBLE DETECTED!</strong><br>`;
+                    collectibleMsg += `Confidence: ${(confidence * 100).toFixed(0)}%<br>`;
+
+                    if (franchise) {
+                        collectibleMsg += `Franchise: ${franchise}<br>`;
+                    }
+
+                    if (indicators.length > 0) {
+                        collectibleMsg += `Indicators: ${indicators.join(', ')}`;
+                    }
+
+                    // Create custom alert div
+                    const alertDiv = document.createElement('div');
+                    alertDiv.className = 'alert alert-warning alert-dismissible fade show mt-3';
+                    alertDiv.style.cssText = 'position: sticky; top: 10px; z-index: 1000; border: 3px solid #ff6b6b;';
+                    alertDiv.innerHTML = `
+                        ${collectibleMsg}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    `;
+
+                    // Insert after form
+                    document.getElementById('listingForm').insertAdjacentElement('beforebegin', alertDiv);
+
+                    // Auto-set item type to collectible
+                    document.getElementById('item_type').value = 'collectible';
+                }
+
+                // Show market analysis (sell-through rate)
+                if (analysis.market_analysis) {
+                    const market = analysis.market_analysis;
+                    let demandColor = market.demand_level === 'High' ? 'success' :
+                                     market.demand_level === 'Low' ? 'danger' : 'warning';
+
+                    let marketMsg = `📊 <strong>MARKET ANALYSIS</strong><br>`;
+                    marketMsg += `<strong>Sell-Through Rate:</strong> ${market.sell_through_rate}% ${getDemandEmoji(market.demand_level)}<br>`;
+                    marketMsg += `<strong>Demand:</strong> <span class="badge bg-${demandColor}">${market.demand_level}</span><br>`;
+                    marketMsg += `<strong>Est. Days to Sell:</strong> ${market.days_to_sell_estimate} days<br>`;
+                    if (market.average_sold_price > 0) {
+                        marketMsg += `<strong>Avg Sold Price:</strong> $${market.average_sold_price.toFixed(2)}<br>`;
+                    }
+                    if (market.market_insights && market.market_insights.length > 0) {
+                        marketMsg += `<small class="text-muted">${market.market_insights.join(' • ')}</small>`;
+                    }
+
+                    const marketAlert = document.createElement('div');
+                    marketAlert.className = 'alert alert-info alert-dismissible fade show mt-3';
+                    marketAlert.innerHTML = `
+                        ${marketMsg}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    `;
+
+                    document.getElementById('listingForm').insertAdjacentElement('beforebegin', marketAlert);
+                }
+
+                showAlert('AI analysis complete!', 'success');
+            } else {
+                showAlert(data.error, 'warning');
+            }
         }
-
-        const analysis = data.analysis;
-
-        // Fill form with basic info
-        if (analysis.suggested_title) document.getElementById('title').value = analysis.suggested_title;
-        if (analysis.description) document.getElementById('description').value = analysis.description;
-        if (analysis.brand) document.getElementById('brand').value = analysis.brand;
-        if (analysis.size) document.getElementById('size').value = analysis.size;
-        if (analysis.color) document.getElementById('color').value = analysis.color;
-        if (analysis.suggested_price) document.getElementById('price').value = analysis.suggested_price;
-        if (analysis.condition) {
-            const condition = analysis.condition.replace(' ', '_').toLowerCase();
-            document.getElementById('condition').value = condition;
-        }
-
-        // Check if Enhanced Scan would be helpful
-        const isCard = analysis.category === 'Trading Cards' || analysis.category === 'Sports Cards';
-        const isCollectible = analysis.collectible === true;
-
-        if (isCard || isCollectible) {
-            showEnhancedScanOption(isCard, isCollectible, analysis);
-        }
-
-        // Show market analysis if available
-        if (analysis.market_analysis) {
-            showMarketAnalysis(analysis.market_analysis);
-        }
-
-        showAlert('Quick analysis complete!', 'success');
-
     } catch (error) {
         showAlert('Analysis failed: ' + error, 'danger');
     } finally {
@@ -801,301 +708,101 @@ document.getElementById('analyzeBtn').addEventListener('click', async function()
     }
 });
 
-// Show subtle Enhanced Scan option
-function showEnhancedScanOption(isCard, isCollectible, analysis) {
-    // Remove existing if present
-    document.getElementById('enhancedScanCard')?.remove();
-
-    let scanType = isCard ? 'card' : 'collectible';
-    let icon = isCard ? 'fa-id-card' : 'fa-star';
-    let message = isCard 
-        ? 'Get detailed card analysis, TCGPlayer prices, and authentication'
-        : 'Get rarity info, franchise history, and authentication markers';
-
-    const enhancedScanCard = `
-        <div class="card border-primary mb-3" id="enhancedScanCard">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="mb-1">
-                            <i class="fas ${icon} text-primary"></i> 
-                            Enhanced Scanner Available
-                        </h6>
-                        <small class="text-muted">${message}</small>
-                    </div>
-                    <button class="btn btn-primary" onclick="runEnhancedScan()">
-                        <i class="fas fa-microscope"></i> Enhanced Scan
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
-
-    // Insert after photo card
-    document.querySelector('.card-header').closest('.card').insertAdjacentHTML('afterend', enhancedScanCard);
-}
-
-// Show market analysis
-function showMarketAnalysis(market) {
-    // Remove existing if present
-    document.getElementById('marketAnalysisCard')?.remove();
-
-    let demandColor = market.demand_level === 'High' ? 'success' :
-                     market.demand_level === 'Low' ? 'danger' : 'warning';
-
-    let marketCard = `
-        <div class="card border-info mb-3" id="marketAnalysisCard">
-            <div class="card-header bg-info text-white">
-                <i class="fas fa-chart-line"></i> Market Analysis
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-3">
-                        <strong>Sell-Through Rate:</strong><br>
-                        <span class="h4">${market.sell_through_rate}%</span> ${getDemandEmoji(market.demand_level)}
-                    </div>
-                    <div class="col-md-3">
-                        <strong>Demand:</strong><br>
-                        <span class="badge bg-${demandColor} fs-6">${market.demand_level}</span>
-                    </div>
-                    <div class="col-md-3">
-                        <strong>Est. Days to Sell:</strong><br>
-                        <span class="h5">${market.days_to_sell_estimate}</span> days
-                    </div>
-                    <div class="col-md-3">
-                        <strong>Avg Sold Price:</strong><br>
-                        <span class="h5 text-success">$${market.average_sold_price?.toFixed(2) || 'N/A'}</span>
-                    </div>
-                </div>
-                ${market.market_insights?.length > 0 ? `
-                    <hr>
-                    <small class="text-muted">${market.market_insights.join(' • ')}</small>
-                ` : ''}
-            </div>
-        </div>
-    `;
-
-    document.getElementById('enhancedScanCard')?.insertAdjacentHTML('afterend', marketCard);
-}
-
 function getDemandEmoji(demand) {
     if (demand === 'High') return '🔥';
     if (demand === 'Low') return '🐌';
     return '📈';
 }
 
-// TIER 2: Enhanced Scanner (Claude - Deep Dive)
-async function runEnhancedScan() {
-    showLoading('Running enhanced scan... This may take 10-20 seconds');
+// ========================================
+// CARD COLLECTION FUNCTIONS
+// ========================================
 
-    try {
-        const response = await fetch('/api/enhanced-scan', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                photos: uploadedPhotos
-            })
-        });
-
-        const data = await response.json();
-
-        if (!data.success) {
-            if (data.type === 'standard_item') {
-                showAlert('Not a collectible. Quick analysis is sufficient for this item.', 'info');
-            } else {
-                showAlert(data.error || data.message || 'Enhanced scan failed', 'danger');
-            }
-            hideLoading();
-            return;
-        }
-
-        // Store enhanced scan data
-        enhancedScanData = data;
-
-        // Remove the "run enhanced scan" card
-        document.getElementById('enhancedScanCard')?.remove();
-
-        // Display results based on type
-        if (data.type === 'card') {
-            detectedCardData = data.data;
-            showCardResults(data);
-        } else if (data.type === 'collectible') {
-            detectedCollectibleData = data.data;
-            showCollectibleResults(data);
-        }
-
-        showAlert('Enhanced scan complete!', 'success');
-
-    } catch (error) {
-        showAlert('Enhanced scan failed: ' + error, 'danger');
-    } finally {
-        hideLoading();
+function showCardDetectionBanner(cardData) {
+    // Remove any existing banner
+    const existingBanner = document.getElementById('cardDetectionBanner');
+    if (existingBanner) {
+        existingBanner.remove();
     }
-}
 
-// Display Card Results
-function showCardResults(data) {
-    const cardData = data.data;
-    const prices = data.market_prices || {};
+    // Build card info display
+    let cardType = cardData.card_type || 'unknown';
+    let cardName = cardData.card_name || cardData.player_name || 'Unknown Card';
+    let cardDetails = [];
 
-    const statsCard = `
-        <div class="card border-success mb-3" id="enhancedResultsCard">
-            <div class="card-header bg-success text-white">
-                <i class="fas fa-id-card"></i> Card Analysis Complete
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h5>${cardData.card_name || cardData.player_name || 'Unknown Card'}</h5>
-                        ${cardData.set_name ? `<p class="mb-1"><strong>Set:</strong> ${cardData.set_name}</p>` : ''}
-                        ${cardData.card_number ? `<p class="mb-1"><strong>Number:</strong> #${cardData.card_number}</p>` : ''}
-                        ${cardData.rarity ? `<p class="mb-1"><strong>Rarity:</strong> ${cardData.rarity}</p>` : ''}
-                        ${cardData.year ? `<p class="mb-1"><strong>Year:</strong> ${cardData.year}</p>` : ''}
-                        ${cardData.brand ? `<p class="mb-1"><strong>Brand:</strong> ${cardData.brand}</p>` : ''}
-                        ${cardData.is_rookie_card ? `<p class="mb-1"><span class="badge bg-warning">ROOKIE CARD</span></p>` : ''}
-                        ${cardData.is_graded ? `<p class="mb-1"><strong>Graded:</strong> ${cardData.grading_company} ${cardData.grading_score}</p>` : ''}
-                    </div>
-                    <div class="col-md-6">
-                        <h6>Market Prices</h6>
-                        ${prices.tcgplayer ? `<p class="mb-1"><strong>TCGPlayer:</strong> $${prices.tcgplayer.market || 'N/A'}</p>` : ''}
-                        ${prices.ebay ? `<p class="mb-1"><strong>eBay Sold Avg:</strong> $${prices.ebay.avg || 'N/A'}</p>` : ''}
-                        ${prices.actual_selling ? `<p class="mb-1 text-success"><strong>Actual Selling:</strong> $${prices.actual_selling}</p>` : ''}
-                        ${prices.quick_sale ? `<p class="mb-1 text-warning"><strong>Quick Sale:</strong> $${prices.quick_sale}</p>` : ''}
-                        ${cardData.estimated_value_low && cardData.estimated_value_high ? `
-                            <p class="mb-1"><strong>Est. Range:</strong> $${cardData.estimated_value_low} - $${cardData.estimated_value_high}</p>
-                        ` : ''}
-                    </div>
+    // Add type-specific details
+    if (cardData.player_name) {
+        // Sports card
+        if (cardData.year) cardDetails.push(`${cardData.year}`);
+        if (cardData.brand) cardDetails.push(cardData.brand);
+        if (cardData.is_rookie_card) cardDetails.push('RC');
+    } else {
+        // TCG card
+        if (cardData.set_name) cardDetails.push(cardData.set_name);
+        if (cardData.card_number) cardDetails.push(`#${cardData.card_number}`);
+        if (cardData.rarity) cardDetails.push(cardData.rarity);
+    }
+
+    // Grading info
+    if (cardData.is_graded && cardData.grading_company) {
+        cardDetails.push(`${cardData.grading_company} ${cardData.grading_score || ''}`);
+    }
+
+    // Value estimate
+    let valueText = '';
+    if (cardData.estimated_value_low || cardData.estimated_value_high) {
+        const low = cardData.estimated_value_low || 0;
+        const high = cardData.estimated_value_high || 0;
+        if (low > 0 && high > 0) {
+            valueText = `<strong>Est. Value:</strong> $${low} - $${high}`;
+        } else if (low > 0) {
+            valueText = `<strong>Est. Value:</strong> $${low}+`;
+        }
+    }
+
+    const cardInfo = cardDetails.join(' • ');
+    const confidence = cardData.confidence ? `${(cardData.confidence * 100).toFixed(0)}%` : 'N/A';
+
+    const banner = document.createElement('div');
+    banner.id = 'cardDetectionBanner';
+    banner.className = 'alert alert-success alert-dismissible fade show mt-3';
+    banner.style.cssText = 'position: sticky; top: 10px; z-index: 1000; border: 3px solid #28a745; background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);';
+    banner.innerHTML = `
+        <div>
+            <h5 class="alert-heading mb-3">
+                <i class="fas fa-id-card"></i> <strong>TRADING CARD DETECTED!</strong>
+            </h5>
+            <div class="row">
+                <div class="col-md-7">
+                    <p class="mb-2">
+                        <strong>${cardName}</strong><br>
+                        <small class="text-muted">${cardInfo}</small>
+                    </p>
+                    ${valueText ? `<p class="mb-2">${valueText}</p>` : ''}
+                    <small class="text-muted">Confidence: ${confidence}</small>
                 </div>
-                
-                <hr>
-                
-                <div class="d-flex gap-2">
-                    <button class="btn btn-success" onclick="storeCardOnly()">
-                        <i class="fas fa-box"></i> Store in Collection
-                    </button>
-                    <button class="btn btn-outline-success" onclick="storeAndList()">
-                        <i class="fas fa-plus-circle"></i> Store + Create Listing
-                    </button>
-                    ${data.public_db_id ? `
-                        <button class="btn btn-outline-info" onclick="window.open('/collectibles-database/${data.public_db_id}', '_blank')">
-                            <i class="fas fa-database"></i> View in Database
+                <div class="col-md-5">
+                    <div class="d-grid gap-2">
+                        <button type="button" class="btn btn-success btn-lg pulse-glow" onclick="storeCardOnly()">
+                            <i class="fas fa-box"></i> Store Only
                         </button>
-                    ` : ''}
+                        <button type="button" class="btn btn-outline-success" onclick="storeAndList()">
+                            <i class="fas fa-plus-circle"></i> Store + Create Listing
+                        </button>
+                        <small class="text-muted text-center">
+                            Or just create a listing below without storing
+                        </small>
+                    </div>
                 </div>
             </div>
         </div>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     `;
 
-    // Remove existing results
-    document.getElementById('enhancedResultsCard')?.remove();
-    
-    // Insert after market analysis or enhanced scan card
-    const insertAfter = document.getElementById('marketAnalysisCard') || document.querySelector('.card');
-    insertAfter.insertAdjacentHTML('afterend', statsCard);
-
-    // Fill form with detailed card info
-    fillFormFromCardData(cardData, prices);
+    document.getElementById('listingForm').insertAdjacentElement('beforebegin', banner);
 }
 
-// Display Collectible Results
-function showCollectibleResults(data) {
-    const collectibleData = data.data;
-    const prices = data.market_prices || {};
-
-    const collectibleCard = `
-        <div class="card border-warning mb-3" id="enhancedResultsCard">
-            <div class="card-header bg-warning text-dark">
-                <i class="fas fa-star"></i> Collectible Analysis Complete
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-8">
-                        <h5>${collectibleData.item_name || 'Unknown Collectible'}</h5>
-                        <p class="mb-2"><strong>Franchise:</strong> ${collectibleData.franchise}</p>
-                        
-                        ${collectibleData.item_significance ? `
-                            <h6 class="mt-3">About This Item</h6>
-                            <p class="small">${collectibleData.item_significance}</p>
-                        ` : ''}
-                        
-                        ${collectibleData.rarity_info ? `
-                            <h6 class="mt-3">Rarity Analysis</h6>
-                            <p class="small">${collectibleData.rarity_info}</p>
-                        ` : ''}
-                        
-                        ${collectibleData.authentication_markers?.length > 0 ? `
-                            <h6 class="mt-3">Authentication Markers</h6>
-                            <ul class="small">
-                                ${collectibleData.authentication_markers.map(m => `<li>${m}</li>`).join('')}
-                            </ul>
-                        ` : ''}
-                    </div>
-                    <div class="col-md-4">
-                        <h6>Market Analysis</h6>
-                        ${prices.retail ? `
-                            <div class="mb-2">
-                                <small class="text-muted">Retail Price</small>
-                                <div class="h5">$${prices.retail}</div>
-                            </div>
-                        ` : ''}
-                        ${prices.actual_selling ? `
-                            <div class="mb-2">
-                                <small class="text-muted">Actual Selling</small>
-                                <div class="h5 text-success">$${prices.actual_selling}</div>
-                            </div>
-                        ` : ''}
-                        ${prices.quick_sale ? `
-                            <div class="mb-2">
-                                <small class="text-muted">Quick Sale</small>
-                                <div class="h5 text-warning">$${prices.quick_sale}</div>
-                            </div>
-                        ` : ''}
-                        
-                        ${collectibleData.rarity_score ? `
-                            <div class="mt-3">
-                                <small class="text-muted">Rarity Score</small>
-                                <div class="progress">
-                                    <div class="progress-bar bg-warning" style="width: ${collectibleData.rarity_score}%">
-                                        ${collectibleData.rarity_score}/100
-                                    </div>
-                                </div>
-                            </div>
-                        ` : ''}
-                    </div>
-                </div>
-                
-                <hr>
-                
-                <div class="d-flex gap-2">
-                    <button class="btn btn-warning" onclick="storeCollectibleOnly()">
-                        <i class="fas fa-archive"></i> Add to Collection
-                    </button>
-                    <button class="btn btn-outline-warning" onclick="storeCollectibleAndList()">
-                        <i class="fas fa-plus-circle"></i> Store + Create Listing
-                    </button>
-                    ${data.public_db_id ? `
-                        <button class="btn btn-outline-info" onclick="window.open('/collectibles-database/${data.public_db_id}', '_blank')">
-                            <i class="fas fa-database"></i> View in Database
-                        </button>
-                    ` : ''}
-                </div>
-            </div>
-        </div>
-    `;
-
-    // Remove existing results
-    document.getElementById('enhancedResultsCard')?.remove();
-    
-    // Insert after market analysis or enhanced scan card
-    const insertAfter = document.getElementById('marketAnalysisCard') || document.querySelector('.card');
-    insertAfter.insertAdjacentHTML('afterend', collectibleCard);
-
-    // Fill form with collectible info
-    fillFormFromCollectible(collectibleData, prices);
-}
-
-// Fill form from card data
-function fillFormFromCardData(cardData, prices) {
+function fillFormFromCardData(cardData) {
     // Build title
     let title = '';
     if (cardData.player_name) {
@@ -1112,34 +819,42 @@ function fillFormFromCardData(cardData, prices) {
         if (cardData.card_number) title = `${title} #${cardData.card_number}`;
     }
 
-    document.getElementById('title').value = title.substring(0, 80);
+    document.getElementById('title').value = title;
 
     // Build description
     let description = '';
-    if (cardData.set_name) description += `Set: ${cardData.set_name}\n`;
-    if (cardData.rarity) description += `Rarity: ${cardData.rarity}\n`;
+    if (cardData.set_name) {
+        description += `Set: ${cardData.set_name}\n`;
+    }
+    if (cardData.rarity) {
+        description += `Rarity: ${cardData.rarity}\n`;
+    }
     if (cardData.is_graded && cardData.grading_company) {
         description += `Graded: ${cardData.grading_company} ${cardData.grading_score || ''}\n`;
     }
-    if (cardData.parallel) description += `Parallel: ${cardData.parallel}\n`;
+    if (cardData.parallel) {
+        description += `Parallel: ${cardData.parallel}\n`;
+    }
 
     document.getElementById('description').value = description;
 
     // Set brand
-    if (cardData.brand) document.getElementById('brand').value = cardData.brand;
-
-    // Set price from market data
-    if (prices.actual_selling) {
-        document.getElementById('price').value = prices.actual_selling;
-    } else if (cardData.estimated_value_low && cardData.estimated_value_high) {
-        const avgValue = (cardData.estimated_value_low + cardData.estimated_value_high) / 2;
-        document.getElementById('price').value = avgValue.toFixed(2);
+    if (cardData.brand) {
+        document.getElementById('brand').value = cardData.brand;
     }
 
-    // Set item type
+    // Set price from estimated value
+    if (cardData.estimated_value_low && cardData.estimated_value_high) {
+        const avgValue = (cardData.estimated_value_low + cardData.estimated_value_high) / 2;
+        document.getElementById('price').value = avgValue.toFixed(2);
+    } else if (cardData.estimated_value_low) {
+        document.getElementById('price').value = cardData.estimated_value_low.toFixed(2);
+    }
+
+    // Set item type to trading card
     document.getElementById('item_type').value = 'trading_card';
 
-    // Set condition
+    // Set condition based on grading
     if (cardData.is_graded && cardData.grading_score) {
         if (cardData.grading_score >= 9) {
             document.getElementById('condition').value = 'excellent';
@@ -1151,36 +866,6 @@ function fillFormFromCardData(cardData, prices) {
     }
 }
 
-// Fill form from collectible data
-function fillFormFromCollectible(collectibleData, prices) {
-    // Set title
-    if (collectibleData.item_name) {
-        document.getElementById('title').value = collectibleData.item_name.substring(0, 80);
-    }
-
-    // Set description
-    let description = '';
-    if (collectibleData.franchise) description += `Franchise: ${collectibleData.franchise}\n\n`;
-    if (collectibleData.item_significance) description += `${collectibleData.item_significance}\n\n`;
-    if (collectibleData.rarity_info) description += `Rarity: ${collectibleData.rarity_info}\n`;
-
-    document.getElementById('description').value = description;
-
-    // Set brand
-    if (collectibleData.brand) document.getElementById('brand').value = collectibleData.brand;
-
-    // Set price
-    if (prices.actual_selling) {
-        document.getElementById('price').value = prices.actual_selling;
-    } else if (prices.retail) {
-        document.getElementById('price').value = prices.retail;
-    }
-
-    // Set item type
-    document.getElementById('item_type').value = 'collectible';
-}
-
-// Store card only (no listing)
 async function storeCardOnly() {
     if (!detectedCardData) {
         showAlert('No card data available', 'danger');
@@ -1204,9 +889,10 @@ async function storeCardOnly() {
 
         if (data.success) {
             showAlert('Card stored in your collection! Redirecting...', 'success');
-            setTimeout(() => window.location.href = '/cards', 1500);
+            // Redirect to cards collection page after 1 second
+            setTimeout(() => window.location.href = '/cards', 1000);
         } else {
-            showAlert(data.error || 'Failed to add card', 'danger');
+            showAlert(data.error || 'Failed to add card to collection', 'danger');
             hideLoading();
         }
     } catch (error) {
@@ -1215,7 +901,6 @@ async function storeCardOnly() {
     }
 }
 
-// Store card + create listing
 async function storeAndList() {
     if (!detectedCardData) {
         showAlert('No card data available', 'danger');
@@ -1238,19 +923,30 @@ async function storeAndList() {
         const data = await response.json();
 
         if (data.success) {
-            showAlert('Card added! Continue filling out the form to create a listing.', 'success');
-            
-            // Update the results card
-            const resultsCard = document.getElementById('enhancedResultsCard');
-            if (resultsCard) {
-                resultsCard.classList.remove('border-success');
-                resultsCard.classList.add('border-info');
-                resultsCard.querySelector('.card-header').classList.remove('bg-success');
-                resultsCard.querySelector('.card-header').classList.add('bg-info');
-                resultsCard.querySelector('.card-header').innerHTML = '<i class="fas fa-check-circle"></i> Card Stored - Create Listing Below';
+            showAlert('Card added to collection! You can now create a listing below.', 'success');
+
+            // Update the banner to show it's been stored
+            const banner = document.getElementById('cardDetectionBanner');
+            if (banner) {
+                banner.classList.remove('alert-success');
+                banner.classList.add('alert-info');
+                banner.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="alert-heading mb-0">
+                                <i class="fas fa-check-circle"></i> <strong>Card Stored!</strong>
+                            </h5>
+                            <small class="text-muted">Continue filling out the form below to create a listing.</small>
+                        </div>
+                        <a href="/cards" class="btn btn-info">
+                            <i class="fas fa-box-open"></i> View Collection
+                        </a>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
             }
         } else {
-            showAlert(data.error || 'Failed to add card', 'danger');
+            showAlert(data.error || 'Failed to add card to collection', 'danger');
         }
     } catch (error) {
         showAlert('Failed to add card: ' + error, 'danger');
@@ -1259,84 +955,6 @@ async function storeAndList() {
     }
 }
 
-// Store collectible only (no listing)
-async function storeCollectibleOnly() {
-    if (!detectedCollectibleData) {
-        showAlert('No collectible data available', 'danger');
-        return;
-    }
-
-    showLoading();
-
-    try {
-        const response = await fetch('/api/collectibles/add', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                ai_result: detectedCollectibleData,
-                photos: uploadedPhotos,
-                storage_location: document.getElementById('storage_location').value || null
-            })
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            showAlert('Collectible stored! Redirecting...', 'success');
-            setTimeout(() => window.location.href = '/my-collection', 1500);
-        } else {
-            showAlert(data.error || 'Failed to add collectible', 'danger');
-            hideLoading();
-        }
-    } catch (error) {
-        showAlert('Failed to add collectible: ' + error, 'danger');
-        hideLoading();
-    }
-}
-
-// Store collectible + create listing
-async function storeCollectibleAndList() {
-    if (!detectedCollectibleData) {
-        showAlert('No collectible data available', 'danger');
-        return;
-    }
-
-    showLoading();
-
-    try {
-        const response = await fetch('/api/collectibles/add', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                ai_result: detectedCollectibleData,
-                photos: uploadedPhotos,
-                storage_location: document.getElementById('storage_location').value || null
-            })
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            showAlert('Collectible added! Continue filling out the form to create a listing.', 'success');
-            
-            // Update the results card
-            const resultsCard = document.getElementById('enhancedResultsCard');
-            if (resultsCard) {
-                resultsCard.classList.remove('border-warning');
-                resultsCard.classList.add('border-info');
-                resultsCard.querySelector('.card-header').classList.remove('bg-warning');
-                resultsCard.querySelector('.card-header').classList.add('bg-info');
-                resultsCard.querySelector('.card-header').innerHTML = '<i class="fas fa-check-circle"></i> Collectible Stored - Create Listing Below';
-            }
-        } else {
-            showAlert(data.error || 'Failed to add collectible', 'danger');
-        }
-    } catch (error) {
-        showAlert('Failed to add collectible: ' + error, 'danger');
-    } finally {
-        hideLoading();
-    }
-}
 // Save Listing (common function)
 async function saveListing(status = 'draft') {
     if (uploadedPhotos.length === 0) {
@@ -1345,6 +963,8 @@ async function saveListing(status = 'draft') {
     }
 
     const formData = collectFormData();
+    // include uploaded server photo paths
+    formData.photos = uploadedPhotos;
     formData.status = status;
     showLoading();
 
@@ -1358,17 +978,10 @@ async function saveListing(status = 'draft') {
         const data = await response.json();
 
         if (data.success) {
-            // Update draft ID so next save is an update, not a new draft
-            editingDraftId = data.listing_id;
-            editingListingUuid = data.listing_uuid;
-
-            const msg = status === 'active' ? 'Listing posted successfully!' : 'Draft saved successfully!';
+            const msg = status === 'active' ? 'Listing posted successfully!' : 'Listing saved as draft!';
+            const redirect = status === 'active' ? '/listings' : '/drafts';
             showAlert(msg, 'success');
-
-            // Only redirect if posting as active
-            if (status === 'active') {
-                setTimeout(() => window.location.href = '/listings', 1500);
-            }
+            setTimeout(() => window.location.href = redirect, 1500);
         } else {
             showAlert(data.error, 'danger');
         }
@@ -1404,8 +1017,7 @@ function collectFormData() {
         storage_location: document.getElementById('storage_location').value,
         quantity: document.getElementById('quantity').value,
         sku: document.getElementById('sku').value,
-        upc: document.getElementById('upc').value,
-        photos: uploadedPhotos  // CRITICAL: Include photos array
+        upc: document.getElementById('upc').value
     };
 
     // Include draft_id if editing
@@ -1473,57 +1085,23 @@ async function loadDraftData() {
 
                 for (let i = 0; i < listing.photos.length; i++) {
                     const photoPath = listing.photos[i];
-                    const photoIndex = i;
-
-                    // Create container for photo + delete button
-                    const container = document.createElement('div');
-                    container.className = 'photo-preview-container';
-                    container.style.position = 'relative';
-                    container.style.display = 'inline-block';
-                    container.style.margin = '5px';
-
-                    // Create image
                     const img = document.createElement('img');
                     // Convert server path to URL
                     img.src = '/' + photoPath;
                     img.className = 'photo-preview';
-                    img.title = 'Click to edit | Right-click to zoom';
+                    img.title = 'Click to edit photo';
 
                     // Make photo clickable to open editor
-                    img.onclick = function(e) {
-                        e.preventDefault();
+                    const photoIndex = i;
+                    img.onclick = function() {
                         openPhotoEditor(photoIndex, this.src);
-                    };
-
-                    // Right-click to zoom
-                    img.oncontextmenu = function(e) {
-                        e.preventDefault();
-                        openImageZoom(this.src);
                     };
 
                     img.onerror = function() {
                         // Fallback: try different path formats
                         this.src = '/data/draft_photos/' + listing.listing_uuid + '/' + photoPath.split('/').pop();
                     };
-
-                    // Create delete button
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.innerHTML = '<i class="fas fa-times"></i>';
-                    deleteBtn.className = 'btn btn-danger btn-sm photo-delete-btn';
-                    deleteBtn.style.position = 'absolute';
-                    deleteBtn.style.top = '5px';
-                    deleteBtn.style.right = '5px';
-                    deleteBtn.style.padding = '2px 6px';
-                    deleteBtn.style.fontSize = '12px';
-                    deleteBtn.title = 'Remove photo';
-                    deleteBtn.onclick = function(e) {
-                        e.preventDefault();
-                        removePhoto(photoIndex);
-                    };
-
-                    container.appendChild(img);
-                    container.appendChild(deleteBtn);
-                    previewDiv.appendChild(container);
+                    previewDiv.appendChild(img);
                 }
 
                 document.getElementById('analyzeBtn').style.display = 'block';

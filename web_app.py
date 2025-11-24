@@ -171,11 +171,12 @@ def drafts():
 def listings():
     """Listings page"""
     cursor = db._get_cursor()
+    # Cast user_id to handle UUID/INTEGER type mismatch
     cursor.execute("""
         SELECT * FROM listings
-        WHERE user_id = %s AND status != 'draft'
+        WHERE user_id::text = %s::text AND status != 'draft'
         ORDER BY created_at DESC
-    """, (current_user.id,))
+    """, (str(current_user.id),))
     user_listings = [dict(row) for row in cursor.fetchall()]
     return render_template('listings.html', listings=user_listings)
 

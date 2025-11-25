@@ -164,7 +164,7 @@ class Database:
         # Add unique constraint to supabase_uid if not exists (non-blocking, best effort)
         # This may timeout on large tables - that's OK, we can add it later manually
         try:
-            cursor.execute("SET statement_timeout = '30s'")  # 30 second timeout
+            cursor.execute("SET statement_timeout = '5s'")  # Short 5 second timeout
             cursor.execute("""
                 ALTER TABLE users ADD CONSTRAINT users_supabase_uid_key UNIQUE (supabase_uid)
             """)

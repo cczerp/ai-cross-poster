@@ -142,40 +142,52 @@ class Database:
         """)
 
         # Add supabase_uid column if it doesn't exist (migration)
-        cursor.execute("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'users' AND column_name = 'supabase_uid'
-                ) THEN
-                    ALTER TABLE users ADD COLUMN supabase_uid TEXT UNIQUE;
-                END IF;
-            END $$;
-        """)
+        try:
+            cursor.execute("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS supabase_uid TEXT;
+            """)
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            print(f"Note: supabase_uid column may already exist: {e}")
 
         # Add oauth_provider column if it doesn't exist (migration)
-        cursor.execute("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'users' AND column_name = 'oauth_provider'
-                ) THEN
-                    ALTER TABLE users ADD COLUMN oauth_provider TEXT;
-                END IF;
-            END $$;
-        """)
+        try:
+            cursor.execute("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_provider TEXT;
+            """)
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            print(f"Note: oauth_provider column may already exist: {e}")
+
+        # Add unique constraint to supabase_uid if not exists (separate step for performance)
+        try:
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conname = 'users_supabase_uid_key'
+                    ) THEN
+                        ALTER TABLE users ADD CONSTRAINT users_supabase_uid_key UNIQUE (supabase_uid);
+                    END IF;
+                END $$;
+            """)
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            print(f"Note: UNIQUE constraint on supabase_uid may already exist: {e}")
 
         # Make password_hash nullable for OAuth users (migration)
-        cursor.execute("""
-            DO $$
-            BEGIN
+        try:
+            cursor.execute("""
                 ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
-            EXCEPTION
-                WHEN OTHERS THEN NULL;
-            END $$;
-        """)
+            """)
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            print(f"Note: password_hash may already be nullable: {e}")
 
         # Marketplace credentials - per user
         cursor.execute("""

@@ -126,7 +126,7 @@ class Database:
                 username TEXT UNIQUE NOT NULL,
                 email TEXT UNIQUE NOT NULL,
                 password_hash TEXT,
-                supabase_uid TEXT UNIQUE,
+                supabase_uid TEXT,
                 oauth_provider TEXT,
                 is_admin BOOLEAN DEFAULT FALSE,
                 is_active BOOLEAN DEFAULT TRUE,

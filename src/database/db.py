@@ -33,12 +33,6 @@ class Database:
         # Establish initial connection
         self._connect()
 
-        # Create tables
-        self._create_tables()
-
-        # Seed initial data
-        self._seed_data()
-
     def _connect(self):
         """Establish or re-establish PostgreSQL connection"""
         try:
@@ -2210,6 +2204,17 @@ class Database:
             ))
             self.conn.commit()
             print("✅ Tier 3 user (ResellRage) created")
+
+    def run_migrations(self):
+        """
+        Run database migrations manually.
+        Call this once to set up tables, not on every startup.
+        Usage: db.run_migrations()
+        """
+        print("🔧 Running database migrations...")
+        self._create_tables()
+        self._seed_data()
+        print("✅ Migrations complete!")
 
     def close(self):
         """Close database connection"""

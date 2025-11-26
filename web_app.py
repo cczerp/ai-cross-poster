@@ -35,9 +35,15 @@ app.config['UPLOAD_FOLDER'] = './data/uploads'
 # Ensure upload folder exists
 Path(app.config['UPLOAD_FOLDER']).mkdir(parents=True, exist_ok=True)
 
-# Initialize database (PostgreSQL)
-db = get_db()
-# Admin user is created automatically by db.py on connection
+# Lazy database initialization - don't create at import time
+db = None
+
+def get_db_instance():
+    """Get database instance, creating it only when first needed"""
+    global db
+    if db is None:
+        db = get_db()
+    return db
 
 # Initialize notification manager (optional)
 notification_manager = None
@@ -75,7 +81,7 @@ class User(UserMixin):
     @staticmethod
     def get(user_id):
         """Get user by ID from PostgreSQL"""
-        user_data = db.get_user_by_id(user_id)
+        user_data = get_db_instance().get_user_by_id(user_id)
         if user_data:
             return User(
                 user_data['id'],
@@ -129,11 +135,12 @@ from routes_admin import admin_bp, init_routes as init_admin
 from routes_cards import cards_bp, init_routes as init_cards
 from routes_main import main_bp, init_routes as init_main
 
-# Initialize blueprints with database and User class
-init_auth(db, User)
-init_admin(db)
-init_cards(db)
-init_main(db)
+# Initialize blueprints with database instance and User class
+# Database is created lazily on first blueprint init
+init_auth(get_db_instance(), User)
+init_admin(get_db_instance())
+init_cards(get_db_instance())
+init_main(get_db_instance())
 
 # Register blueprints
 app.register_blueprint(auth_bp)
@@ -163,14 +170,15 @@ def create_listing():
 def drafts():
     """Drafts page"""
     # Fetch all drafts for current user
-    drafts_list = db.get_drafts(user_id=current_user.id, limit=100)
+    drafts_list = get_db_instance().get_drafts(user_id=current_user.id, limit=100)
     return render_template('drafts.html', drafts=drafts_list)
 
 @app.route('/listings')
 @login_required
 def listings():
     """Listings page"""
-    cursor = db._get_cursor()
+    db_instance = get_db_instance()
+    cursor = db_instance._get_cursor()
     # Cast user_id to handle UUID/INTEGER type mismatch
     cursor.execute("""
         SELECT * FROM listings
@@ -190,7 +198,7 @@ def notifications():
 @login_required
 def storage():
     """Storage overview"""
-    storage_map = db.get_storage_map(current_user.id)
+    storage_map = get_db_instance().get_storage_map(current_user.id)
     return render_template('storage.html', storage_map=storage_map)
 
 @app.route('/storage/clothing')

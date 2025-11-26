@@ -603,6 +603,9 @@ document.getElementById('analyzeBtn').addEventListener('click', async function()
 
         const cardData = await cardResponse.json();
 
+        // Log response for debugging
+        console.log('Card analysis response:', cardData);
+
         // Check if it's a card
         if (cardData.success && cardData.card_data && cardData.card_data.is_card) {
             // Store card data for later
@@ -636,6 +639,9 @@ document.getElementById('analyzeBtn').addEventListener('click', async function()
             });
 
             const data = await response.json();
+
+            // Log response for debugging
+            console.log('General analysis response:', data);
 
             if (data.success) {
                 const analysis = data.analysis;
@@ -733,7 +739,11 @@ document.getElementById('analyzeBtn').addEventListener('click', async function()
 
                 showAlert('AI analysis complete!', 'success');
             } else {
-                showAlert(data.error, 'warning');
+                // Show detailed error message
+                const errorMsg = data.error || 'Unknown error occurred';
+                const errorDetails = data.details ? `\n\nDetails: ${data.details}` : '';
+                console.error('Analysis error:', errorMsg, errorDetails);
+                showAlert('AI analysis error: ' + errorMsg + errorDetails, 'danger');
             }
         }
     } catch (error) {
@@ -753,10 +763,43 @@ function getDemandEmoji(demand) {
 // ENHANCED ANALYZER FOR COLLECTIBLES
 // ========================================
 
-document.getElementById('enhancedAnalyzerBtn').addEventListener('click', function() {
+document.getElementById('enhancedAnalyzerBtn').addEventListener('click', async function() {
+    // If we don't have enhanced data yet, try to get it
     if (!enhancedAnalysisData) {
-        showAlert('No enhanced analysis data available', 'warning');
-        return;
+        showLoading();
+        showAlert('Running enhanced analysis... This may take 10-15 seconds', 'info');
+
+        try {
+            const response = await fetch('/api/analyze', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    photos: uploadedPhotos,
+                    force_enhanced: true  // Request enhanced analysis even if not collectible
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success && data.collectible_analysis) {
+                enhancedAnalysisData = data.collectible_analysis;
+                showAlert('Enhanced analysis complete!', 'success');
+            } else if (data.error) {
+                showAlert('Enhanced analysis failed: ' + data.error, 'danger');
+                hideLoading();
+                return;
+            } else {
+                showAlert('Enhanced analysis not available for this item. This feature works best with collectibles, trading cards, and sports memorabilia.', 'warning');
+                hideLoading();
+                return;
+            }
+        } catch (error) {
+            showAlert('Enhanced analysis failed: ' + error, 'danger');
+            hideLoading();
+            return;
+        } finally {
+            hideLoading();
+        }
     }
 
     // Build detailed analysis HTML

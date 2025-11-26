@@ -321,25 +321,44 @@ def login_google():
     from src.auth_utils import get_google_oauth_url
     from flask import request as flask_request
 
-    # Get the current request URL to construct callback URL
-    # Use environment variable if set, otherwise construct from request
+    # Check if Supabase is configured
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_ANON_KEY")
+
+    if not supabase_url or not supabase_key:
+        print("Google OAuth Error: SUPABASE_URL or SUPABASE_ANON_KEY not configured")
+        flash("Google login is not configured. Missing SUPABASE_URL or SUPABASE_ANON_KEY environment variables.", "error")
+        return redirect(url_for('auth.login'))
+
+    # Construct callback URL
+    # Priority: SUPABASE_REDIRECT_URL > RENDER_EXTERNAL_URL > current request
     redirect_url = os.getenv("SUPABASE_REDIRECT_URL")
+
     if not redirect_url:
-        # Construct from current request
-        base_url = f"{flask_request.scheme}://{flask_request.host}"
-        redirect_url = f"{base_url}/auth/callback"
-    
+        # Try RENDER_EXTERNAL_URL (for Render deployments)
+        render_url = os.getenv("RENDER_EXTERNAL_URL")
+        if render_url:
+            redirect_url = f"{render_url}/auth/callback"
+        else:
+            # Construct from current request (for local/custom deployments)
+            base_url = f"{flask_request.scheme}://{flask_request.host}"
+            redirect_url = f"{base_url}/auth/callback"
+
+    # Log the redirect URL for debugging
+    print(f"Google OAuth: Using redirect URL: {redirect_url}")
+
     # Temporarily set the redirect URL for this request
     original_redirect = os.getenv("SUPABASE_REDIRECT_URL")
     os.environ["SUPABASE_REDIRECT_URL"] = redirect_url
-    
+
     try:
         oauth_url = get_google_oauth_url()
-        
+
         if not oauth_url:
-            flash("Google login is not configured. Please contact support.", "error")
+            flash("Failed to generate Google OAuth URL. Please check Supabase configuration.", "error")
             return redirect(url_for('auth.login'))
-        
+
+        print(f"Google OAuth: Redirecting to: {oauth_url}")
         return redirect(oauth_url)
     finally:
         # Restore original redirect URL if it existed

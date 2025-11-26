@@ -326,14 +326,17 @@ def api_analyze():
             # Other errors
             return jsonify({"success": False, "error": error_msg}), 500
 
-        # If it's marked collectible, run deep Claude analysis (non-blocking if it fails)
+        # If it's marked collectible OR force_enhanced is requested, run deep Claude analysis
         collectible_analysis = None
-        if analysis.get("collectible"):
+        force_enhanced = data.get("force_enhanced", False)
+
+        if analysis.get("collectible") or force_enhanced:
             try:
                 claude = ClaudeCollectibleAnalyzer.from_env()
                 collectible_analysis = claude.deep_analyze_collectible(photos, analysis, db)
             except Exception as e:
                 # Don't fail the whole request for deep analysis errors
+                print(f"Enhanced analysis error: {e}")
                 collectible_analysis = {"error": str(e)}
 
         response = {

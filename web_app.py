@@ -105,7 +105,25 @@ login_manager.login_message = 'Please log in to access this page.'
 @login_manager.user_loader
 def load_user(user_id):
     """Load user for Flask-Login"""
-    return User.get(int(user_id))
+    try:
+        # Handle different user_id types (int, str, etc.)
+        if isinstance(user_id, str):
+            # Try to convert to int if it's a numeric string
+            try:
+                user_id = int(user_id)
+            except ValueError:
+                return None
+        elif not isinstance(user_id, int):
+            # If it's already an int or other type, try to use it directly
+            try:
+                user_id = int(user_id)
+            except (ValueError, TypeError):
+                return None
+        
+        return User.get(user_id)
+    except Exception as e:
+        print(f"Error loading user: {e}")
+        return None
 
 # ============================================================================
 # ADMIN DECORATOR

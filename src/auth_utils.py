@@ -35,7 +35,19 @@ def get_google_oauth_url() -> Optional[str]:
         OAuth URL string or None if Supabase is not configured
     """
     supabase_url = os.getenv("SUPABASE_URL")
-    redirect_url = os.getenv("SUPABASE_REDIRECT_URL", "http://localhost:5000/auth/callback")
+    
+    # Get redirect URL from environment, or try to construct from request
+    redirect_url = os.getenv("SUPABASE_REDIRECT_URL")
+    
+    # If not set, try to use RENDER_EXTERNAL_URL or construct from request
+    if not redirect_url:
+        # On Render, use RENDER_EXTERNAL_URL if available
+        render_url = os.getenv("RENDER_EXTERNAL_URL")
+        if render_url:
+            redirect_url = f"{render_url}/auth/callback"
+        else:
+            # Fallback to localhost for local development
+            redirect_url = "http://localhost:5000/auth/callback"
 
     if not supabase_url:
         return None

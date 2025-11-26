@@ -2,6 +2,7 @@
 routes_auth.py
 Authentication routes: login, logout, register, password reset, Google OAuth
 """
+import os
 from flask import Blueprint, request, jsonify, redirect, render_template, url_for, flash
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -30,46 +31,65 @@ def login():
     if request.method == 'GET':
         return render_template('login.html')
 
-    # POST — authenticate user
-    data = request.form
-    username = data.get('username')
-    password = data.get('password')
+    try:
+        # POST — authenticate user
+        data = request.form
+        username = data.get('username')
+        password = data.get('password')
 
-    if not username or not password:
-        flash("Username and password required.", "error")
+        if not username or not password:
+            flash("Username and password required.", "error")
+            return render_template('login.html')
+
+        user_data = db.get_user_by_username(username)
+
+        if not user_data:
+            flash("User not found.", "error")
+            return render_template('login.html')
+
+        # Check if user has a password (OAuth users may not have password_hash)
+        password_hash = user_data.get('password_hash')
+        if not password_hash:
+            flash("This account uses Google sign-in. Please use the 'Sign in with Google' button.", "error")
+            return render_template('login.html')
+
+        if not check_password_hash(password_hash, password):
+            flash("Incorrect password.", "error")
+            return render_template('login.html')
+
+        # Create User object for Flask-Login
+        user = User(
+            user_data['id'],
+            user_data['username'],
+            user_data['email'],
+            user_data.get('is_admin', False),
+            user_data.get('is_active', True),
+            user_data.get('tier', 'FREE')
+        )
+
+        login_user(user)
+        
+        # Log activity (with error handling)
+        try:
+            db.log_activity(
+                action="login",
+                user_id=user.id,
+                resource_type="user",
+                resource_id=user.id,
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get("User-Agent")
+            )
+        except Exception as e:
+            print(f"Failed to log activity: {e}")
+
+        return redirect(url_for('index'))
+    
+    except Exception as e:
+        print(f"Login error: {e}")
+        import traceback
+        traceback.print_exc()
+        flash("An error occurred during login. Please try again.", "error")
         return render_template('login.html')
-
-    user_data = db.get_user_by_username(username)
-
-    if not user_data:
-        flash("User not found.", "error")
-        return render_template('login.html')
-
-    if not check_password_hash(user_data['password_hash'], password):
-        flash("Incorrect password.", "error")
-        return render_template('login.html')
-
-    # Create User object for Flask-Login
-    user = User(
-        user_data['id'],
-        user_data['username'],
-        user_data['email'],
-        user_data.get('is_admin', False),
-        user_data.get('is_active', True),
-        user_data.get('tier', 'FREE')
-    )
-
-    login_user(user)
-    db.log_activity(
-        action="login",
-        user_id=user.id,
-        resource_type="user",
-        resource_id=user.id,
-        ip_address=request.remote_addr,
-        user_agent=request.headers.get("User-Agent")
-    )
-
-    return redirect(url_for('index'))
 
 
 # =============================================================================
@@ -299,14 +319,34 @@ def login_google():
     Redirects user to Supabase Google OAuth consent screen.
     """
     from src.auth_utils import get_google_oauth_url
+    from flask import request as flask_request
 
-    oauth_url = get_google_oauth_url()
-
-    if not oauth_url:
-        flash("Google login is not configured. Please contact support.", "error")
-        return redirect(url_for('auth.login'))
-
-    return redirect(oauth_url)
+    # Get the current request URL to construct callback URL
+    # Use environment variable if set, otherwise construct from request
+    redirect_url = os.getenv("SUPABASE_REDIRECT_URL")
+    if not redirect_url:
+        # Construct from current request
+        base_url = f"{flask_request.scheme}://{flask_request.host}"
+        redirect_url = f"{base_url}/auth/callback"
+    
+    # Temporarily set the redirect URL for this request
+    original_redirect = os.getenv("SUPABASE_REDIRECT_URL")
+    os.environ["SUPABASE_REDIRECT_URL"] = redirect_url
+    
+    try:
+        oauth_url = get_google_oauth_url()
+        
+        if not oauth_url:
+            flash("Google login is not configured. Please contact support.", "error")
+            return redirect(url_for('auth.login'))
+        
+        return redirect(oauth_url)
+    finally:
+        # Restore original redirect URL if it existed
+        if original_redirect:
+            os.environ["SUPABASE_REDIRECT_URL"] = original_redirect
+        elif "SUPABASE_REDIRECT_URL" in os.environ:
+            del os.environ["SUPABASE_REDIRECT_URL"]
 
 
 @auth_bp.route('/auth/callback')
@@ -318,86 +358,140 @@ def auth_callback():
     """
     from src.auth_utils import exchange_code_for_session
 
-    # Get authorization code from query params
-    code = request.args.get("code")
-    if not code:
-        flash("OAuth authentication failed: Missing authorization code", "error")
-        return redirect(url_for('auth.login'))
-
-    # Exchange code for session
-    session_data = exchange_code_for_session(code)
-
-    if not session_data or session_data.get("error"):
-        error_msg = session_data.get("error") if session_data else "Unknown error"
-        flash(f"OAuth authentication failed: {error_msg}", "error")
-        return redirect(url_for('auth.login'))
-
-    # Extract user data from session
     try:
-        user_data = session_data.get("user", {})
-        supabase_uid = user_data.get("id")
-        email = user_data.get("email")
-        full_name = user_data.get("user_metadata", {}).get("full_name", "")
-
-        if not supabase_uid or not email:
-            flash("OAuth authentication failed: Invalid user data", "error")
+        # Get authorization code from query params
+        code = request.args.get("code")
+        if not code:
+            flash("OAuth authentication failed: Missing authorization code", "error")
             return redirect(url_for('auth.login'))
 
-    except Exception as e:
-        flash(f"OAuth authentication failed: {str(e)}", "error")
-        return redirect(url_for('auth.login'))
+        # Exchange code for session
+        session_data = exchange_code_for_session(code)
 
-    # Find or create user in local database
-    local_user = db.get_user_by_supabase_uid(supabase_uid)
+        if not session_data or session_data.get("error"):
+            error_msg = session_data.get("error") if session_data else "Unknown error"
+            print(f"OAuth exchange failed: {error_msg}")
+            flash(f"OAuth authentication failed: {error_msg}", "error")
+            return redirect(url_for('auth.login'))
 
-    if not local_user:
-        # Check if email already exists (user may have registered with password)
-        local_user = db.get_user_by_email(email)
+        # Extract user data from session
+        try:
+            # Handle different response formats from Supabase
+            if isinstance(session_data, dict):
+                user_data = session_data.get("user", {})
+                if not user_data and "data" in session_data:
+                    # Sometimes Supabase wraps it in 'data'
+                    user_data = session_data.get("data", {}).get("user", {})
+            else:
+                # If it's an object with attributes
+                user_data = getattr(session_data, 'user', {})
+                if not user_data:
+                    user_data = getattr(session_data, 'data', {}).get('user', {}) if hasattr(session_data, 'data') else {}
+            
+            supabase_uid = user_data.get("id") if isinstance(user_data, dict) else getattr(user_data, 'id', None)
+            email = user_data.get("email") if isinstance(user_data, dict) else getattr(user_data, 'email', None)
+            full_name = ""
+            if isinstance(user_data, dict):
+                metadata = user_data.get("user_metadata", {})
+                full_name = metadata.get("full_name", "") if isinstance(metadata, dict) else ""
+            else:
+                metadata = getattr(user_data, 'user_metadata', {})
+                full_name = getattr(metadata, 'full_name', '') if hasattr(metadata, 'full_name') else ''
 
-        if local_user:
-            # Link existing account to Supabase
-            db.link_supabase_account(local_user['id'], supabase_uid, 'google')
-        else:
-            # Create new user
-            username = email.split('@')[0]  # Use email prefix as username
-            # Ensure username is unique
-            base_username = username
-            counter = 1
-            while db.get_user_by_username(username):
-                username = f"{base_username}{counter}"
-                counter += 1
+            if not supabase_uid or not email:
+                print(f"Invalid user data: supabase_uid={supabase_uid}, email={email}")
+                flash("OAuth authentication failed: Invalid user data", "error")
+                return redirect(url_for('auth.login'))
 
-            user_id = db.create_oauth_user(
-                username=username,
-                email=email,
-                supabase_uid=supabase_uid,
-                oauth_provider='google'
+        except Exception as e:
+            print(f"Error extracting user data: {e}")
+            import traceback
+            traceback.print_exc()
+            flash(f"OAuth authentication failed: {str(e)}", "error")
+            return redirect(url_for('auth.login'))
+
+        # Find or create user in local database
+        try:
+            local_user = db.get_user_by_supabase_uid(supabase_uid)
+
+            if not local_user:
+                # Check if email already exists (user may have registered with password)
+                local_user = db.get_user_by_email(email)
+
+                if local_user:
+                    # Link existing account to Supabase
+                    try:
+                        db.link_supabase_account(local_user['id'], supabase_uid, 'google')
+                    except Exception as e:
+                        print(f"Error linking Supabase account: {e}")
+                else:
+                    # Create new user
+                    username = email.split('@')[0]  # Use email prefix as username
+                    # Ensure username is unique
+                    base_username = username
+                    counter = 1
+                    while db.get_user_by_username(username):
+                        username = f"{base_username}{counter}"
+                        counter += 1
+
+                    try:
+                        user_id = db.create_oauth_user(
+                            username=username,
+                            email=email,
+                            supabase_uid=supabase_uid,
+                            oauth_provider='google'
+                        )
+                        local_user = db.get_user_by_id(user_id)
+                    except Exception as e:
+                        print(f"Error creating OAuth user: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        flash("Failed to create user account. Please try again.", "error")
+                        return redirect(url_for('auth.login'))
+
+            if not local_user:
+                flash("Failed to retrieve user account. Please try again.", "error")
+                return redirect(url_for('auth.login'))
+
+            # Create Flask-Login User object
+            user = User(
+                local_user['id'],
+                local_user['username'],
+                local_user['email'],
+                local_user.get('is_admin', False),
+                local_user.get('is_active', True),
+                local_user.get('tier', 'FREE')
             )
 
-            local_user = db.get_user_by_id(user_id)
+            # Log user in
+            login_user(user, remember=True)
 
-    # Create Flask-Login User object
-    user = User(
-        local_user['id'],
-        local_user['username'],
-        local_user['email'],
-        local_user.get('is_admin', False),
-        local_user.get('is_active', True),
-        local_user.get('tier', 'FREE')
-    )
+            # Log activity (with error handling)
+            try:
+                db.log_activity(
+                    action="google_login",
+                    user_id=user.id,
+                    resource_type="user",
+                    resource_id=user.id,
+                    ip_address=request.remote_addr,
+                    user_agent=request.headers.get("User-Agent")
+                )
+            except Exception as e:
+                print(f"Failed to log activity: {e}")
 
-    # Log user in
-    login_user(user, remember=True)
-
-    # Log activity
-    db.log_activity(
-        action="google_login",
-        user_id=user.id,
-        resource_type="user",
-        resource_id=user.id,
-        ip_address=request.remote_addr,
-        user_agent=request.headers.get("User-Agent")
-    )
-
-    flash(f"Welcome{', ' + full_name if full_name else ''}! You're now logged in with Google.", "success")
-    return redirect(url_for('index'))
+            flash(f"Welcome{', ' + full_name if full_name else ''}! You're now logged in with Google.", "success")
+            return redirect(url_for('index'))
+        
+        except Exception as e:
+            print(f"Database error in OAuth callback: {e}")
+            import traceback
+            traceback.print_exc()
+            flash("An error occurred during authentication. Please try again.", "error")
+            return redirect(url_for('auth.login'))
+    
+    except Exception as e:
+        print(f"Unexpected error in OAuth callback: {e}")
+        import traceback
+        traceback.print_exc()
+        flash("An unexpected error occurred. Please try again.", "error")
+        return redirect(url_for('auth.login'))

@@ -2158,19 +2158,18 @@ class Database:
         cursor.execute("""
             SELECT
                 sb.*,
-                COUNT(DISTINCT ss.id) as section_count,
-                COALESCE(SUM(ss.item_count), 0) as total_items
+                COUNT(DISTINCT ss.id) as section_count
             FROM storage_bins sb
             LEFT JOIN storage_sections ss ON sb.id = ss.bin_id
             WHERE sb.user_id = %s
             GROUP BY sb.id
             ORDER BY sb.bin_type, sb.bin_name
-        """, (str(user_id),))
+        """, (user_id,))
 
         bins = [dict(row) for row in cursor.fetchall()]
 
-        clothing_bins = [b for b in bins if b['bin_type'] == 'clothing']
-        card_bins = [b for b in bins if b['bin_type'] == 'cards']
+        clothing_bins = [b for b in bins if b.get('bin_type') == 'clothing']
+        card_bins = [b for b in bins if b.get('bin_type') == 'cards']
 
         for bin_data in bins:
             sections = self.get_storage_sections(bin_data['id'])
@@ -2179,9 +2178,11 @@ class Database:
         cursor.execute("""
             SELECT COUNT(*) as total
             FROM storage_items
-            WHERE user_id::text = %s::text
-        """, (str(user_id),))
-        total_items = cursor.fetchone()['total']
+            WHERE user_id = %s
+        """, (user_id,))
+
+        result = cursor.fetchone()
+        total_items = result['total'] if result else 0
 
         return {
             'clothing_bins': clothing_bins,

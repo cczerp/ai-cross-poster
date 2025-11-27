@@ -384,10 +384,20 @@ def auth_callback():
     from src.auth_utils import exchange_code_for_session
 
     try:
+        # Log all query parameters for debugging
+        print(f"OAuth callback received with query params: {dict(request.args)}")
+
         # Get authorization code from query params
         code = request.args.get("code")
         if not code:
-            flash("OAuth authentication failed: Missing authorization code", "error")
+            # Check if there's an error parameter
+            error = request.args.get("error")
+            error_description = request.args.get("error_description")
+            if error:
+                print(f"OAuth error: {error} - {error_description}")
+                flash(f"OAuth authentication failed: {error_description or error}", "error")
+            else:
+                flash("OAuth authentication failed: Missing authorization code", "error")
             return redirect(url_for('auth.login'))
 
         # Exchange code for session

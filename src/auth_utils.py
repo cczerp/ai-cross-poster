@@ -132,10 +132,15 @@ def exchange_code_for_session(auth_code: str, code_verifier: str = None) -> Opti
         if code_verifier:
             payload["code_verifier"] = code_verifier
             print(f"Exchanging code with verifier")
+            print(f"  Code length: {len(auth_code)}, Verifier length: {len(code_verifier)}")
+            print(f"  Code: {auth_code[:20]}...")
+            print(f"  Verifier: {code_verifier[:20]}...")
         else:
             print(f"Warning: No code verifier provided for PKCE exchange")
 
+        print(f"Payload being sent to Supabase: {payload}")
         response = supabase.auth.exchange_code_for_session(payload)
+        print(f"Exchange successful!")
         return response
     except Exception as e:
         print(f"Failed to exchange code for session: {e}")

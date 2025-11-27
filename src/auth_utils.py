@@ -30,7 +30,7 @@ def get_supabase_client() -> Optional[Client]:
 
 def get_google_oauth_url() -> Optional[str]:
     """
-    Generate Google OAuth URL via Supabase.
+    Generate Google OAuth URL via Supabase using PKCE flow.
 
     Returns:
         OAuth URL string or None if Supabase is not configured
@@ -54,12 +54,25 @@ def get_google_oauth_url() -> Optional[str]:
     if not supabase_url:
         return None
 
-    # Construct Supabase OAuth URL
-    return (
-        f"{supabase_url}/auth/v1/authorize"
-        f"?provider=google"
-        f"&redirect_to={redirect_url}"
-    )
+    # Use Supabase client to initiate OAuth with PKCE
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            return None
+
+        # Use sign_in_with_oauth which handles PKCE properly
+        response = supabase.auth.sign_in_with_oauth({
+            "provider": "google",
+            "options": {
+                "redirect_to": redirect_url
+            }
+        })
+
+        # Return the OAuth URL
+        return response.url if hasattr(response, 'url') else None
+    except Exception as e:
+        print(f"Error generating OAuth URL: {e}")
+        return None
 
 
 def exchange_code_for_session(auth_code: str) -> Optional[Dict]:

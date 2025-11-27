@@ -122,26 +122,48 @@ def exchange_code_for_session(auth_code: str, code_verifier: str = None) -> Opti
     Returns:
         Dict with user data and session, or None if failed
     """
-    supabase = get_supabase_client()
-    if not supabase:
+    supabase_url = os.getenv("SUPABASE_URL", "").strip()
+    supabase_key = os.getenv("SUPABASE_ANON_KEY", "").strip()
+
+    if not supabase_url or not supabase_key:
+        print("Error: Supabase not configured")
         return None
 
     try:
-        # Build the exchange payload
-        payload = {"code": auth_code}
+        print(f"Exchanging code with verifier")
+        print(f"  Code length: {len(auth_code)}, Verifier length: {len(code_verifier) if code_verifier else 0}")
+        print(f"  Code: {auth_code[:20]}...")
         if code_verifier:
-            payload["code_verifier"] = code_verifier
-            print(f"Exchanging code with verifier")
-            print(f"  Code length: {len(auth_code)}, Verifier length: {len(code_verifier)}")
-            print(f"  Code: {auth_code[:20]}...")
             print(f"  Verifier: {code_verifier[:20]}...")
-        else:
-            print(f"Warning: No code verifier provided for PKCE exchange")
 
-        print(f"Payload being sent to Supabase: {payload}")
-        response = supabase.auth.exchange_code_for_session(payload)
-        print(f"Exchange successful!")
-        return response
+        # Make direct HTTP request to Supabase Auth API
+        import httpx
+
+        url = f"{supabase_url}/auth/v1/token?grant_type=pkce"
+        headers = {
+            "apikey": supabase_key,
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "auth_code": auth_code,
+            "code_verifier": code_verifier
+        }
+
+        print(f"Making direct request to: {url}")
+        print(f"Payload: {payload}")
+
+        response = httpx.post(url, headers=headers, json=payload, timeout=30.0)
+
+        print(f"Response status: {response.status_code}")
+        print(f"Response body: {response.text[:200]}")
+
+        if response.status_code == 200:
+            print("Exchange successful!")
+            return response.json()
+        else:
+            print(f"Exchange failed with status {response.status_code}")
+            return {"error": f"HTTP {response.status_code}: {response.text}"}
+
     except Exception as e:
         print(f"Failed to exchange code for session: {e}")
         import traceback

@@ -319,7 +319,7 @@ def login_google():
     Redirects user to Supabase Google OAuth consent screen.
     """
     from src.auth_utils import get_google_oauth_url
-    from flask import request as flask_request
+    from flask import request as flask_request, session
 
     # Check if Supabase is configured (strip whitespace/newlines)
     supabase_url = os.getenv("SUPABASE_URL", "").strip()
@@ -352,7 +352,8 @@ def login_google():
     os.environ["SUPABASE_REDIRECT_URL"] = redirect_url
 
     try:
-        oauth_url = get_google_oauth_url()
+        # Pass session to store code verifier for PKCE
+        oauth_url = get_google_oauth_url(session)
 
         if not oauth_url:
             flash("Failed to generate Google OAuth URL. Please check Supabase configuration.", "error")
@@ -382,6 +383,7 @@ def auth_callback():
     Exchanges authorization code for user session, then logs user in.
     """
     from src.auth_utils import exchange_code_for_session
+    from flask import session
 
     try:
         # Log all query parameters for debugging
@@ -400,8 +402,17 @@ def auth_callback():
                 flash("OAuth authentication failed: Missing authorization code", "error")
             return redirect(url_for('auth.login'))
 
+        # Retrieve code verifier from session (for PKCE)
+        code_verifier = session.get('oauth_code_verifier')
+        if code_verifier:
+            print(f"Retrieved code verifier from session")
+            # Clean up the session
+            session.pop('oauth_code_verifier', None)
+        else:
+            print(f"Warning: No code verifier found in session")
+
         # Exchange code for session
-        session_data = exchange_code_for_session(code)
+        session_data = exchange_code_for_session(code, code_verifier)
 
         if not session_data or session_data.get("error"):
             error_msg = session_data.get("error") if session_data else "Unknown error"

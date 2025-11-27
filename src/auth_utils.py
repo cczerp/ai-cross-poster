@@ -28,9 +28,12 @@ def get_supabase_client() -> Optional[Client]:
         return None
 
 
-def get_google_oauth_url() -> Optional[str]:
+def get_google_oauth_url(session_storage: dict = None) -> Optional[str]:
     """
     Generate Google OAuth URL via Supabase using PKCE flow.
+
+    Args:
+        session_storage: Dictionary to store the code verifier (Flask session)
 
     Returns:
         OAuth URL string or None if Supabase is not configured
@@ -72,14 +75,21 @@ def get_google_oauth_url() -> Optional[str]:
         })
 
         print(f"OAuth response type: {type(response)}")
-        print(f"OAuth response: {response}")
+
+        # Try to extract code verifier and store in session
+        if hasattr(response, 'code_verifier') and session_storage is not None:
+            session_storage['oauth_code_verifier'] = response.code_verifier
+            print(f"Stored code verifier in session")
+        elif isinstance(response, dict) and 'code_verifier' in response and session_storage is not None:
+            session_storage['oauth_code_verifier'] = response['code_verifier']
+            print(f"Stored code verifier in session (from dict)")
 
         # Try different ways to get the URL
         if hasattr(response, 'url'):
-            print(f"Found URL via .url attribute: {response.url}")
+            print(f"Found URL via .url attribute")
             return response.url
         elif isinstance(response, dict) and 'url' in response:
-            print(f"Found URL in dict: {response['url']}")
+            print(f"Found URL in dict")
             return response['url']
         else:
             print(f"Could not find URL in response. Available attributes: {dir(response) if hasattr(response, '__dir__') else 'N/A'}")
@@ -91,12 +101,13 @@ def get_google_oauth_url() -> Optional[str]:
         return None
 
 
-def exchange_code_for_session(auth_code: str) -> Optional[Dict]:
+def exchange_code_for_session(auth_code: str, code_verifier: str = None) -> Optional[Dict]:
     """
-    Exchange OAuth code for user session.
+    Exchange OAuth code for user session using PKCE.
 
     Args:
         auth_code: OAuth authorization code from callback
+        code_verifier: PKCE code verifier from the initial OAuth request
 
     Returns:
         Dict with user data and session, or None if failed
@@ -106,8 +117,18 @@ def exchange_code_for_session(auth_code: str) -> Optional[Dict]:
         return None
 
     try:
-        response = supabase.auth.exchange_code_for_session({"code": auth_code})
+        # Build the exchange payload
+        payload = {"code": auth_code}
+        if code_verifier:
+            payload["code_verifier"] = code_verifier
+            print(f"Exchanging code with verifier")
+        else:
+            print(f"Warning: No code verifier provided for PKCE exchange")
+
+        response = supabase.auth.exchange_code_for_session(payload)
         return response
     except Exception as e:
         print(f"Failed to exchange code for session: {e}")
+        import traceback
+        traceback.print_exc()
         return None

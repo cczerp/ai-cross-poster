@@ -360,6 +360,12 @@ def login_google():
 
         print(f"Google OAuth: Redirecting to: {oauth_url}")
         return redirect(oauth_url)
+    except Exception as e:
+        print(f"Error in Google OAuth initiation: {e}")
+        import traceback
+        traceback.print_exc()
+        flash(f"Google sign-in error: {str(e)}", "error")
+        return redirect(url_for('auth.login'))
     finally:
         # Restore original redirect URL if it existed
         if original_redirect:

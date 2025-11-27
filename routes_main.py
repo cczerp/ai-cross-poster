@@ -332,6 +332,8 @@ def api_analyze():
 
         if analysis.get("collectible") or force_enhanced:
             try:
+                from src.database.db import get_db_instance
+                db = get_db_instance()
                 claude = ClaudeCollectibleAnalyzer.from_env()
                 collectible_analysis = claude.deep_analyze_collectible(photos, analysis, db)
             except Exception as e:
@@ -1153,5 +1155,116 @@ def api_find_storage_item():
                 "success": False,
                 "error": "Item not found"
             }), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# -------------------------------------------------------------------------
+# SETTINGS API ENDPOINTS
+# -------------------------------------------------------------------------
+
+@main_bp.route('/api/settings/notification-email', methods=['POST'])
+@login_required
+def api_update_notification_email():
+    """Update notification email"""
+    try:
+        from src.database.db import get_db_instance
+        db = get_db_instance()
+
+        data = request.get_json()
+        email = data.get('notification_email')
+
+        if not email:
+            return jsonify({"error": "notification_email is required"}), 400
+
+        cursor = db._get_cursor()
+        cursor.execute("""
+            UPDATE users
+            SET notification_email = %s
+            WHERE id = %s
+        """, (email, current_user.id))
+        db.conn.commit()
+
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@main_bp.route('/api/settings/marketplace-credentials', methods=['POST'])
+@login_required
+def api_save_marketplace_credentials():
+    """Save marketplace credentials"""
+    try:
+        from src.database.db import get_db_instance
+        db = get_db_instance()
+
+        data = request.get_json()
+        platform = data.get('platform')
+        username = data.get('username')
+        password = data.get('password')
+
+        if not platform or not username or not password:
+            return jsonify({"error": "platform, username, and password are required"}), 400
+
+        cursor = db._get_cursor()
+        cursor.execute("""
+            INSERT INTO marketplace_credentials (user_id, platform, username, password)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (user_id, platform)
+            DO UPDATE SET username = %s, password = %s, updated_at = CURRENT_TIMESTAMP
+        """, (current_user.id, platform, username, password, username, password))
+        db.conn.commit()
+
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@main_bp.route('/api/settings/marketplace-credentials/<platform>', methods=['DELETE'])
+@login_required
+def api_delete_marketplace_credentials(platform):
+    """Delete marketplace credentials"""
+    try:
+        from src.database.db import get_db_instance
+        db = get_db_instance()
+
+        cursor = db._get_cursor()
+        cursor.execute("""
+            DELETE FROM marketplace_credentials
+            WHERE user_id = %s AND platform = %s
+        """, (current_user.id, platform))
+        db.conn.commit()
+
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@main_bp.route('/api/settings/api-credentials', methods=['POST'])
+@login_required
+def api_save_api_credentials():
+    """Save API credentials for automated platforms"""
+    try:
+        from src.database.db import get_db_instance
+        import json
+        db = get_db_instance()
+
+        data = request.get_json()
+        platform = data.get('platform')
+        credentials = data.get('credentials')
+
+        if not platform or not credentials:
+            return jsonify({"error": "platform and credentials are required"}), 400
+
+        cursor = db._get_cursor()
+        cursor.execute("""
+            INSERT INTO api_credentials (user_id, platform, credentials)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (user_id, platform)
+            DO UPDATE SET credentials = %s, updated_at = CURRENT_TIMESTAMP
+        """, (current_user.id, platform, json.dumps(credentials), json.dumps(credentials)))
+        db.conn.commit()
+
+        return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500

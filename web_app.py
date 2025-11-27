@@ -254,7 +254,33 @@ def storage_map():
 @login_required
 def settings():
     """User settings"""
-    return render_template('settings.html')
+    # Get user info
+    db = get_db_instance()
+    cursor = db._get_cursor()
+    cursor.execute("SELECT * FROM users WHERE id = %s", (current_user.id,))
+    user = dict(cursor.fetchone())
+
+    # Get marketplace credentials
+    cursor.execute("SELECT * FROM marketplace_credentials WHERE user_id = %s", (current_user.id,))
+    creds_rows = cursor.fetchall()
+    credentials = {row['platform']: dict(row) for row in creds_rows}
+
+    # Define platforms
+    platforms = [
+        {'id': 'poshmark', 'name': 'Poshmark', 'icon': 'fas fa-tshirt', 'color': 'text-danger'},
+        {'id': 'mercari', 'name': 'Mercari', 'icon': 'fas fa-shopping-bag', 'color': 'text-primary'},
+        {'id': 'ebay', 'name': 'eBay', 'icon': 'fab fa-ebay', 'color': 'text-warning'},
+        {'id': 'grailed', 'name': 'Grailed', 'icon': 'fas fa-tshirt', 'color': 'text-dark'},
+        {'id': 'depop', 'name': 'Depop', 'icon': 'fas fa-store', 'color': 'text-danger'},
+        {'id': 'vinted', 'name': 'Vinted', 'icon': 'fas fa-tag', 'color': 'text-success'},
+        {'id': 'whatnot', 'name': 'Whatnot', 'icon': 'fas fa-video', 'color': 'text-purple'},
+        {'id': 'facebook', 'name': 'Facebook Marketplace', 'icon': 'fab fa-facebook', 'color': 'text-primary'},
+        {'id': 'offerup', 'name': 'OfferUp', 'icon': 'fas fa-handshake', 'color': 'text-success'},
+        {'id': 'rubylane', 'name': 'Ruby Lane', 'icon': 'fas fa-gem', 'color': 'text-danger'},
+        {'id': 'chairish', 'name': 'Chairish', 'icon': 'fas fa-couch', 'color': 'text-info'},
+    ]
+
+    return render_template('settings.html', user=user, credentials=credentials, platforms=platforms)
 
 # ============================================================================
 # RUN SERVER

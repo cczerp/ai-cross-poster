@@ -335,6 +335,121 @@
             display: inline-block;
         }
 
+        /* Account Menu Modal */
+        .account-menu {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            top: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 10000;
+            animation: fadeIn 0.2s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .account-menu-content {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--card-bg);
+            border-radius: 20px 20px 0 0;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 -5px 30px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from {
+                bottom: -300px;
+                opacity: 0;
+            }
+            to {
+                bottom: 80px;
+                opacity: 1;
+            }
+        }
+
+        .account-menu-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .account-menu-header h5 {
+            margin: 0;
+            color: var(--text-primary);
+            font-weight: 700;
+        }
+
+        .btn-close-menu {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .btn-close-menu:hover {
+            color: var(--text-primary);
+            transform: rotate(90deg);
+        }
+
+        .account-menu-body {
+            padding: 10px;
+        }
+
+        .account-menu-item {
+            display: flex;
+            align-items: center;
+            padding: 15px 20px;
+            color: var(--text-primary);
+            text-decoration: none;
+            border-radius: 12px;
+            transition: all 0.2s ease;
+            margin-bottom: 5px;
+        }
+
+        .account-menu-item:hover {
+            background: var(--bg-tertiary);
+            transform: translateX(5px);
+        }
+
+        .account-menu-item i {
+            font-size: 1.2rem;
+            margin-right: 15px;
+            width: 25px;
+            text-align: center;
+        }
+
+        .account-menu-item.text-danger {
+            color: var(--danger) !important;
+        }
+
+        .account-menu-item.text-danger:hover {
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .account-menu hr {
+            margin: 10px 20px;
+            border-color: var(--border-color);
+        }
+
         .loading {
             display: none;
             position: fixed;
@@ -1072,13 +1187,6 @@
         </div>
 
         <div class="nav-item">
-            <a href="{{ url_for('drafts') }}" class="nav-link {% if request.endpoint == 'drafts' %}active{% endif %}">
-                <i class="fas fa-folder"></i>
-                <span>Drafts</span>
-            </a>
-        </div>
-
-        <div class="nav-item">
             <a href="{{ url_for('listings') }}" class="nav-link {% if request.endpoint == 'listings' %}active{% endif %}">
                 <i class="fas fa-list"></i>
                 <span>Listings</span>
@@ -1107,13 +1215,40 @@
         </div>
 
         <div class="nav-item">
-            <a href="{{ url_for('auth.logout') }}" class="nav-link" style="color: #ef4444 !important;">
+            <a href="#" class="nav-link" onclick="toggleAccountMenu(event)">
+                <i class="fas fa-user-circle"></i>
+                <span>Account</span>
+            </a>
+        </div>
+    </div>
+</nav>
+
+<!-- Account Menu Modal -->
+<div id="accountMenu" class="account-menu" style="display: none;">
+    <div class="account-menu-content">
+        <div class="account-menu-header">
+            <h5><i class="fas fa-user-circle"></i> Account</h5>
+            <button onclick="toggleAccountMenu(event)" class="btn-close-menu">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="account-menu-body">
+            <a href="{{ url_for('settings') }}" class="account-menu-item">
+                <i class="fas fa-cog"></i>
+                <span>Settings & Credentials</span>
+            </a>
+            <a href="{{ url_for('drafts') }}" class="account-menu-item">
+                <i class="fas fa-folder"></i>
+                <span>Drafts</span>
+            </a>
+            <hr>
+            <a href="{{ url_for('auth.logout') }}" class="account-menu-item text-danger">
                 <i class="fas fa-sign-out-alt"></i>
                 <span>Logout</span>
             </a>
         </div>
     </div>
-</nav>
+</div>
 
 {% else %}
 <!-- Guest Navigation -->
@@ -1127,20 +1262,35 @@
         </div>
 
         <div class="nav-item">
-            <a href="{{ url_for('auth.register') }}" class="nav-link">
+            <a href="#" class="nav-link" onclick="toggleAccountMenu(event)">
+                <i class="fas fa-user-circle"></i>
+                <span>Account</span>
+            </a>
+        </div>
+    </div>
+</nav>
+
+<!-- Guest Account Menu Modal -->
+<div id="accountMenu" class="account-menu" style="display: none;">
+    <div class="account-menu-content">
+        <div class="account-menu-header">
+            <h5><i class="fas fa-user-circle"></i> Get Started</h5>
+            <button onclick="toggleAccountMenu(event)" class="btn-close-menu">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="account-menu-body">
+            <a href="{{ url_for('auth.register') }}" class="account-menu-item">
                 <i class="fas fa-user-plus"></i>
                 <span>Sign Up</span>
             </a>
-        </div>
-
-        <div class="nav-item">
-            <a href="{{ url_for('auth.login') }}" class="nav-link">
+            <a href="{{ url_for('auth.login') }}" class="account-menu-item">
                 <i class="fas fa-sign-in-alt"></i>
                 <span>Login</span>
             </a>
         </div>
     </div>
-</nav>
+</div>
 {% endif %}
 
     <script>
@@ -1220,6 +1370,28 @@
             deferredPrompt = e;
             // Show install button (you can add a button to trigger this)
             console.log('PWA install prompt available');
+        });
+
+        // Account Menu Toggle
+        function toggleAccountMenu(e) {
+            e.preventDefault();
+            const menu = document.getElementById('accountMenu');
+            if (menu.style.display === 'none' || menu.style.display === '') {
+                menu.style.display = 'block';
+            } else {
+                menu.style.display = 'none';
+            }
+        }
+
+        // Close menu when clicking outside
+        document.addEventListener('click', function(e) {
+            const menu = document.getElementById('accountMenu');
+            const target = e.target;
+            if (menu && menu.style.display === 'block') {
+                if (!target.closest('.account-menu-content') && !target.closest('[onclick*="toggleAccountMenu"]')) {
+                    menu.style.display = 'none';
+                }
+            }
         });
     </script>
 

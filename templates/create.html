@@ -156,6 +156,104 @@
         </div>
     </div>
 
+    <!-- Platform Selection -->
+    {% if not is_guest %}
+    <div class="card mb-3">
+        <div class="card-header">
+            <i class="fas fa-store-alt"></i> Select Platforms to Post
+        </div>
+        <div class="card-body">
+            <p class="text-muted small mb-3">
+                Choose where you want to list this item. <span class="badge bg-success">API</span> platforms post automatically.
+                <span class="badge bg-info">CSV</span> platforms generate a file for manual upload.
+            </p>
+
+            <div class="row">
+                <!-- API Platforms -->
+                <div class="col-md-6">
+                    <h6 class="text-success mb-2"><i class="fas fa-robot"></i> Automated (API)</h6>
+                    <div class="platform-checkboxes">
+                        <div class="form-check platform-item">
+                            <input class="form-check-input" type="checkbox" id="platform_etsy" value="etsy">
+                            <label class="form-check-label" for="platform_etsy">
+                                <i class="fas fa-store text-warning"></i> Etsy
+                                <span class="badge bg-success ms-2">API</span>
+                            </label>
+                        </div>
+                        <div class="form-check platform-item">
+                            <input class="form-check-input" type="checkbox" id="platform_shopify" value="shopify">
+                            <label class="form-check-label" for="platform_shopify">
+                                <i class="fas fa-shopping-cart text-success"></i> Shopify
+                                <span class="badge bg-success ms-2">API</span>
+                            </label>
+                        </div>
+                        <div class="form-check platform-item">
+                            <input class="form-check-input" type="checkbox" id="platform_woocommerce" value="woocommerce">
+                            <label class="form-check-label" for="platform_woocommerce">
+                                <i class="fas fa-wordpress text-primary"></i> WooCommerce
+                                <span class="badge bg-success ms-2">API</span>
+                            </label>
+                        </div>
+                        <div class="form-check platform-item">
+                            <input class="form-check-input" type="checkbox" id="platform_facebook" value="facebook">
+                            <label class="form-check-label" for="platform_facebook">
+                                <i class="fab fa-facebook text-primary"></i> Facebook Shops
+                                <span class="badge bg-success ms-2">API</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CSV Platforms -->
+                <div class="col-md-6">
+                    <h6 class="text-info mb-2"><i class="fas fa-file-csv"></i> Manual Upload (CSV)</h6>
+                    <div class="platform-checkboxes">
+                        <div class="form-check platform-item">
+                            <input class="form-check-input" type="checkbox" id="platform_poshmark" value="poshmark">
+                            <label class="form-check-label" for="platform_poshmark">
+                                <i class="fas fa-tshirt text-danger"></i> Poshmark
+                                <span class="badge bg-info ms-2">CSV</span>
+                            </label>
+                        </div>
+                        <div class="form-check platform-item">
+                            <input class="form-check-input" type="checkbox" id="platform_mercari" value="mercari">
+                            <label class="form-check-label" for="platform_mercari">
+                                <i class="fas fa-shopping-bag text-primary"></i> Mercari
+                                <span class="badge bg-info ms-2">CSV</span>
+                            </label>
+                        </div>
+                        <div class="form-check platform-item">
+                            <input class="form-check-input" type="checkbox" id="platform_ebay" value="ebay">
+                            <label class="form-check-label" for="platform_ebay">
+                                <i class="fab fa-ebay text-warning"></i> eBay
+                                <span class="badge bg-info ms-2">CSV</span>
+                            </label>
+                        </div>
+                        <div class="form-check platform-item">
+                            <input class="form-check-input" type="checkbox" id="platform_grailed" value="grailed">
+                            <label class="form-check-label" for="platform_grailed">
+                                <i class="fas fa-tshirt text-dark"></i> Grailed
+                                <span class="badge bg-info ms-2">CSV</span>
+                            </label>
+                        </div>
+                        <div class="form-check platform-item">
+                            <input class="form-check-input" type="checkbox" id="platform_depop" value="depop">
+                            <label class="form-check-label" for="platform_depop">
+                                <i class="fas fa-store text-danger"></i> Depop
+                                <span class="badge bg-info ms-2">CSV</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="alert alert-warning mt-3 mb-0">
+                <i class="fas fa-info-circle"></i> <strong>Configure credentials in <a href="{{ url_for('settings') }}">Settings</a></strong> to enable automated posting!
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Actions -->
     <div class="d-grid gap-2">
         {% if is_guest %}

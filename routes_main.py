@@ -254,6 +254,7 @@ def api_analyze_card():
         # Check for API key errors
         if result.get("error"):
             error_msg = result.get("error", "Unknown error")
+            print(f"Card analysis error: {error_msg}")  # Debug logging
             if "API" in error_msg or "api_key" in error_msg.lower():
                 return jsonify({
                     "error": "AI service not configured. Please check your GEMINI_API_KEY environment variable.",
@@ -266,6 +267,7 @@ def api_analyze_card():
     except ValueError as e:
         # Catch API key not set errors
         error_msg = str(e)
+        print(f"Card analysis ValueError: {error_msg}")  # Debug logging
         if "API_KEY" in error_msg:
             return jsonify({
                 "error": "AI service not configured. Please set GEMINI_API_KEY environment variable.",
@@ -273,6 +275,9 @@ def api_analyze_card():
             }), 503
         return jsonify({"error": error_msg}), 500
     except Exception as e:
+        print(f"Card analysis exception: {str(e)}")  # Debug logging
+        import traceback
+        traceback.print_exc()  # Print full stack trace for debugging
         return jsonify({"error": str(e)}), 500
 
 

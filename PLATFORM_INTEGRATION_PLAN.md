@@ -290,46 +290,49 @@ For each new adapter, verify:
 
 ## 📊 Implementation Roadmap
 
-### Phase 1: CSV Export Framework (Week 1-2)
-- [ ] Create `CSVExportAdapter` base class
-- [ ] Implement Poshmark CSV
-- [ ] Implement Bonanza CSV
-- [ ] Implement Ecrater CSV
-- [ ] Implement Ruby Lane CSV
-- [ ] Add CSV download to GUI
-- [ ] Add CSV download to mobile app
+### Phase 1: CSV Export Framework (Week 1-2) ✅ MOSTLY COMPLETE
+- [x] ~~Create `CSVExportAdapter` base class~~ ✅ DONE (base_adapter.py)
+- [x] ~~Implement Poshmark CSV~~ ✅ DONE (poshmark_adapter.py)
+- [x] ~~Implement Bonanza CSV~~ ✅ DONE (all_platforms.py)
+- [x] ~~Implement Ecrater CSV~~ ✅ DONE (all_platforms.py)
+- [x] ~~Implement Ruby Lane CSV~~ ✅ DONE (all_platforms.py)
+- [x] ~~Add CSV download to GUI~~ ✅ DONE (routes_main.py /api/export-csv)
+- [ ] **[PRIORITY 1]** Add CSV download to mobile app
 
-### Phase 2: Feed/Catalog System (Week 3-4)
-- [ ] Create `FeedAdapter` base class
-- [ ] Implement Facebook Catalog
-- [ ] Implement Google Shopping
-- [ ] Implement Pinterest Catalog
-- [ ] Add feed generation to backend API
-- [ ] Add scheduling for auto-sync
+### Phase 2: Feed/Catalog System (Week 3-4) ✅ MOSTLY COMPLETE
+- [x] ~~Create `FeedAdapter` base class~~ ✅ DONE (base_adapter.py)
+- [x] ~~Implement Facebook Catalog~~ ✅ DONE (all_platforms.py FacebookShopsAdapter)
+- [x] ~~Implement Google Shopping~~ ✅ DONE (all_platforms.py GoogleShoppingAdapter)
+- [x] ~~Implement Pinterest Catalog~~ ✅ DONE (all_platforms.py PinterestAdapter)
+- [ ] **[PRIORITY 2]** Add feed generation to backend API
+- [ ] **[PRIORITY 3]** Add scheduling for auto-sync
 
-### Phase 3: API Integrations (Week 5-8)
-- [ ] Implement Etsy API
-- [ ] Implement Shopify API
-- [ ] Implement Depop API (if available)
-- [ ] Implement WooCommerce API
-- [ ] Add OAuth flows to mobile app
-- [ ] Add platform connection UI
+### Phase 3: API Integrations (Week 5-8) ✅ MOSTLY COMPLETE
+- [x] ~~Implement Etsy API~~ ✅ DONE (all_platforms.py EtsyAdapter)
+- [x] ~~Implement Shopify API~~ ✅ DONE (all_platforms.py ShopifyAdapter)
+- [x] ~~Implement Depop API (if available)~~ ✅ DONE (all_platforms.py DepopAdapter)
+- [x] ~~Implement WooCommerce API~~ ✅ DONE (all_platforms.py WooCommerceAdapter)
+- [ ] **[PRIORITY 4]** Add OAuth flows to mobile app
+- [ ] **[PRIORITY 5]** Add platform connection UI
 
-### Phase 4: Template System (Week 9)
-- [ ] Create `TemplateAdapter` base class
-- [ ] Implement Craigslist email template
-- [ ] Implement VarageSale template
-- [ ] Implement Chairish template
-- [ ] Implement OfferUp template
-- [ ] Add copy/paste UI to mobile app
+### Phase 4: Template System (Week 9) ✅ COMPLETE
+- [x] ~~Create `TemplateAdapter` base class~~ ✅ DONE (base_adapter.py)
+- [x] ~~Implement Craigslist email template~~ ✅ DONE (all_platforms.py CraigslistAdapter)
+- [x] ~~Implement VarageSale template~~ ✅ DONE (all_platforms.py VarageSaleAdapter)
+- [x] ~~Implement Chairish template~~ ✅ DONE (all_platforms.py ChairishAdapter)
+- [x] ~~Implement OfferUp template~~ ✅ DONE (all_platforms.py OfferUpAdapter as CSV)
+- [ ] **[PRIORITY 7]** Add copy/paste UI to mobile app
 
-### Phase 5: Mobile App Updates (Week 10-11)
-- [ ] Add platform selector UI
-- [ ] Add CSV download feature
-- [ ] Add feed management
-- [ ] Add template copy/paste
-- [ ] Add platform status indicators
-- [ ] Update onboarding flow
+### Phase 5: Mobile App Updates (Week 10-11) ⚠️ IN PROGRESS
+- [x] ~~Add platform selector UI~~ ✅ DONE (templates/create.html)
+- [x] ~~Add CSV download feature~~ ✅ DONE (web app only, see [PRIORITY 1] for mobile)
+- [ ] **[PRIORITY 6]** Add feed management
+- [ ] **[PRIORITY 7]** Add template copy/paste (duplicate - see Phase 4)
+- [ ] **[PRIORITY 8]** Add platform status indicators
+- [ ] **[PRIORITY 9]** Update onboarding flow
+
+### Additional Priority Tasks
+- [ ] **[PRIORITY 10]** Complete API integration testing and OAuth credential validation
 
 ---
 

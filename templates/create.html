@@ -1446,5 +1446,172 @@ function generateSKU() {
     const sku = `SKU-${timestamp}-${random}`;
     document.getElementById('sku').value = sku;
 }
+
+// ============================================================================
+// AUTO-SAVE FUNCTIONALITY
+// ============================================================================
+
+const AUTOSAVE_KEY = 'draft_autosave';
+const AUTOSAVE_INTERVAL = 5000; // Save every 5 seconds
+let autoSaveTimer = null;
+let hasUnsavedChanges = false;
+
+// Create auto-save indicator
+const autoSaveIndicator = document.createElement('div');
+autoSaveIndicator.id = 'autoSaveIndicator';
+autoSaveIndicator.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: rgba(40, 167, 69, 0.9);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+    z-index: 9999;
+    display: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+`;
+autoSaveIndicator.innerHTML = '<i class="fas fa-check-circle"></i> Auto-saved';
+document.body.appendChild(autoSaveIndicator);
+
+function showAutoSaveIndicator(text = 'Auto-saved', color = 'rgba(40, 167, 69, 0.9)') {
+    autoSaveIndicator.style.background = color;
+    autoSaveIndicator.innerHTML = `<i class="fas fa-check-circle"></i> ${text}`;
+    autoSaveIndicator.style.display = 'block';
+    setTimeout(() => {
+        autoSaveIndicator.style.display = 'none';
+    }, 2000);
+}
+
+function autoSaveToLocalStorage() {
+    // Don't auto-save if we're editing an existing draft (use manual save instead)
+    if (editingDraftId) return;
+
+    const formData = {
+        title: document.getElementById('title').value,
+        description: document.getElementById('description').value,
+        price: document.getElementById('price').value,
+        cost: document.getElementById('cost').value,
+        condition: document.getElementById('condition').value,
+        item_type: document.getElementById('item_type').value,
+        brand: document.getElementById('brand').value,
+        size: document.getElementById('size').value,
+        color: document.getElementById('color').value,
+        shipping_cost: document.getElementById('shipping_cost').value,
+        storage_location: document.getElementById('storage_location').value,
+        quantity: document.getElementById('quantity').value,
+        sku: document.getElementById('sku').value,
+        upc: document.getElementById('upc').value,
+        timestamp: new Date().toISOString()
+    };
+
+    // Only save if there's some content
+    if (formData.title || formData.description || formData.price) {
+        try {
+            localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(formData));
+            showAutoSaveIndicator('Auto-saved');
+            hasUnsavedChanges = false;
+        } catch (e) {
+            console.error('Auto-save failed:', e);
+        }
+    }
+}
+
+function loadFromLocalStorage() {
+    // Don't load from localStorage if we're editing an existing draft
+    if (editingDraftId) return;
+
+    try {
+        const saved = localStorage.getItem(AUTOSAVE_KEY);
+        if (saved) {
+            const formData = JSON.parse(saved);
+
+            // Ask user if they want to restore
+            const savedDate = new Date(formData.timestamp);
+            const message = `Found auto-saved draft from ${savedDate.toLocaleString()}. Would you like to restore it?`;
+
+            if (confirm(message)) {
+                // Restore form data
+                document.getElementById('title').value = formData.title || '';
+                document.getElementById('description').value = formData.description || '';
+                document.getElementById('price').value = formData.price || '';
+                document.getElementById('cost').value = formData.cost || '';
+                document.getElementById('condition').value = formData.condition || 'excellent';
+                document.getElementById('item_type').value = formData.item_type || 'general';
+                document.getElementById('brand').value = formData.brand || '';
+                document.getElementById('size').value = formData.size || '';
+                document.getElementById('color').value = formData.color || '';
+                document.getElementById('shipping_cost').value = formData.shipping_cost || '0';
+                document.getElementById('storage_location').value = formData.storage_location || '';
+                document.getElementById('quantity').value = formData.quantity || '1';
+                document.getElementById('sku').value = formData.sku || '';
+                document.getElementById('upc').value = formData.upc || '';
+
+                showAutoSaveIndicator('Draft restored', 'rgba(13, 110, 253, 0.9)');
+            } else {
+                // Clear if user doesn't want to restore
+                localStorage.removeItem(AUTOSAVE_KEY);
+            }
+        }
+    } catch (e) {
+        console.error('Failed to load auto-save:', e);
+    }
+}
+
+function clearAutoSave() {
+    try {
+        localStorage.removeItem(AUTOSAVE_KEY);
+    } catch (e) {
+        console.error('Failed to clear auto-save:', e);
+    }
+}
+
+// Schedule auto-save when form changes
+function scheduleAutoSave() {
+    hasUnsavedChanges = true;
+    if (autoSaveTimer) {
+        clearTimeout(autoSaveTimer);
+    }
+    autoSaveTimer = setTimeout(autoSaveToLocalStorage, AUTOSAVE_INTERVAL);
+}
+
+// Add change listeners to all form fields
+document.addEventListener('DOMContentLoaded', function() {
+    // Load any saved draft
+    loadFromLocalStorage();
+
+    // Add listeners to form fields
+    const formFields = [
+        'title', 'description', 'price', 'cost', 'condition', 'item_type',
+        'brand', 'size', 'color', 'shipping_cost', 'storage_location',
+        'quantity', 'sku', 'upc'
+    ];
+
+    formFields.forEach(fieldId => {
+        const field = document.getElementById(fieldId);
+        if (field) {
+            field.addEventListener('input', scheduleAutoSave);
+            field.addEventListener('change', scheduleAutoSave);
+        }
+    });
+
+    // Warn user about unsaved changes when leaving page
+    window.addEventListener('beforeunload', function(e) {
+        if (hasUnsavedChanges && !editingDraftId) {
+            e.preventDefault();
+            e.returnValue = '';
+            return '';
+        }
+    });
+});
+
+// Clear auto-save after successful save to server
+const originalSaveListing = saveListing;
+saveListing = async function(status = 'draft') {
+    await originalSaveListing(status);
+    // Clear auto-save after successful save
+    clearAutoSave();
+};
 </script>
 {% endblock %}

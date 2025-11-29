@@ -31,6 +31,8 @@ psycopg2-binary>=2.9.9  # PostgreSQL adapter
 # Authentication (Supabase OAuth)
 supabase>=2.3.0  # Supabase Python client
 pyjwt>=2.8.0  # JWT token handling
+passlib[bcrypt]>=1.7.4  # Password hashing
+python-jose[cryptography]>=3.3.0  # JWT creation and validation
 
 # Cloud Storage
 cloudinary>=1.41.0  # Photo storage (FREE tier: 25GB)

@@ -259,6 +259,92 @@ class MultiPlatformSyncManager:
                 error=str(e),
             )
 
+    def _update_quantity_on_platform(
+        self,
+        platform: str,
+        platform_listing_id: str,
+        new_quantity: int
+    ) -> bool:
+        """
+        Update quantity on a specific platform via API.
+
+        Args:
+            platform: Platform name ('ebay', 'mercari', etc.)
+            platform_listing_id: The platform-specific listing ID
+            new_quantity: New quantity to set
+
+        Returns:
+            True if successful, False otherwise
+
+        Raises:
+            NotImplementedError: If platform adapter doesn't support quantity updates
+        """
+        if platform == 'ebay':
+            return self._update_ebay_quantity(platform_listing_id, new_quantity)
+        elif platform == 'mercari':
+            return self._update_mercari_quantity(platform_listing_id, new_quantity)
+        else:
+            raise NotImplementedError(f"Quantity update not implemented for platform: {platform}")
+
+    def _update_ebay_quantity(self, offer_id: str, new_quantity: int) -> bool:
+        """
+        Update eBay listing quantity via eBay Sell API.
+
+        Args:
+            offer_id: eBay offer ID
+            new_quantity: New quantity to set
+
+        Returns:
+            True if successful
+        """
+        try:
+            from ..adapters.ebay_adapter import EbayAdapter
+
+            adapter = EbayAdapter.from_env()
+
+            # eBay Sell API: Update offer quantity
+            # PUT /sell/inventory/v1/offer/{offerId}
+            result = adapter.update_offer_quantity(offer_id, new_quantity)
+
+            print(f"   ℹ️  eBay API response: {result}")
+            return True
+
+        except ImportError:
+            # Adapter not implemented
+            raise NotImplementedError("eBay adapter not available")
+        except Exception as e:
+            print(f"   ❌ eBay API error: {e}")
+            return False
+
+    def _update_mercari_quantity(self, listing_id: str, new_quantity: int) -> bool:
+        """
+        Update Mercari listing quantity via Mercari Shops API.
+
+        Args:
+            listing_id: Mercari listing ID
+            new_quantity: New quantity to set
+
+        Returns:
+            True if successful
+        """
+        try:
+            from ..adapters.mercari_adapter import MercariAdapter
+
+            adapter = MercariAdapter.from_env()
+
+            # Mercari Shops API: Update listing quantity
+            result = adapter.update_listing_quantity(listing_id, new_quantity)
+
+            print(f"   ℹ️  Mercari API response: {result}")
+            return True
+
+        except ImportError:
+            # Adapter not implemented
+            raise NotImplementedError("Mercari adapter not available")
+        except Exception as e:
+            print(f"   ❌ Mercari API error: {e}")
+            return False
+
     def mark_sold(
         self,
         listing_id: int,
@@ -368,25 +454,65 @@ class MultiPlatformSyncManager:
             print(f"   Automatic cancellation at: {cancel_time.strftime('%H:%M:%S')}")
 
         else:
-            # Items still remaining - just update quantity on platforms
+            # Items still remaining - update quantity on platforms via API
             print(f"\n✅ {remaining_quantity} item(s) still available - updating quantity on platforms")
 
-            # TODO: Update quantity on each platform via API
-            # For now, just log the update
             platform_listings = self.db.get_platform_listings(listing_id)
             cancellation_results = {}
 
             for pl in platform_listings:
                 if pl["status"] == "active":
-                    self.db.log_sync(
-                        listing_id=listing_id,
-                        platform=pl["platform"],
-                        action="update_quantity",
-                        status="success",
-                        details={"new_quantity": remaining_quantity, "sold_quantity": quantity_sold},
-                    )
-                    cancellation_results[pl["platform"]] = "quantity_updated"
-                    print(f"✅ Updated quantity on {pl['platform']}")
+                    platform_name = pl["platform"]
+                    platform_listing_id = pl.get("platform_listing_id")
+
+                    try:
+                        # Update quantity via platform API
+                        if platform_listing_id:
+                            success = self._update_quantity_on_platform(
+                                platform_name,
+                                platform_listing_id,
+                                remaining_quantity
+                            )
+
+                            if success:
+                                self.db.log_sync(
+                                    listing_id=listing_id,
+                                    platform=platform_name,
+                                    action="update_quantity",
+                                    status="success",
+                                    details={"new_quantity": remaining_quantity, "sold_quantity": quantity_sold},
+                                )
+                                cancellation_results[platform_name] = "quantity_updated"
+                                print(f"✅ Updated quantity on {platform_name} to {remaining_quantity}")
+                            else:
+                                cancellation_results[platform_name] = "quantity_update_failed"
+                                print(f"⚠️  Failed to update quantity on {platform_name}")
+                        else:
+                            print(f"⚠️  No platform listing ID for {platform_name} - skipping quantity update")
+                            cancellation_results[platform_name] = "no_platform_id"
+
+                    except NotImplementedError:
+                        # Platform adapter not available - log only
+                        print(f"ℹ️  Quantity update not implemented for {platform_name} - logged in database only")
+                        self.db.log_sync(
+                            listing_id=listing_id,
+                            platform=platform_name,
+                            action="update_quantity",
+                            status="logged_only",
+                            details={"new_quantity": remaining_quantity, "sold_quantity": quantity_sold, "note": "Platform adapter not available"},
+                        )
+                        cancellation_results[platform_name] = "logged_only"
+
+                    except Exception as e:
+                        print(f"❌ Error updating quantity on {platform_name}: {e}")
+                        self.db.log_sync(
+                            listing_id=listing_id,
+                            platform=platform_name,
+                            action="update_quantity",
+                            status="failed",
+                            details={"error": str(e), "new_quantity": remaining_quantity},
+                        )
+                        cancellation_results[platform_name] = f"error: {str(e)}"
 
         # Send sale notification with storage location
         self.notifier.send_sale_notification(

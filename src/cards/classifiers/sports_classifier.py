@@ -106,13 +106,59 @@ class SportsCardClassifier(BaseCardClassifier):
 
     def classify_from_image(self, image_path: str, user_id: int) -> Optional[UnifiedCard]:
         """
-        Classify sports card from image.
+        Classify sports card from image using Gemini AI vision.
 
-        This would use OCR + AI to identify the card.
-        For now, returns None - to be implemented with AI integration.
+        Uses the Gemini classifier to analyze the card image and extract:
+        - Player name, year, brand, series
+        - Card number and rookie card status
+        - Grading information if present
+        - Parallel/variant information
+
+        Args:
+            image_path: Path to the card image
+            user_id: User ID for the card
+
+        Returns:
+            UnifiedCard object or None if not a valid sports card
         """
-        # TODO: Implement with Gemini/Claude AI vision
-        return None
+        try:
+            from ..ai_integration import create_card_from_ai_analysis
+            from ...ai.gemini_classifier import GeminiClassifier
+            from ...schema.unified_listing import Photo
+
+            # Create Photo object from image path
+            photo = Photo(local_path=image_path, is_primary=True)
+
+            # Analyze card with Gemini
+            gemini = GeminiClassifier.from_env()
+            ai_result = gemini.analyze_card([photo])
+
+            # Check if it's actually a card
+            if not ai_result.get('is_card'):
+                return None
+
+            # Check if it's a sports card
+            card_type = ai_result.get('card_type', '')
+            if not card_type.startswith('sports_'):
+                return None
+
+            # Convert AI result to UnifiedCard
+            card = create_card_from_ai_analysis(
+                ai_result=ai_result,
+                user_id=user_id,
+                photos=[image_path]
+            )
+
+            return card
+
+        except ImportError as e:
+            print(f"Gemini classifier not available: {e}")
+            return None
+        except Exception as e:
+            print(f"Error classifying sports card from image: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
 
     def classify_from_dict(self, data: Dict[str, Any], user_id: int) -> UnifiedCard:
         """Classify sports card from dictionary data (CSV import, API, etc.)"""

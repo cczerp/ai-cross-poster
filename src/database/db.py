@@ -982,15 +982,16 @@ class Database:
         """Create a new listing"""
         cursor = self._get_cursor()
 
+        # Cast user_id to handle UUID/INTEGER mismatch
         cursor.execute("""
             INSERT INTO listings (
                 listing_uuid, user_id, collectible_id, title, description, price,
                 cost, condition, category, item_type, attributes, photos, quantity,
                 storage_location, sku, upc, status
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s::text::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, (
-            listing_uuid, user_id, collectible_id, title, description, price,
+            listing_uuid, str(user_id), collectible_id, title, description, price,
             cost, condition, category, item_type,
             json.dumps(attributes) if attributes else None,
             json.dumps(photos),
@@ -1593,15 +1594,16 @@ class Database:
         """Save or update marketplace credentials"""
         cursor = self._get_cursor()
 
+        # Cast user_id to handle UUID/INTEGER mismatch
         cursor.execute("""
             INSERT INTO marketplace_credentials
             (user_id, platform, username, password, updated_at)
-            VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+            VALUES (%s::text::uuid, %s, %s, %s, CURRENT_TIMESTAMP)
             ON CONFLICT (user_id, platform) DO UPDATE SET
                 username = EXCLUDED.username,
                 password = EXCLUDED.password,
                 updated_at = CURRENT_TIMESTAMP
-        """, (user_id, platform, username, password))
+        """, (str(user_id), platform, username, password))
 
         self.conn.commit()
 

@@ -335,7 +335,6 @@ def login_google():
     redirect_url = os.getenv("SUPABASE_REDIRECT_URL", "").strip()
 
     if not redirect_url:
-<<<<<<< Updated upstream
         # Try RENDER_EXTERNAL_URL (for Render deployments)
         render_url = os.getenv("RENDER_EXTERNAL_URL", "").strip()
         if render_url:
@@ -348,13 +347,9 @@ def login_google():
     # Log the redirect URL for debugging
     print(f"Google OAuth: Using redirect URL: {redirect_url}")
 
-    # Temporarily set the redirect URL for this request
-    original_redirect = os.getenv("SUPABASE_REDIRECT_URL")
-    os.environ["SUPABASE_REDIRECT_URL"] = redirect_url
-
     try:
-        # Pass session to store code verifier for PKCE
-        oauth_url = get_google_oauth_url(session)
+        # Pass session to store code verifier for PKCE and redirect_override for custom URL
+        oauth_url = get_google_oauth_url(session_storage=session, redirect_override=redirect_url)
 
         if not oauth_url:
             flash("Failed to generate Google OAuth URL. Please check Supabase configuration.", "error")
@@ -368,25 +363,6 @@ def login_google():
         traceback.print_exc()
         flash(f"Google sign-in error: {str(e)}", "error")
         return redirect(url_for('auth.login'))
-    finally:
-        # Restore original redirect URL if it existed
-        if original_redirect:
-            os.environ["SUPABASE_REDIRECT_URL"] = original_redirect
-        elif "SUPABASE_REDIRECT_URL" in os.environ:
-            del os.environ["SUPABASE_REDIRECT_URL"]
-=======
-        # Construct from current request
-        base_url = f"{flask_request.scheme}://{flask_request.host}"
-        redirect_url = f"{base_url}/auth/callback"
-    
-    oauth_url = get_google_oauth_url(redirect_override=redirect_url)
-    
-    if not oauth_url:
-        flash("Google login is not configured. Please contact support.", "error")
-        return redirect(url_for('auth.login'))
-    
-    return redirect(oauth_url)
->>>>>>> Stashed changes
 
 
 @auth_bp.route('/auth/callback')

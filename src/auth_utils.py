@@ -48,16 +48,13 @@ def get_supabase_client() -> Optional[Client]:
         return None
 
 
-<<<<<<< Updated upstream
-def get_google_oauth_url(session_storage: dict = None) -> Optional[str]:
-=======
-def get_google_oauth_url(redirect_override: Optional[str] = None) -> Optional[str]:
->>>>>>> Stashed changes
+def get_google_oauth_url(session_storage: dict = None, redirect_override: Optional[str] = None) -> Optional[str]:
     """
     Generate Google OAuth URL via Supabase using PKCE flow.
 
     Args:
         session_storage: Dictionary to store the code verifier (Flask session)
+        redirect_override: Optional custom redirect URL to use instead of environment variable
 
     Returns:
         OAuth URL string or None if Supabase is not configured
@@ -66,13 +63,7 @@ def get_google_oauth_url(redirect_override: Optional[str] = None) -> Optional[st
     supabase_url = os.getenv("SUPABASE_URL", "").strip()
 
     # Get redirect URL from environment, or try to construct from request
-<<<<<<< Updated upstream
-    redirect_url = os.getenv("SUPABASE_REDIRECT_URL", "").strip()
-
-=======
-    redirect_url = redirect_override or os.getenv("SUPABASE_REDIRECT_URL")
-    
->>>>>>> Stashed changes
+    redirect_url = redirect_override or os.getenv("SUPABASE_REDIRECT_URL", "").strip()
     # If not set, try to use RENDER_EXTERNAL_URL or construct from request
     if not redirect_url:
         # On Render, use RENDER_EXTERNAL_URL if available

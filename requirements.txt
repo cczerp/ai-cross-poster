@@ -46,4 +46,4 @@ stripe>=7.0.0  # Stripe integration for subscriptions
 # Development dependencies
 pytest>=7.4.0
 pytest-cov>=4.1.0
-flask-testing>=1.0.0
+flask-testing>=0.8.0

@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Platform Connections - ResellGenie</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .platforms-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .platform-card {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .platform-card.connected {
+            border-color: #4CAF50;
+            background: #f1f8f1;
+        }
+
+        .platform-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .platform-name {
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 500;
+        }
+
+        .status-connected {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .status-disconnected {
+            background: #ccc;
+            color: #666;
+        }
+
+        .platform-info {
+            margin-bottom: 15px;
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .platform-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: #2196F3;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #757575;
+            color: white;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+        }
+
+        .connection-form {
+            margin-top: 10px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 4px;
+            display: none;
+        }
+
+        .connection-form.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .api-key-display {
+            background: #ffe;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            word-break: break-all;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    {% include 'navbar.html' %}
+
+    <div class="container" style="max-width: 1200px; margin: 20px auto; padding: 0 20px;">
+        <h1>Platform Connections</h1>
+        <p style="color: #666; margin-bottom: 30px;">
+            Connect your marketplace accounts to enable cross-posting and synchronization.
+        </p>
+
+        <div class="platforms-grid">
+            <!-- eBay -->
+            <div class="platform-card {% if connections.ebay %}connected{% endif %}">
+                <div class="platform-header">
+                    <div class="platform-name">eBay</div>
+                    <span class="status-badge {% if connections.ebay %}status-connected{% else %}status-disconnected{% endif %}">
+                        {% if connections.ebay %}Connected{% else %}Not Connected{% endif %}
+                    </span>
+                </div>
+                <div class="platform-info">
+                    Official eBay Sell API with OAuth 2.0
+                </div>
+                <div class="platform-actions">
+                    {% if connections.ebay %}
+                        <button class="btn btn-secondary" onclick="window.location.href='/api/platform/ebay/test'">Test</button>
+                        <button class="btn btn-danger" onclick="disconnectPlatform('ebay')">Disconnect</button>
+                    {% else %}
+                        <button class="btn btn-primary" onclick="connectOAuth('ebay')">Connect</button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Etsy -->
+            <div class="platform-card {% if connections.etsy %}connected{% endif %}">
+                <div class="platform-header">
+                    <div class="platform-name">Etsy</div>
+                    <span class="status-badge {% if connections.etsy %}status-connected{% else %}status-disconnected{% endif %}">
+                        {% if connections.etsy %}Connected{% else %}Not Connected{% endif %}
+                    </span>
+                </div>
+                <div class="platform-info">
+                    Etsy API v3 with OAuth 2.0
+                </div>
+                <div class="platform-actions">
+                    {% if connections.etsy %}
+                        <button class="btn btn-secondary" onclick="window.location.href='/api/platform/etsy/test'">Test</button>
+                        <button class="btn btn-danger" onclick="disconnectPlatform('etsy')">Disconnect</button>
+                    {% else %}
+                        <button class="btn btn-primary" onclick="connectOAuth('etsy')">Connect</button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Shopify -->
+            <div class="platform-card {% if connections.shopify %}connected{% endif %}">
+                <div class="platform-header">
+                    <div class="platform-name">Shopify</div>
+                    <span class="status-badge {% if connections.shopify %}status-connected{% else %}status-disconnected{% endif %}">
+                        {% if connections.shopify %}Connected{% else %}Not Connected{% endif %}
+                    </span>
+                </div>
+                <div class="platform-info">
+                    Your Shopify store (requires store URL and API key)
+                </div>
+                <div class="platform-actions">
+                    {% if connections.shopify %}
+                        <button class="btn btn-secondary" onclick="window.location.href='/api/platform/shopify/test'">Test</button>
+                        <button class="btn btn-danger" onclick="disconnectPlatform('shopify')">Disconnect</button>
+                    {% else %}
+                        <button class="btn btn-primary" onclick="toggleForm('shopify-form')">Connect</button>
+                    {% endif %}
+                </div>
+                <div id="shopify-form" class="connection-form">
+                    <form onsubmit="connectAPIKey(event, 'shopify')">
+                        <div class="form-group">
+                            <label>Store URL:</label>
+                            <input type="text" name="store_url" placeholder="mystore.myshopify.com" required>
+                        </div>
+                        <div class="form-group">
+                            <label>API Key:</label>
+                            <input type="text" name="api_key" placeholder="Your Shopify API key" required>
+                        </div>
+                        <div class="form-group">
+                            <label>API Password:</label>
+                            <input type="password" name="api_password" placeholder="Your Shopify API password" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Save</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Mercari -->
+            <div class="platform-card {% if connections.mercari %}connected{% endif %}">
+                <div class="platform-header">
+                    <div class="platform-name">Mercari</div>
+                    <span class="status-badge {% if connections.mercari %}status-connected{% else %}status-disconnected{% endif %}">
+                        {% if connections.mercari %}Connected{% else %}Not Connected{% endif %}
+                    </span>
+                </div>
+                <div class="platform-info">
+                    Mercari Shops API (business account required)
+                </div>
+                <div class="platform-actions">
+                    {% if connections.mercari %}
+                        <button class="btn btn-secondary" onclick="window.location.href='/api/platform/mercari/test'">Test</button>
+                        <button class="btn btn-danger" onclick="disconnectPlatform('mercari')">Disconnect</button>
+                    {% else %}
+                        <button class="btn btn-primary" onclick="toggleForm('mercari-form')">Connect</button>
+                    {% endif %}
+                </div>
+                <div id="mercari-form" class="connection-form">
+                    <form onsubmit="connectAPIKey(event, 'mercari')">
+                        <div class="form-group">
+                            <label>API Key:</label>
+                            <input type="text" name="api_key" placeholder="Your Mercari API key" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Save</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Facebook/Instagram Shopping -->
+            <div class="platform-card {% if connections.facebook %}connected{% endif %}">
+                <div class="platform-header">
+                    <div class="platform-name">Facebook Shops</div>
+                    <span class="status-badge {% if connections.facebook %}status-connected{% else %}status-disconnected{% endif %}">
+                        {% if connections.facebook %}Connected{% else %}Not Connected{% endif %}
+                    </span>
+                </div>
+                <div class="platform-info">
+                    Facebook Catalog API (CSV/XML feed)
+                </div>
+                <div class="platform-actions">
+                    {% if connections.facebook %}
+                        <button class="btn btn-secondary" onclick="window.location.href='/api/feeds/facebook?format=csv'">Download Feed</button>
+                        <button class="btn btn-danger" onclick="disconnectPlatform('facebook')">Disconnect</button>
+                    {% else %}
+                        <button class="btn btn-primary" onclick="connectOAuth('facebook')">Connect</button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Google Shopping -->
+            <div class="platform-card {% if connections.google %}connected{% endif %}">
+                <div class="platform-header">
+                    <div class="platform-name">Google Shopping</div>
+                    <span class="status-badge {% if connections.google %}status-connected{% else %}status-disconnected{% endif %}">
+                        {% if connections.google %}Connected{% else %}Not Connected{% endif %}
+                    </span>
+                </div>
+                <div class="platform-info">
+                    Google Merchant Center (product feed)
+                </div>
+                <div class="platform-actions">
+                    {% if connections.google %}
+                        <button class="btn btn-secondary" onclick="window.location.href='/api/feeds/google?format=xml'">Download Feed</button>
+                        <button class="btn btn-danger" onclick="disconnectPlatform('google')">Disconnect</button>
+                    {% else %}
+                        <button class="btn btn-primary" onclick="connectOAuth('google')">Connect</button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Pinterest -->
+            <div class="platform-card {% if connections.pinterest %}connected{% endif %}">
+                <div class="platform-header">
+                    <div class="platform-name">Pinterest</div>
+                    <span class="status-badge {% if connections.pinterest %}status-connected{% else %}status-disconnected{% endif %}">
+                        {% if connections.pinterest %}Connected{% else %}Not Connected{% endif %}
+                    </span>
+                </div>
+                <div class="platform-info">
+                    Pinterest Pins API & Catalogs
+                </div>
+                <div class="platform-actions">
+                    {% if connections.pinterest %}
+                        <button class="btn btn-secondary" onclick="window.location.href='/api/feeds/pinterest?format=csv'">Download Feed</button>
+                        <button class="btn btn-danger" onclick="disconnectPlatform('pinterest')">Disconnect</button>
+                    {% else %}
+                        <button class="btn btn-primary" onclick="connectOAuth('pinterest')">Connect</button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Poshmark -->
+            <div class="platform-card">
+                <div class="platform-header">
+                    <div class="platform-name">Poshmark</div>
+                    <span class="status-badge status-disconnected">CSV Upload</span>
+                </div>
+                <div class="platform-info">
+                    CSV bulk upload (manual upload to Poshmark)
+                </div>
+                <div class="platform-actions">
+                    <button class="btn btn-primary" onclick="window.location.href='/api/export-csv?platform=poshmark'">Download CSV</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleForm(formId) {
+            const form = document.getElementById(formId);
+            form.classList.toggle('active');
+        }
+
+        function connectOAuth(platform) {
+            // Redirect to OAuth flow
+            window.location.href = `/api/platform/${platform}/oauth`;
+        }
+
+        async function connectAPIKey(event, platform) {
+            event.preventDefault();
+            const form = event.target;
+            const formData = new FormData(form);
+            const data = Object.fromEntries(formData.entries());
+
+            try {
+                const response = await fetch(`/api/platform/${platform}/connect`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    alert(`${platform} connected successfully!`);
+                    window.location.reload();
+                } else {
+                    alert(`Error: ${result.error}`);
+                }
+            } catch (error) {
+                alert(`Connection failed: ${error.message}`);
+            }
+        }
+
+        async function disconnectPlatform(platform) {
+            if (!confirm(`Disconnect from ${platform}?`)) return;
+
+            try {
+                const response = await fetch(`/api/platform/${platform}/disconnect`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    alert(`Disconnected from ${platform}`);
+                    window.location.reload();
+                } else {
+                    alert(`Error: ${result.error}`);
+                }
+            } catch (error) {
+                alert(`Disconnection failed: ${error.message}`);
+            }
+        }
+    </script>
+</body>
+</html>

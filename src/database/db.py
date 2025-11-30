@@ -135,16 +135,24 @@ class Database:
             # Try with sslmode=prefer to allow fallback if SSL fails
             connection_params = self.database_url
 
-            # Ensure we have proper SSL mode set
+            # Ensure we have proper SSL mode set - use 'require' for better stability
             if '?' not in connection_params:
-                connection_params += '?sslmode=prefer'
-            elif 'sslmode=' not in connection_params:
-                connection_params += '&sslmode=prefer'
+                connection_params += '?sslmode=require&connect_timeout=10'
+            else:
+                if 'sslmode=' not in connection_params:
+                    connection_params += '&sslmode=require'
+                if 'connect_timeout=' not in connection_params:
+                    connection_params += '&connect_timeout=10'
 
-            # Simple connection without keepalives (they can cause SSL issues)
+            # Connection with keepalive settings to prevent SSL drops
+            # Parse connection string and add keepalive parameters
             self.conn = psycopg2.connect(
                 connection_params,
-                connect_timeout=10  # Reduced from 30 for faster failure/retry
+                connect_timeout=10,
+                keepalives=1,
+                keepalives_idle=30,
+                keepalives_interval=10,
+                keepalives_count=3
             )
 
             # Set autocommit BEFORE executing any SQL
@@ -157,33 +165,62 @@ class Database:
 
     def _ensure_connection(self):
         """Ensure database connection is alive, reconnect if needed"""
-        try:
-            # Test if connection is alive
-            if self.conn is None or self.conn.closed:
-                print("⚠️  Connection lost, reconnecting...")
-                self._connect()
-                return
-
-            # Test with a simple query
-            cursor = self.conn.cursor()
+        max_retries = 3
+        for attempt in range(max_retries):
             try:
-                cursor.execute("SELECT 1")
-                cursor.close()
-            except psycopg2.errors.InFailedSqlTransaction:
-                # Transaction is in failed state, rollback and retry
-                self.conn.rollback()
+                # Test if connection is alive
+                if self.conn is None or self.conn.closed:
+                    print("⚠️  Connection lost, reconnecting...")
+                    self._connect()
+                    return
+
+                # Test with a simple query
                 cursor = self.conn.cursor()
-                cursor.execute("SELECT 1")
-                cursor.close()
+                try:
+                    cursor.execute("SELECT 1")
+                    cursor.close()
+                    return  # Connection is good
+                except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                    cursor.close()
+                    raise  # Re-raise to trigger reconnect
+                except psycopg2.errors.InFailedSqlTransaction:
+                    # Transaction is in failed state, rollback and retry
+                    try:
+                        self.conn.rollback()
+                        cursor = self.conn.cursor()
+                        cursor.execute("SELECT 1")
+                        cursor.close()
+                        return  # Connection is good after rollback
+                    except (psycopg2.OperationalError, psycopg2.InterfaceError):
+                        cursor.close()
+                        raise  # Re-raise to trigger reconnect
 
-        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
-            print(f"⚠️  Connection error detected: {e}, reconnecting...")
-            self._connect()
+            except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                print(f"⚠️  Connection error detected (attempt {attempt + 1}/{max_retries}): {e}, reconnecting...")
+                if attempt < max_retries - 1:
+                    try:
+                        if self.conn and not self.conn.closed:
+                            self.conn.close()
+                    except:
+                        pass
+                    time.sleep(0.5 * (attempt + 1))  # Exponential backoff
+                    self._connect()
+                else:
+                    # Last attempt failed, raise the error
+                    raise
 
-    def _get_cursor(self):
+    def _get_cursor(self, retries=3):
         """Get PostgreSQL cursor with RealDictCursor for dict-like row access"""
-        self._ensure_connection()
-        return self.conn.cursor(cursor_factory=self.cursor_factory)
+        for attempt in range(retries):
+            try:
+                self._ensure_connection()
+                return self.conn.cursor(cursor_factory=self.cursor_factory)
+            except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                if attempt < retries - 1:
+                    print(f"⚠️  Failed to get cursor (attempt {attempt + 1}/{retries}), retrying...")
+                    time.sleep(0.5 * (attempt + 1))
+                else:
+                    raise
 
     def _create_tables(self):
         """Create all database tables"""
@@ -1697,38 +1734,141 @@ class Database:
         return str(result['id'])  # Return UUID as string
 
     def get_user_by_username(self, username: str) -> Optional[Dict]:
-        """Get user by username"""
-        cursor = self._get_cursor()
-        cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
-        row = cursor.fetchone()
-        return dict(row) if row else None
+        """Get user by username with retry logic"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            cursor = None
+            try:
+                cursor = self._get_cursor()
+                cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+                row = cursor.fetchone()
+                if cursor:
+                    cursor.close()
+                return dict(row) if row else None
+            except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                if cursor:
+                    try:
+                        cursor.close()
+                    except:
+                        pass
+                if attempt < max_retries - 1:
+                    print(f"⚠️  Database connection error in get_user_by_username (attempt {attempt + 1}/{max_retries}), retrying...")
+                    time.sleep(0.5 * (attempt + 1))
+                    try:
+                        if self.conn and not self.conn.closed:
+                            self.conn.close()
+                    except:
+                        pass
+                    self._connect()
+                else:
+                    print(f"❌ Failed to get user by username after {max_retries} attempts: {e}")
+                    return None
+            except Exception as e:
+                if cursor:
+                    try:
+                        cursor.close()
+                    except:
+                        pass
+                print(f"Unexpected error in get_user_by_username: {e}")
+                return None
 
     def get_user_by_email(self, email: str) -> Optional[Dict]:
-        """Get user by email"""
-        cursor = self._get_cursor()
-        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
-        row = cursor.fetchone()
-        return dict(row) if row else None
+        """Get user by email with retry logic"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            cursor = None
+            try:
+                cursor = self._get_cursor()
+                cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+                row = cursor.fetchone()
+                if cursor:
+                    cursor.close()
+                return dict(row) if row else None
+            except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                if cursor:
+                    try:
+                        cursor.close()
+                    except:
+                        pass
+                if attempt < max_retries - 1:
+                    print(f"⚠️  Database connection error in get_user_by_email (attempt {attempt + 1}/{max_retries}), retrying...")
+                    time.sleep(0.5 * (attempt + 1))
+                    try:
+                        if self.conn and not self.conn.closed:
+                            self.conn.close()
+                    except:
+                        pass
+                    self._connect()
+                else:
+                    print(f"❌ Failed to get user by email after {max_retries} attempts: {e}")
+                    return None
+            except Exception as e:
+                if cursor:
+                    try:
+                        cursor.close()
+                    except:
+                        pass
+                print(f"Unexpected error in get_user_by_email: {e}")
+                return None
 
     def get_user_by_id(self, user_id) -> Optional[Dict]:
-        """Get user by ID (UUID)"""
-        cursor = self._get_cursor()
-        try:
-            # Ensure user_id is a string UUID
-            user_id_str = str(user_id) if user_id else None
-            if not user_id_str:
+        """Get user by ID (UUID) with retry logic for connection issues"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            cursor = None
+            try:
+                # Ensure user_id is a string UUID
+                user_id_str = str(user_id) if user_id else None
+                if not user_id_str:
+                    return None
+                
+                cursor = self._get_cursor()
+                cursor.execute("SELECT * FROM users WHERE id::text = %s", (user_id_str,))
+                row = cursor.fetchone()
+                if cursor:
+                    cursor.close()
+                
+                if row:
+                    result = dict(row)
+                    # Ensure id is returned as string UUID
+                    result['id'] = str(result['id'])
+                    return result
                 return None
-            cursor.execute("SELECT * FROM users WHERE id::text = %s", (user_id_str,))
-            row = cursor.fetchone()
-            if row:
-                result = dict(row)
-                # Ensure id is returned as string UUID
-                result['id'] = str(result['id'])
-                return result
-            return None
-        except (ValueError, TypeError) as e:
-            print(f"Invalid user_id format: {user_id}, error: {e}")
-            return None
+            except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                if cursor:
+                    try:
+                        cursor.close()
+                    except:
+                        pass
+                if attempt < max_retries - 1:
+                    print(f"⚠️  Database connection error in get_user_by_id (attempt {attempt + 1}/{max_retries}), retrying...")
+                    time.sleep(0.5 * (attempt + 1))
+                    # Force reconnection
+                    try:
+                        if self.conn and not self.conn.closed:
+                            self.conn.close()
+                    except:
+                        pass
+                    self._connect()
+                else:
+                    print(f"❌ Failed to get user after {max_retries} attempts: {e}")
+                    return None
+            except (ValueError, TypeError) as e:
+                if cursor:
+                    try:
+                        cursor.close()
+                    except:
+                        pass
+                print(f"Invalid user_id format: {user_id}, error: {e}")
+                return None
+            except Exception as e:
+                if cursor:
+                    try:
+                        cursor.close()
+                    except:
+                        pass
+                print(f"Unexpected error in get_user_by_id: {e}")
+                return None
 
     def update_last_login(self, user_id):
         """Update user's last login timestamp - user_id is UUID"""

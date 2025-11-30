@@ -4,6 +4,7 @@ All SQLite code removed - PostgreSQL only
 """
 
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -30,40 +31,91 @@ class Database:
         self.cursor_factory = psycopg2.extras.RealDictCursor
         self.conn = None
 
-        # Establish initial connection
-        self._connect()
+        # Establish initial connection with retry
+        max_retries = 3
+        for retry in range(max_retries):
+            try:
+                self._connect()
+                break  # Success
+            except Exception as e:
+                if retry < max_retries - 1:
+                    wait_time = (retry + 1) * 2
+                    print(f"⏳ Initial connection failed, retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"❌ Failed to connect after {max_retries} retries")
+                    raise
 
         # Ensure OAuth columns exist (automatic migration)
         self._ensure_oauth_columns()
 
     def _ensure_oauth_columns(self):
         """Ensure OAuth-related columns exist in users table (automatic migration)"""
-        try:
-            cursor = self._get_cursor()
+        max_retries = 3
+        retry_count = 0
 
-            # Add supabase_uid column if it doesn't exist
-            cursor.execute("""
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS supabase_uid TEXT;
-            """)
+        while retry_count < max_retries:
+            try:
+                cursor = self._get_cursor()
 
-            # Add oauth_provider column if it doesn't exist
-            cursor.execute("""
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_provider TEXT;
-            """)
+                # Add supabase_uid column if it doesn't exist
+                cursor.execute("""
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS supabase_uid TEXT;
+                """)
 
-            # Make password_hash nullable for OAuth users
-            cursor.execute("""
-                ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
-            """)
+                # Add oauth_provider column if it doesn't exist
+                cursor.execute("""
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_provider TEXT;
+                """)
 
-            self.conn.commit()
-            cursor.close()
-            print("✅ OAuth columns migration complete")
+                # Make password_hash nullable for OAuth users
+                cursor.execute("""
+                    ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+                """)
 
-        except Exception as e:
-            if self.conn:
-                self.conn.rollback()
-            print(f"Note: OAuth columns migration: {e}")
+                self.conn.commit()
+                cursor.close()
+                print("✅ OAuth columns migration complete")
+                return  # Success, exit
+
+            except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                # Connection errors - retry with reconnection
+                retry_count += 1
+                print(f"⚠️  Connection error detected: {e}, reconnecting...")
+
+                # Try to rollback if connection still exists
+                try:
+                    if self.conn and not self.conn.closed:
+                        self.conn.rollback()
+                except:
+                    pass
+
+                # Wait before retry (exponential backoff)
+                if retry_count < max_retries:
+                    wait_time = retry_count * 2  # 2s, 4s, 6s
+                    print(f"⏳ Waiting {wait_time}s before retry {retry_count}/{max_retries}...")
+                    time.sleep(wait_time)
+
+                    # Reconnect before retrying
+                    try:
+                        self._connect()
+                    except Exception as conn_err:
+                        print(f"⚠️  Reconnection failed: {conn_err}")
+                        if retry_count >= max_retries - 1:
+                            raise
+                else:
+                    print(f"❌ OAuth migration failed after {max_retries} retries")
+                    raise
+
+            except Exception as e:
+                # Other errors - try to rollback and log
+                try:
+                    if self.conn and not self.conn.closed:
+                        self.conn.rollback()
+                except:
+                    pass
+                print(f"Note: OAuth columns migration: {e}")
+                return  # Non-critical, continue
 
     def _connect(self):
         """Establish or re-establish PostgreSQL connection"""

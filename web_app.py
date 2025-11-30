@@ -11,6 +11,7 @@ This file serves as the entry point that:
 """
 
 import os
+import sys
 from pathlib import Path
 from functools import wraps
 from flask import Flask, render_template, redirect, url_for, flash
@@ -18,10 +19,13 @@ from flask_login import LoginManager, UserMixin, login_required, current_user
 from werkzeug.security import generate_password_hash
 from dotenv import load_dotenv
 
+print("🚀 Starting AI Cross-Poster web app...", flush=True)
+
 from src.database import get_db
 
 # Load environment
 load_dotenv()
+print("✅ Environment loaded", flush=True)
 
 # ============================================================================
 # FLASK APP INITIALIZATION
@@ -144,16 +148,30 @@ from routes_main import main_bp, init_routes as init_main
 
 # Initialize blueprints with database instance and User class
 # Database is created lazily on first blueprint init
-init_auth(get_db_instance(), User)
-init_admin(get_db_instance())
-init_cards(get_db_instance())
-init_main(get_db_instance())
+try:
+    print("🔌 Initializing database connection...", flush=True)
+    db_instance = get_db_instance()
+    print("✅ Database connected successfully", flush=True)
+
+    print("📝 Initializing route blueprints...", flush=True)
+    init_auth(db_instance, User)
+    init_admin(db_instance)
+    init_cards(db_instance)
+    init_main(db_instance)
+    print("✅ Blueprints initialized", flush=True)
+except Exception as e:
+    print(f"❌ FATAL ERROR during initialization: {e}", flush=True)
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
 
 # Register blueprints
 app.register_blueprint(auth_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(cards_bp)
 app.register_blueprint(main_bp)
+
+print("✅ Flask app initialized and ready to serve requests", flush=True)
 
 # ============================================================================
 # MAIN ROUTES (not in blueprints)

@@ -1271,6 +1271,10 @@ async function saveListing(status = 'draft') {
     // include uploaded server photo paths
     formData.photos = uploadedPhotos;
     formData.status = status;
+    // Include AI analysis data if available
+    if (enhancedAnalysisData) {
+        formData.enhanced_analysis = enhancedAnalysisData;
+    }
     showLoading();
 
     try {

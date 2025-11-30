@@ -559,6 +559,54 @@ def api_save_draft():
 
         listing_uuid = data.get('listing_uuid') or str(uuid.uuid4())
 
+        # Handle AI analysis data if present
+        collectible_id = None
+        enhanced_analysis = data.get('enhanced_analysis')
+        if enhanced_analysis:
+            # Extract key info from enhanced analysis
+            name = title  # Use listing title as collectible name
+            category_val = item_type
+            brand = attributes.get('brand') if attributes else None
+
+            # Extract values from enhanced analysis
+            condition_val = condition
+            value_low = None
+            value_high = None
+            if enhanced_analysis.get('market_analysis'):
+                market = enhanced_analysis['market_analysis']
+                value_low = market.get('estimated_value_low')
+                value_high = market.get('estimated_value_high')
+
+            # Get historical context
+            year_val = None
+            if enhanced_analysis.get('historical_context'):
+                year_val = enhanced_analysis['historical_context'].get('release_year')
+
+            # Get authentication confidence
+            confidence = 0.0
+            if enhanced_analysis.get('authentication'):
+                confidence = enhanced_analysis['authentication'].get('confidence_score', 0.0)
+
+            # Create collectible entry
+            collectible_id = db.add_collectible(
+                name=name,
+                category=category_val,
+                brand=brand,
+                year=year_val,
+                condition=condition_val,
+                estimated_value_low=value_low,
+                estimated_value_high=value_high,
+                market_data=enhanced_analysis.get('market_analysis'),
+                attributes=enhanced_analysis.get('rarity'),
+                image_urls=photos,
+                identified_by='claude',
+                confidence_score=confidence,
+                notes=description
+            )
+
+            # Save deep analysis to collectible
+            db.save_deep_analysis(collectible_id, enhanced_analysis)
+
         # Create listing in DB
         listing_id = db.create_listing(
             listing_uuid=listing_uuid,
@@ -568,6 +616,7 @@ def api_save_draft():
             condition=condition,
             photos=photos,
             user_id=current_user.id,
+            collectible_id=collectible_id,
             cost=cost,
             category=item_type,
             attributes=attributes,

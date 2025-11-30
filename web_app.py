@@ -108,14 +108,20 @@ login_manager.login_message = 'Please log in to access this page.'
 
 @login_manager.user_loader
 def load_user(user_id):
-    """Load user for Flask-Login"""
+    """Load user for Flask-Login - user_id is UUID string"""
     try:
-        # Keep user_id as string (UUID from Supabase)
-        # Don't convert to int - users.id is UUID in Supabase
-        user_id = str(user_id)
-        return User.get(user_id)
+        # user_id is UUID string in PostgreSQL
+        user_id_str = str(user_id) if user_id else None
+        if not user_id_str:
+            return None
+        return User.get(user_id_str)
+    except (ValueError, TypeError) as e:
+        print(f"Error loading user (invalid user_id): {e}")
+        return None
     except Exception as e:
         print(f"Error loading user: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 # ============================================================================
@@ -197,9 +203,21 @@ def create_listing():
 @login_required
 def drafts():
     """Drafts page"""
-    # Fetch all drafts for current user
-    drafts_list = get_db_instance().get_drafts(user_id=current_user.id, limit=100)
-    return render_template('drafts.html', drafts=drafts_list)
+    try:
+        # Fetch all drafts for current user - user_id is UUID
+        user_id_str = str(current_user.id) if current_user and current_user.id else None
+        if not user_id_str:
+            flash("User not authenticated", "error")
+            return redirect(url_for('auth.login'))
+        
+        drafts_list = get_db_instance().get_drafts(user_id=user_id_str, limit=100)
+        return render_template('drafts.html', drafts=drafts_list)
+    except Exception as e:
+        print(f"Error loading drafts page: {e}")
+        import traceback
+        traceback.print_exc()
+        flash("Error loading drafts. Please try again.", "error")
+        return redirect(url_for('index'))
 
 @app.route('/listings')
 @login_required

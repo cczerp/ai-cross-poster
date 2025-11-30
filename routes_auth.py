@@ -57,9 +57,14 @@ def login():
             flash("Incorrect password.", "error")
             return render_template('login.html')
 
-        # Create User object for Flask-Login
+        # Create User object for Flask-Login - ensure id is UUID string
+        user_id_str = str(user_data['id']) if user_data.get('id') else None
+        if not user_id_str:
+            flash("Invalid user data. Please try again.", "error")
+            return render_template('login.html')
+        
         user = User(
-            user_data['id'],
+            user_id_str,
             user_data['username'],
             user_data['email'],
             user_data.get('is_admin', False),
@@ -73,9 +78,9 @@ def login():
         try:
             db.log_activity(
                 action="login",
-                user_id=user.id,
+                user_id=user_id_str,
                 resource_type="user",
-                resource_id=user.id,
+                resource_id=None,  # Don't use user.id as resource_id since it's UUID
                 ip_address=request.remote_addr,
                 user_agent=request.headers.get("User-Agent")
             )
@@ -125,8 +130,18 @@ def register():
     user_id = db.create_user(username, email, password_hash)
 
     user_data = db.get_user_by_id(user_id)
+    if not user_data:
+        flash("Failed to retrieve user data. Please try again.", "error")
+        return render_template('register.html')
+    
+    # Ensure id is UUID string
+    user_id_str = str(user_data['id']) if user_data.get('id') else None
+    if not user_id_str:
+        flash("Invalid user data. Please try again.", "error")
+        return render_template('register.html')
+    
     user = User(
-        user_data['id'],
+        user_id_str,
         user_data['username'],
         user_data['email'],
         user_data.get('is_admin', False),
@@ -137,9 +152,9 @@ def register():
 
     db.log_activity(
         action="register",
-        user_id=user.id,
+        user_id=user_id_str,
         resource_type="user",
-        resource_id=user.id,
+        resource_id=None,
         ip_address=request.remote_addr,
         user_agent=request.headers.get("User-Agent")
     )
@@ -211,8 +226,13 @@ def api_login():
     if not check_password_hash(user_data['password_hash'], password):
         return jsonify({"error": "Invalid password"}), 401
 
+    # Ensure id is UUID string
+    user_id_str = str(user_data['id']) if user_data.get('id') else None
+    if not user_id_str:
+        return jsonify({"error": "Invalid user data"}), 500
+    
     user = User(
-        user_data['id'],
+        user_id_str,
         user_data['username'],
         user_data['email'],
         user_data.get('is_admin', False),
@@ -223,9 +243,9 @@ def api_login():
 
     db.log_activity(
         action="api_login",
-        user_id=user.id,
+        user_id=user_id_str,
         resource_type="user",
-        resource_id=user.id,
+        resource_id=None,
         ip_address=request.remote_addr,
         user_agent=request.headers.get("User-Agent")
     )
@@ -489,9 +509,14 @@ def auth_callback():
                 flash("Failed to retrieve user account. Please try again.", "error")
                 return redirect(url_for('auth.login'))
 
-            # Create Flask-Login User object
+            # Create Flask-Login User object - ensure id is UUID string
+            user_id_str = str(local_user['id']) if local_user.get('id') else None
+            if not user_id_str:
+                flash("Invalid user data. Please try again.", "error")
+                return redirect(url_for('auth.login'))
+            
             user = User(
-                local_user['id'],
+                user_id_str,
                 local_user['username'],
                 local_user['email'],
                 local_user.get('is_admin', False),
@@ -506,9 +531,9 @@ def auth_callback():
             try:
                 db.log_activity(
                     action="google_login",
-                    user_id=user.id,
+                    user_id=user_id_str,
                     resource_type="user",
-                    resource_id=user.id,
+                    resource_id=None,
                     ip_address=request.remote_addr,
                     user_agent=request.headers.get("User-Agent")
                 )

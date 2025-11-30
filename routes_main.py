@@ -503,9 +503,16 @@ def api_edit_photo():
 def api_get_drafts():
     """Get all drafts for current user"""
     try:
-        drafts = db.get_drafts(user_id=current_user.id, limit=100)
+        user_id_str = str(current_user.id) if current_user and current_user.id else None
+        if not user_id_str:
+            return jsonify({"error": "User not authenticated"}), 401
+        
+        drafts = db.get_drafts(user_id=user_id_str, limit=100)
         return jsonify({"success": True, "drafts": drafts})
     except Exception as e:
+        print(f"Error getting drafts: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
@@ -623,7 +630,11 @@ def api_save_draft():
             # Save deep analysis to collectible
             db.save_deep_analysis(collectible_id, enhanced_analysis)
 
-        # Create listing in DB
+        # Create listing in DB - ensure user_id is UUID string
+        user_id_str = str(current_user.id) if current_user and current_user.id else None
+        if not user_id_str:
+            return jsonify({"error": "User not authenticated"}), 401
+
         listing_id = db.create_listing(
             listing_uuid=listing_uuid,
             title=title,
@@ -631,7 +642,7 @@ def api_save_draft():
             price=price,
             condition=condition,
             photos=photos,
-            user_id=current_user.id,
+            user_id=user_id_str,
             collectible_id=collectible_id,
             cost=cost,
             category=item_type,
@@ -646,6 +657,9 @@ def api_save_draft():
         return jsonify({"success": True, "listing_id": listing_id})
 
     except Exception as e:
+        print(f"Error saving draft: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 

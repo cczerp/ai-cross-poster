@@ -835,7 +835,17 @@ let detectedCardData = null; // Store card data if detected
 let enhancedAnalysisData = null; // Store enhanced collectible analysis
 
 document.getElementById('analyzeBtn').addEventListener('click', async function() {
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const originalText = analyzeBtn.innerHTML;
+    
+    // Show loading state
+    analyzeBtn.disabled = true;
+    analyzeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
     showLoading();
+
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000); // 60 second timeout
 
     try {
         // Try card analysis first
@@ -844,8 +854,15 @@ document.getElementById('analyzeBtn').addEventListener('click', async function()
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
                 photos: uploadedPhotos
-            })
+            }),
+            signal: controller.signal
         });
+
+        clearTimeout(timeout);
+
+        if (!cardResponse.ok) {
+            throw new Error(`Card analysis failed: ${cardResponse.statusText}`);
+        }
 
         const cardData = await cardResponse.json();
 
@@ -878,11 +895,22 @@ document.getElementById('analyzeBtn').addEventListener('click', async function()
             showAlert('Card detected and analyzed!', 'success');
         } else {
             // Not a card, do regular item analysis
+            // Create new abort controller for general analysis
+            const generalController = new AbortController();
+            const generalTimeout = setTimeout(() => generalController.abort(), 60000); // 60 second timeout
+            
             const response = await fetch('/api/analyze', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ photos: uploadedPhotos })
+                body: JSON.stringify({ photos: uploadedPhotos }),
+                signal: generalController.signal
             });
+
+            clearTimeout(generalTimeout);
+
+            if (!response.ok) {
+                throw new Error(`Analysis failed: ${response.statusText}`);
+            }
 
             const data = await response.json();
 
@@ -987,9 +1015,17 @@ document.getElementById('analyzeBtn').addEventListener('click', async function()
             }
         }
     } catch (error) {
-        showAlert('Analysis failed: ' + error, 'danger');
+        if (error.name === 'AbortError') {
+            showAlert('Analysis timed out. Please try again with fewer photos or check your connection.', 'warning');
+        } else {
+            console.error('Analysis error:', error);
+            showAlert('Analysis failed: ' + (error.message || error), 'danger');
+        }
     } finally {
+        clearTimeout(timeout);
         hideLoading();
+        analyzeBtn.disabled = false;
+        analyzeBtn.innerHTML = originalText;
     }
 });
 
@@ -1004,10 +1040,19 @@ function getDemandEmoji(demand) {
 // ========================================
 
 document.getElementById('enhancedAnalyzerBtn').addEventListener('click', async function() {
+    const enhancedBtn = document.getElementById('enhancedAnalyzerBtn');
+    const originalText = enhancedBtn.innerHTML;
+    
     // If we don't have enhanced data yet, try to get it
     if (!enhancedAnalysisData) {
+        enhancedBtn.disabled = true;
+        enhancedBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running Deep Analysis...';
         showLoading();
-        showAlert('Running enhanced analysis... This may take 10-15 seconds', 'info');
+        showAlert('Running enhanced analysis... This may take 10-30 seconds', 'info');
+
+        // Create abort controller for timeout
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 90000); // 90 second timeout for deep analysis
 
         try {
             const response = await fetch('/api/analyze', {
@@ -1016,8 +1061,15 @@ document.getElementById('enhancedAnalyzerBtn').addEventListener('click', async f
                 body: JSON.stringify({
                     photos: uploadedPhotos,
                     force_enhanced: true  // Request enhanced analysis even if not collectible
-                })
+                }),
+                signal: controller.signal
             });
+
+            clearTimeout(timeout);
+
+            if (!response.ok) {
+                throw new Error(`Enhanced analysis failed: ${response.statusText}`);
+            }
 
             const data = await response.json();
 
@@ -1037,13 +1089,22 @@ document.getElementById('enhancedAnalyzerBtn').addEventListener('click', async f
                 return;
             } else {
                 showAlert('Enhanced analysis not available for this item. This feature works best with collectibles, trading cards, and sports memorabilia.', 'warning');
+                enhancedBtn.disabled = false;
+                enhancedBtn.innerHTML = originalText;
+                hideLoading();
                 return;
             }
         } catch (error) {
-            showAlert('Enhanced analysis failed: ' + error, 'danger');
-            return;
-        } finally {
+            if (error.name === 'AbortError') {
+                showAlert('Enhanced analysis timed out. Please try again or use the basic analysis.', 'warning');
+            } else {
+                console.error('Enhanced analysis error:', error);
+                showAlert('Enhanced analysis failed: ' + (error.message || error), 'danger');
+            }
+            enhancedBtn.disabled = false;
+            enhancedBtn.innerHTML = originalText;
             hideLoading();
+            return;
         }
     }
 

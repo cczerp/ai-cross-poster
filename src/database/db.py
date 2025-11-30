@@ -189,10 +189,10 @@ class Database:
         """Create all database tables"""
         cursor = self._get_cursor()
 
-        # Users table - for authentication
+        # Users table - for authentication (UUID primary key)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 username TEXT UNIQUE NOT NULL,
                 email TEXT UNIQUE NOT NULL,
                 password_hash TEXT,
@@ -210,6 +210,15 @@ class Database:
                 last_login TIMESTAMP
             )
         """)
+        
+        # Enable UUID extension if not already enabled
+        try:
+            cursor.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            # Extension may already exist, which is fine
+            pass
 
         # Add supabase_uid column if it doesn't exist (migration)
         try:
@@ -245,7 +254,7 @@ class Database:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS marketplace_credentials (
                 id SERIAL PRIMARY KEY,
-                user_id INTEGER NOT NULL,
+                user_id UUID NOT NULL,
                 platform TEXT NOT NULL,
                 username TEXT,
                 password TEXT,
@@ -290,7 +299,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS listings (
                 id SERIAL PRIMARY KEY,
                 listing_uuid TEXT UNIQUE NOT NULL,
-                user_id INTEGER NOT NULL,
+                user_id UUID NOT NULL,
                 collectible_id INTEGER,
                 title TEXT NOT NULL,
                 description TEXT,
@@ -321,7 +330,7 @@ class Database:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS training_data (
                 id SERIAL PRIMARY KEY,
-                user_id INTEGER,
+                user_id UUID,
                 listing_id INTEGER,
                 collectible_id INTEGER,
                 photo_paths TEXT,
@@ -381,7 +390,7 @@ class Database:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS platform_activity (
                 id SERIAL PRIMARY KEY,
-                user_id INTEGER NOT NULL,
+                user_id UUID NOT NULL,
                 platform TEXT NOT NULL,
                 activity_type TEXT NOT NULL,
                 platform_listing_id TEXT,
@@ -430,7 +439,7 @@ class Database:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS storage_bins (
                 id SERIAL PRIMARY KEY,
-                user_id INTEGER NOT NULL,
+                user_id UUID NOT NULL,
                 bin_name TEXT NOT NULL,
                 bin_type TEXT NOT NULL,
                 description TEXT,
@@ -458,7 +467,7 @@ class Database:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS storage_items (
                 id SERIAL PRIMARY KEY,
-                user_id INTEGER NOT NULL,
+                user_id UUID NOT NULL,
                 storage_id TEXT UNIQUE NOT NULL,
                 bin_id INTEGER NOT NULL,
                 section_id INTEGER,
@@ -499,7 +508,7 @@ class Database:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS card_collections (
                 id SERIAL PRIMARY KEY,
-                user_id INTEGER NOT NULL,
+                user_id UUID NOT NULL,
                 card_uuid TEXT UNIQUE NOT NULL,
                 card_type TEXT NOT NULL,
                 title TEXT NOT NULL,
@@ -547,7 +556,7 @@ class Database:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS card_organization_presets (
                 id SERIAL PRIMARY KEY,
-                user_id INTEGER NOT NULL,
+                user_id UUID NOT NULL,
                 preset_name TEXT NOT NULL,
                 card_type_filter TEXT,
                 organization_mode TEXT NOT NULL,
@@ -564,7 +573,7 @@ class Database:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS card_custom_categories (
                 id SERIAL PRIMARY KEY,
-                user_id INTEGER NOT NULL,
+                user_id UUID NOT NULL,
                 category_name TEXT NOT NULL,
                 category_color TEXT,
                 category_icon TEXT,
@@ -634,7 +643,7 @@ class Database:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS activity_logs (
                 id SERIAL PRIMARY KEY,
-                user_id INTEGER,
+                user_id UUID,
                 action TEXT NOT NULL,
                 resource_type TEXT,
                 resource_id INTEGER,
@@ -1037,7 +1046,7 @@ class Database:
         price: float,
         condition: str,
         photos: List[str],
-        user_id,  # Can be UUID string or int
+        user_id,  # UUID string
         collectible_id: Optional[int] = None,
         cost: Optional[float] = None,
         category: Optional[str] = None,
@@ -1049,19 +1058,23 @@ class Database:
         upc: Optional[str] = None,
         status: str = 'draft',
     ) -> int:
-        """Create a new listing - user_id can be UUID or integer"""
+        """Create a new listing - user_id is UUID"""
         cursor = self._get_cursor()
 
-        # user_id is INTEGER in listings table
+        # user_id is UUID in listings table
+        user_id_str = str(user_id) if user_id else None
+        if not user_id_str:
+            raise ValueError("user_id is required and must be a valid UUID")
+        
         cursor.execute("""
             INSERT INTO listings (
                 listing_uuid, user_id, collectible_id, title, description, price,
                 cost, condition, category, item_type, attributes, photos, quantity,
                 storage_location, sku, upc, status
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, (
-            listing_uuid, int(user_id), collectible_id, title, description, price,
+            listing_uuid, user_id_str, collectible_id, title, description, price,
             cost, condition, category, item_type,
             json.dumps(attributes) if attributes else None,
             json.dumps(photos),
@@ -1090,34 +1103,42 @@ class Database:
         row = cursor.fetchone()
         return dict(row) if row else None
 
-    def get_drafts(self, limit: int = 100, user_id: Optional[int] = None) -> List[Dict]:
-        """Get all draft listings"""
+    def get_drafts(self, limit: int = 100, user_id: Optional[str] = None) -> List[Dict]:
+        """Get all draft listings - user_id is UUID string"""
         cursor = self._get_cursor()
-        if user_id is not None:
-            cursor.execute("""
-                SELECT * FROM listings
-                WHERE status = 'draft' AND user_id::text = %s::text
-                ORDER BY created_at DESC
-                LIMIT %s
-            """, (str(user_id), limit))
-        else:
-            cursor.execute("""
-                SELECT * FROM listings
-                WHERE status = 'draft'
-                ORDER BY created_at DESC
-                LIMIT %s
-            """, (limit,))
-        return [dict(row) for row in cursor.fetchall()]
+        try:
+            if user_id is not None:
+                user_id_str = str(user_id)
+                cursor.execute("""
+                    SELECT * FROM listings
+                    WHERE status = 'draft' AND user_id::text = %s
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                """, (user_id_str, limit))
+            else:
+                cursor.execute("""
+                    SELECT * FROM listings
+                    WHERE status = 'draft'
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                """, (limit,))
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            print(f"Error getting drafts: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
 
-    def get_active_listings(self, user_id: int, limit: int = 1000) -> List[Dict]:
-        """Get all active listings for a user"""
+    def get_active_listings(self, user_id: str, limit: int = 1000) -> List[Dict]:
+        """Get all active listings for a user - user_id is UUID string"""
         cursor = self._get_cursor()
+        user_id_str = str(user_id)
         cursor.execute("""
             SELECT * FROM listings
-            WHERE status = 'active' AND user_id = %s
+            WHERE status = 'active' AND user_id::text = %s
             ORDER BY created_at DESC
             LIMIT %s
-        """, (user_id, limit))
+        """, (user_id_str, limit))
         return [dict(row) for row in cursor.fetchall()]
 
     def update_listing_status(self, listing_id: int, status: str):
@@ -1662,13 +1683,15 @@ class Database:
     # ========================================================================
 
     def create_user(self, username: str, email: str, password_hash: str):
-        """Create a new user - returns UUID string"""
+        """Create a new user - returns UUID"""
+        import uuid
         cursor = self._get_cursor()
+        user_uuid = uuid.uuid4()
         cursor.execute("""
-            INSERT INTO users (username, email, password_hash)
-            VALUES (%s, %s, %s)
+            INSERT INTO users (id, username, email, password_hash)
+            VALUES (%s, %s, %s, %s)
             RETURNING id
-        """, (username, email, password_hash))
+        """, (str(user_uuid), username, email, password_hash))
         result = cursor.fetchone()
         self.conn.commit()
         return str(result['id'])  # Return UUID as string
@@ -1688,25 +1711,34 @@ class Database:
         return dict(row) if row else None
 
     def get_user_by_id(self, user_id) -> Optional[Dict]:
-        """Get user by ID (UUID string or int)"""
+        """Get user by ID (UUID)"""
         cursor = self._get_cursor()
-        cursor.execute("SELECT * FROM users WHERE id::text = %s::text", (str(user_id),))
-        row = cursor.fetchone()
-        if row:
-            result = dict(row)
-            # Ensure id is returned as string for consistency
-            result['id'] = str(result['id'])
-            return result
-        return None
+        try:
+            # Ensure user_id is a string UUID
+            user_id_str = str(user_id) if user_id else None
+            if not user_id_str:
+                return None
+            cursor.execute("SELECT * FROM users WHERE id::text = %s", (user_id_str,))
+            row = cursor.fetchone()
+            if row:
+                result = dict(row)
+                # Ensure id is returned as string UUID
+                result['id'] = str(result['id'])
+                return result
+            return None
+        except (ValueError, TypeError) as e:
+            print(f"Invalid user_id format: {user_id}, error: {e}")
+            return None
 
     def update_last_login(self, user_id):
-        """Update user's last login timestamp"""
+        """Update user's last login timestamp - user_id is UUID"""
         cursor = self._get_cursor()
+        user_id_str = str(user_id)
         cursor.execute("""
             UPDATE users
             SET last_login = CURRENT_TIMESTAMP
-            WHERE id::text = %s::text
-        """, (str(user_id),))
+            WHERE id::text = %s
+        """, (user_id_str,))
         self.conn.commit()
 
     def update_notification_email(self, user_id: int, notification_email: str):
@@ -1727,28 +1759,31 @@ class Database:
         row = cursor.fetchone()
         return dict(row) if row else None
 
-    def create_oauth_user(self, username: str, email: str, supabase_uid: str, oauth_provider: str) -> int:
-        """Create a new OAuth user (no password)"""
+    def create_oauth_user(self, username: str, email: str, supabase_uid: str, oauth_provider: str) -> str:
+        """Create a new OAuth user (no password) - returns UUID string"""
+        import uuid
         cursor = self._get_cursor()
+        user_uuid = uuid.uuid4()
         cursor.execute("""
-            INSERT INTO users (username, email, supabase_uid, oauth_provider, email_verified)
-            VALUES (%s, %s, %s, %s, TRUE)
+            INSERT INTO users (id, username, email, supabase_uid, oauth_provider, email_verified)
+            VALUES (%s, %s, %s, %s, %s, TRUE)
             RETURNING id
-        """, (username, email, supabase_uid, oauth_provider))
+        """, (str(user_uuid), username, email, supabase_uid, oauth_provider))
         result = cursor.fetchone()
         self.conn.commit()
-        return result['id']
+        return str(result['id'])
 
-    def link_supabase_account(self, user_id: int, supabase_uid: str, oauth_provider: str):
-        """Link an existing user account to Supabase OAuth"""
+    def link_supabase_account(self, user_id: str, supabase_uid: str, oauth_provider: str):
+        """Link an existing user account to Supabase OAuth - user_id is UUID"""
         cursor = self._get_cursor()
+        user_id_str = str(user_id)
         cursor.execute("""
             UPDATE users
             SET supabase_uid = %s,
                 oauth_provider = %s,
                 email_verified = TRUE
-            WHERE id = %s
-        """, (supabase_uid, oauth_provider, user_id))
+            WHERE id::text = %s
+        """, (supabase_uid, oauth_provider, user_id_str))
         self.conn.commit()
 
     # ========================================================================
@@ -1756,48 +1791,52 @@ class Database:
     # ========================================================================
 
     def save_marketplace_credentials(self, user_id, platform: str, username: str, password: str):
-        """Save or update marketplace credentials - user_id can be UUID or int"""
+        """Save or update marketplace credentials - user_id is UUID"""
         cursor = self._get_cursor()
+        user_id_str = str(user_id)
 
         cursor.execute("""
             INSERT INTO marketplace_credentials
             (user_id, platform, username, password, updated_at)
-            VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+            VALUES (%s::uuid, %s, %s, %s, CURRENT_TIMESTAMP)
             ON CONFLICT (user_id, platform) DO UPDATE SET
                 username = EXCLUDED.username,
                 password = EXCLUDED.password,
                 updated_at = CURRENT_TIMESTAMP
-        """, (int(user_id), platform, username, password))
+        """, (user_id_str, platform, username, password))
 
         self.conn.commit()
 
-    def get_marketplace_credentials(self, user_id: int, platform: str) -> Optional[Dict]:
-        """Get marketplace credentials for a specific platform"""
+    def get_marketplace_credentials(self, user_id: str, platform: str) -> Optional[Dict]:
+        """Get marketplace credentials for a specific platform - user_id is UUID"""
         cursor = self._get_cursor()
+        user_id_str = str(user_id)
         cursor.execute("""
             SELECT * FROM marketplace_credentials
-            WHERE user_id::text = %s::text AND platform = %s
-        """, (str(user_id), platform))
+            WHERE user_id::text = %s AND platform = %s
+        """, (user_id_str, platform))
         row = cursor.fetchone()
         return dict(row) if row else None
 
-    def get_all_marketplace_credentials(self, user_id: int) -> List[Dict]:
-        """Get all marketplace credentials for a user"""
+    def get_all_marketplace_credentials(self, user_id: str) -> List[Dict]:
+        """Get all marketplace credentials for a user - user_id is UUID"""
         cursor = self._get_cursor()
+        user_id_str = str(user_id)
         cursor.execute("""
             SELECT * FROM marketplace_credentials
-            WHERE user_id::text = %s::text
+            WHERE user_id::text = %s
             ORDER BY platform
-        """, (str(user_id),))
+        """, (user_id_str,))
         return [dict(row) for row in cursor.fetchall()]
 
-    def delete_marketplace_credentials(self, user_id: int, platform: str):
-        """Delete marketplace credentials for a platform"""
+    def delete_marketplace_credentials(self, user_id: str, platform: str):
+        """Delete marketplace credentials for a platform - user_id is UUID"""
         cursor = self._get_cursor()
+        user_id_str = str(user_id)
         cursor.execute("""
             DELETE FROM marketplace_credentials
-            WHERE user_id::text = %s::text AND platform = %s
-        """, (str(user_id), platform))
+            WHERE user_id::text = %s AND platform = %s
+        """, (user_id_str, platform))
         self.conn.commit()
 
     # ========================================================================
@@ -1807,24 +1846,26 @@ class Database:
     def log_activity(
         self,
         action: str,
-        user_id: Optional[int] = None,
+        user_id: Optional[str] = None,
         resource_type: Optional[str] = None,
         resource_id: Optional[int] = None,
         details: Optional[Dict] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
     ):
-        """Log a user activity - skip if UUID conversion fails"""
+        """Log a user activity - user_id is UUID string"""
         try:
             cursor = self._get_cursor()
-            # Set user_id to NULL since activity_logs expects UUID but we have integer
+            user_id_uuid = None
+            if user_id:
+                user_id_uuid = str(user_id)
             cursor.execute("""
                 INSERT INTO activity_logs (
                     user_id, action, resource_type, resource_id, details,
                     ip_address, user_agent
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ) VALUES (%s::uuid, %s, %s, %s, %s, %s, %s)
             """, (
-                None,  # Skip user_id for now due to UUID/INTEGER mismatch
+                user_id_uuid,
                 action, resource_type, resource_id,
                 json.dumps(details) if details else None,
                 ip_address, user_agent
@@ -1837,19 +1878,19 @@ class Database:
 
     def get_activity_logs(
         self,
-        user_id: Optional[int] = None,
+        user_id: Optional[str] = None,
         action: Optional[str] = None,
         limit: int = 100,
         offset: int = 0
     ) -> List[Dict]:
-        """Get activity logs with optional filters"""
+        """Get activity logs with optional filters - user_id is UUID"""
         cursor = self._get_cursor()
         sql = "SELECT * FROM activity_logs WHERE 1=1"
         params = []
 
         if user_id is not None:
-            sql += " AND user_id = %s"
-            params.append(user_id)
+            sql += " AND user_id::text = %s"
+            params.append(str(user_id))
 
         if action:
             sql += " AND action = %s"

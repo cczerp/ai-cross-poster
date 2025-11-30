@@ -31,27 +31,28 @@ class Database:
         self.cursor_factory = psycopg2.extras.RealDictCursor
         self.conn = None
 
-        # Establish initial connection with retry
-        max_retries = 3
+        # Establish initial connection with retry (fast for startup)
+        max_retries = 5
         for retry in range(max_retries):
             try:
                 self._connect()
                 break  # Success
             except Exception as e:
                 if retry < max_retries - 1:
-                    wait_time = (retry + 1) * 2
-                    print(f"⏳ Initial connection failed, retrying in {wait_time}s...")
+                    wait_time = 0.5  # Fast retries for startup
+                    print(f"⏳ Initial connection failed, retrying in {wait_time}s... (attempt {retry + 1}/{max_retries})")
                     time.sleep(wait_time)
                 else:
                     print(f"❌ Failed to connect after {max_retries} retries")
                     raise
 
         # Ensure OAuth columns exist (automatic migration)
+        # This is non-critical, so we don't block startup if it fails
         self._ensure_oauth_columns()
 
     def _ensure_oauth_columns(self):
         """Ensure OAuth-related columns exist in users table (automatic migration)"""
-        max_retries = 3
+        max_retries = 2  # Reduced retries for faster startup
         retry_count = 0
 
         while retry_count < max_retries:
@@ -81,7 +82,7 @@ class Database:
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
                 # Connection errors - retry with reconnection
                 retry_count += 1
-                print(f"⚠️  Connection error detected: {e}, reconnecting...")
+                print(f"⚠️  Migration connection error: {e}")
 
                 # Try to rollback if connection still exists
                 try:
@@ -90,22 +91,24 @@ class Database:
                 except:
                     pass
 
-                # Wait before retry (exponential backoff)
+                # Fast retry for startup
                 if retry_count < max_retries:
-                    wait_time = retry_count * 2  # 2s, 4s, 6s
-                    print(f"⏳ Waiting {wait_time}s before retry {retry_count}/{max_retries}...")
+                    wait_time = 0.5
+                    print(f"⏳ Retrying migration in {wait_time}s... (attempt {retry_count}/{max_retries})")
                     time.sleep(wait_time)
 
                     # Reconnect before retrying
                     try:
                         self._connect()
                     except Exception as conn_err:
-                        print(f"⚠️  Reconnection failed: {conn_err}")
-                        if retry_count >= max_retries - 1:
-                            raise
+                        print(f"⚠️  Migration reconnection failed: {conn_err}")
+                        # Don't raise - allow app to start
+                        print(f"⚠️  Skipping OAuth migration - will retry on next request")
+                        return
                 else:
-                    print(f"❌ OAuth migration failed after {max_retries} retries")
-                    raise
+                    # Don't block startup - migration can happen later
+                    print(f"⚠️  OAuth migration failed after {max_retries} retries - skipping for now")
+                    return
 
             except Exception as e:
                 # Other errors - try to rollback and log
@@ -126,41 +129,30 @@ class Database:
                 except:
                     pass
 
-            print("🐘 Connecting to PostgreSQL database...")
+            print("🐘 Connecting to PostgreSQL database...", flush=True)
 
-            # Check if using Supabase pooler (don't use keepalives with pooler)
-            is_supabase_pooler = 'pooler.supabase.com' in self.database_url
+            # Use shorter timeout for faster startup
+            # Try with sslmode=prefer to allow fallback if SSL fails
+            connection_params = self.database_url
 
-            if is_supabase_pooler:
-                # Supabase pooler - add sslmode for transaction pooling
-                connection_params = self.database_url
+            # Ensure we have proper SSL mode set
+            if '?' not in connection_params:
+                connection_params += '?sslmode=prefer'
+            elif 'sslmode=' not in connection_params:
+                connection_params += '&sslmode=prefer'
 
-                # Add sslmode=require if not present
-                if '?' not in connection_params:
-                    connection_params += '?sslmode=require'
-                elif 'sslmode=' not in connection_params:
-                    connection_params += '&sslmode=require'
-
-                self.conn = psycopg2.connect(
-                    connection_params,
-                    connect_timeout=30
-                )
-            else:
-                # Direct connection - use keepalives
-                self.conn = psycopg2.connect(
-                    self.database_url,
-                    connect_timeout=30,
-                    keepalives=1,
-                    keepalives_idle=30,
-                    keepalives_interval=10,
-                    keepalives_count=5
-                )
+            # Simple connection without keepalives (they can cause SSL issues)
+            self.conn = psycopg2.connect(
+                connection_params,
+                connect_timeout=10  # Reduced from 30 for faster failure/retry
+            )
 
             # Set autocommit BEFORE executing any SQL
             self.conn.autocommit = False
+            print("✅ Database connection established", flush=True)
 
         except Exception as e:
-            print(f"❌ Failed to connect to PostgreSQL: {e}")
+            print(f"❌ Failed to connect to PostgreSQL: {e}", flush=True)
             raise
 
     def _ensure_connection(self):

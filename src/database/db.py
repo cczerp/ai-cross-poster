@@ -36,7 +36,25 @@ class Database:
         for retry in range(max_retries):
             try:
                 self._connect()
-                break  # Success
+                # Verify connection with a simple query after a brief delay
+                time.sleep(0.2)  # Small delay to let connection stabilize
+                try:
+                    cursor = self.conn.cursor()
+                    cursor.execute("SELECT 1")
+                    cursor.close()
+                    break  # Success
+                except (psycopg2.OperationalError, psycopg2.InterfaceError) as verify_error:
+                    # Connection verified but might have issues, try again
+                    print(f"⚠️  Connection verification failed: {verify_error}")
+                    if self.conn:
+                        try:
+                            self.conn.close()
+                        except:
+                            pass
+                    if retry < max_retries - 1:
+                        time.sleep(0.5)
+                    else:
+                        raise
             except Exception as e:
                 if retry < max_retries - 1:
                     wait_time = 0.5  # Fast retries for startup
@@ -48,6 +66,8 @@ class Database:
 
         # Ensure OAuth columns exist (automatic migration)
         # This is non-critical, so we don't block startup if it fails
+        # Add small delay to let initial connection stabilize before migration
+        time.sleep(0.2)
         self._ensure_oauth_columns()
 
     def _ensure_oauth_columns(self):
@@ -75,14 +95,21 @@ class Database:
                 """)
 
                 self.conn.commit()
-                cursor.close()
+                if cursor:
+                    cursor.close()
                 print("✅ OAuth columns migration complete")
                 return  # Success, exit
 
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
                 # Connection errors - retry with reconnection
+                if cursor:
+                    try:
+                        cursor.close()
+                    except:
+                        pass
                 retry_count += 1
-                print(f"⚠️  Migration connection error: {e}")
+                if retry_count == 1:  # Only log first attempt to reduce noise
+                    print(f"⚠️  Migration connection error: {type(e).__name__}")
 
                 # Try to rollback if connection still exists
                 try:
@@ -93,17 +120,24 @@ class Database:
 
                 # Fast retry for startup
                 if retry_count < max_retries:
-                    wait_time = 0.5
-                    print(f"⏳ Retrying migration in {wait_time}s... (attempt {retry_count}/{max_retries})")
+                    wait_time = 0.5 * retry_count  # Progressive backoff
+                    if retry_count < 2:  # Only log first retry
+                        print(f"⏳ Retrying migration in {wait_time:.1f}s... (attempt {retry_count}/{max_retries})")
                     time.sleep(wait_time)
 
                     # Reconnect before retrying
                     try:
+                        if self.conn and not self.conn.closed:
+                            self.conn.close()
+                    except:
+                        pass
+                    try:
                         self._connect()
+                        time.sleep(0.2)  # Let connection stabilize
                     except Exception as conn_err:
-                        print(f"⚠️  Migration reconnection failed: {conn_err}")
-                        # Don't raise - allow app to start
-                        print(f"⚠️  Skipping OAuth migration - will retry on next request")
+                        if retry_count >= max_retries - 1:  # Only log if this is final attempt
+                            print(f"⚠️  Migration reconnection failed: {conn_err}")
+                            print(f"⚠️  Skipping OAuth migration - will retry on next request")
                         return
                 else:
                     # Don't block startup - migration can happen later
@@ -112,12 +146,18 @@ class Database:
 
             except Exception as e:
                 # Other errors - try to rollback and log
+                if cursor:
+                    try:
+                        cursor.close()
+                    except:
+                        pass
                 try:
                     if self.conn and not self.conn.closed:
                         self.conn.rollback()
                 except:
                     pass
-                print(f"Note: OAuth columns migration: {e}")
+                # Don't log non-critical migration errors during startup
+                # print(f"Note: OAuth columns migration: {e}")
                 return  # Non-critical, continue
 
     def _connect(self):
@@ -145,15 +185,24 @@ class Database:
                     connection_params += '&connect_timeout=10'
 
             # Connection with keepalive settings to prevent SSL drops
-            # Parse connection string and add keepalive parameters
-            self.conn = psycopg2.connect(
-                connection_params,
-                connect_timeout=10,
-                keepalives=1,
-                keepalives_idle=30,
-                keepalives_interval=10,
-                keepalives_count=3
-            )
+            # Use connection_factory for better control
+            # Try to connect with keepalives, but don't fail if they're not supported
+            try:
+                self.conn = psycopg2.connect(
+                    connection_params,
+                    connect_timeout=10,
+                    keepalives=1,
+                    keepalives_idle=30,
+                    keepalives_interval=10,
+                    keepalives_count=5
+                )
+            except TypeError:
+                # Some connection string formats don't support keepalive parameters directly
+                # Try without them
+                self.conn = psycopg2.connect(
+                    connection_params,
+                    connect_timeout=10
+                )
 
             # Set autocommit BEFORE executing any SQL
             self.conn.autocommit = False
@@ -170,41 +219,57 @@ class Database:
             try:
                 # Test if connection is alive
                 if self.conn is None or self.conn.closed:
-                    print("⚠️  Connection lost, reconnecting...")
+                    if attempt == 0:  # Only log on first attempt to reduce noise
+                        print("⚠️  Connection lost, reconnecting...")
                     self._connect()
+                    # Small delay to let connection stabilize
+                    time.sleep(0.1)
                     return
 
-                # Test with a simple query
-                cursor = self.conn.cursor()
+                # Quick check if connection is closed without executing query
                 try:
-                    cursor.execute("SELECT 1")
-                    cursor.close()
-                    return  # Connection is good
-                except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
-                    cursor.close()
-                    raise  # Re-raise to trigger reconnect
-                except psycopg2.errors.InFailedSqlTransaction:
-                    # Transaction is in failed state, rollback and retry
-                    try:
-                        self.conn.rollback()
+                    # Check connection status first (non-blocking)
+                    if hasattr(self.conn, 'status'):
+                        # Connection exists, now test with a simple query
                         cursor = self.conn.cursor()
-                        cursor.execute("SELECT 1")
-                        cursor.close()
-                        return  # Connection is good after rollback
-                    except (psycopg2.OperationalError, psycopg2.InterfaceError):
-                        cursor.close()
-                        raise  # Re-raise to trigger reconnect
+                        try:
+                            cursor.execute("SELECT 1")
+                            cursor.close()
+                            return  # Connection is good
+                        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                            cursor.close()
+                            raise  # Re-raise to trigger reconnect
+                        except psycopg2.errors.InFailedSqlTransaction:
+                            # Transaction is in failed state, rollback and retry
+                            try:
+                                self.conn.rollback()
+                                cursor = self.conn.cursor()
+                                cursor.execute("SELECT 1")
+                                cursor.close()
+                                return  # Connection is good after rollback
+                            except (psycopg2.OperationalError, psycopg2.InterfaceError):
+                                cursor.close()
+                                raise  # Re-raise to trigger reconnect
+                    else:
+                        # Can't check status, assume connection is bad
+                        raise psycopg2.InterfaceError("Cannot determine connection status")
+                except AttributeError:
+                    # No status attribute, connection might be invalid
+                    raise psycopg2.InterfaceError("Invalid connection object")
 
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
-                print(f"⚠️  Connection error detected (attempt {attempt + 1}/{max_retries}): {e}, reconnecting...")
+                # Only log on first attempt or final failure to reduce noise during retries
+                if attempt == 0 or attempt == max_retries - 1:
+                    print(f"⚠️  Connection error detected (attempt {attempt + 1}/{max_retries}): {type(e).__name__}, reconnecting...")
                 if attempt < max_retries - 1:
                     try:
                         if self.conn and not self.conn.closed:
                             self.conn.close()
                     except:
                         pass
-                    time.sleep(0.5 * (attempt + 1))  # Exponential backoff
+                    time.sleep(0.3 * (attempt + 1))  # Shorter backoff to recover faster
                     self._connect()
+                    time.sleep(0.1)  # Brief delay after reconnection
                 else:
                     # Last attempt failed, raise the error
                     raise

@@ -292,8 +292,8 @@ class Database:
             except Exception as e:
                 print(f"Note: password_hash may already be nullable: {e}")
 
-        # Marketplace credentials - per user
-        cursor.execute("""
+            # Marketplace credentials - per user
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS marketplace_credentials (
                 id SERIAL PRIMARY KEY,
                 user_id UUID NOT NULL,
@@ -307,8 +307,8 @@ class Database:
             )
         """)
 
-        # Collectibles database table
-        cursor.execute("""
+            # Collectibles database table
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS collectibles (
                 id SERIAL PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -336,8 +336,8 @@ class Database:
             )
         """)
 
-        # Listings table - tracks all your listings
-        cursor.execute("""
+            # Listings table - tracks all your listings
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS listings (
                 id SERIAL PRIMARY KEY,
                 listing_uuid TEXT UNIQUE NOT NULL,
@@ -368,8 +368,8 @@ class Database:
             )
         """)
 
-        # Training data table - Knowledge Distillation
-        cursor.execute("""
+            # Training data table - Knowledge Distillation
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS training_data (
                 id SERIAL PRIMARY KEY,
                 user_id UUID,
@@ -389,14 +389,14 @@ class Database:
             )
         """)
 
-        # Create index for faster training data queries
-        cursor.execute("""
+            # Create index for faster training data queries
+            cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_training_data_created
             ON training_data(created_at DESC)
         """)
 
-        # Platform listings - track where each listing is posted
-        cursor.execute("""
+            # Platform listings - track where each listing is posted
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS platform_listings (
                 id SERIAL PRIMARY KEY,
                 listing_id INTEGER NOT NULL,
@@ -414,8 +414,8 @@ class Database:
             )
         """)
 
-        # Sync log - track all sync operations
-        cursor.execute("""
+            # Sync log - track all sync operations
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS sync_log (
                 id SERIAL PRIMARY KEY,
                 listing_id INTEGER NOT NULL,
@@ -428,8 +428,8 @@ class Database:
             )
         """)
 
-        # Platform activity - monitor external platforms
-        cursor.execute("""
+            # Platform activity - monitor external platforms
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS platform_activity (
                 id SERIAL PRIMARY KEY,
                 user_id UUID NOT NULL,
@@ -451,32 +451,32 @@ class Database:
             )
         """)
 
-        # Create index for faster activity queries
-        cursor.execute("""
+            # Create index for faster activity queries
+            cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_platform_activity_user_unread
             ON platform_activity(user_id, is_read, created_at DESC)
         """)
 
-        # ===== MIGRATION: Add tier column if it doesn't exist =====
-        try:
-            # Check if column exists first to avoid locks
-            cursor.execute("""
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_name='users' AND column_name='tier'
-            """)
-
-            if not cursor.fetchone():
-                # Column doesn't exist, add it
+            # ===== MIGRATION: Add tier column if it doesn't exist =====
+            try:
+                # Check if column exists first to avoid locks
                 cursor.execute("""
-                    ALTER TABLE users
-                    ADD COLUMN tier TEXT DEFAULT 'FREE'
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name='users' AND column_name='tier'
                 """)
-        except Exception as e:
-            print(f"⚠️  Tier column migration skipped: {e}")
 
-        # Storage bins - for physical organization
-        cursor.execute("""
+                if not cursor.fetchone():
+                    # Column doesn't exist, add it
+                    cursor.execute("""
+                        ALTER TABLE users
+                        ADD COLUMN tier TEXT DEFAULT 'FREE'
+                    """)
+            except Exception as e:
+                print(f"⚠️  Tier column migration skipped: {e}")
+
+            # Storage bins - for physical organization
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS storage_bins (
                 id SERIAL PRIMARY KEY,
                 user_id UUID NOT NULL,
@@ -489,8 +489,8 @@ class Database:
             )
         """)
 
-        # Storage sections - compartments within bins
-        cursor.execute("""
+            # Storage sections - compartments within bins
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS storage_sections (
                 id SERIAL PRIMARY KEY,
                 bin_id INTEGER NOT NULL,
@@ -503,8 +503,8 @@ class Database:
             )
         """)
 
-        # Storage items - physical items in storage
-        cursor.execute("""
+            # Storage items - physical items in storage
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS storage_items (
                 id SERIAL PRIMARY KEY,
                 user_id UUID NOT NULL,
@@ -528,24 +528,24 @@ class Database:
             )
         """)
 
-        # Create indexes for faster storage queries
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_storage_items_user
-            ON storage_items(user_id, created_at DESC)
-        """)
+            # Create indexes for faster storage queries
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_storage_items_user
+                ON storage_items(user_id, created_at DESC)
+            """)
 
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_storage_items_bin_section
-            ON storage_items(bin_id, section_id)
-        """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_storage_items_bin_section
+                ON storage_items(bin_id, section_id)
+            """)
 
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_storage_items_storage_id
-            ON storage_items(storage_id)
-        """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_storage_items_storage_id
+                ON storage_items(storage_id)
+            """)
 
-        # Card collections - unified card data
-        cursor.execute("""
+            # Card collections - unified card data
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS card_collections (
                 id SERIAL PRIMARY KEY,
                 user_id UUID NOT NULL,
@@ -592,8 +592,8 @@ class Database:
             )
         """)
 
-        # Organization presets
-        cursor.execute("""
+            # Organization presets
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS card_organization_presets (
                 id SERIAL PRIMARY KEY,
                 user_id UUID NOT NULL,
@@ -609,8 +609,8 @@ class Database:
             )
         """)
 
-        # Custom categories
-        cursor.execute("""
+            # Custom categories
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS card_custom_categories (
                 id SERIAL PRIMARY KEY,
                 user_id UUID NOT NULL,
@@ -623,34 +623,34 @@ class Database:
             )
         """)
 
-        # Card collection indexes
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_card_collections_user
-            ON card_collections(user_id, created_at DESC)
-        """)
+            # Card collection indexes
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_card_collections_user
+                ON card_collections(user_id, created_at DESC)
+            """)
 
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_card_collections_type
-            ON card_collections(card_type)
-        """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_card_collections_type
+                ON card_collections(card_type)
+            """)
 
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_card_collections_org_mode
-            ON card_collections(organization_mode, primary_category)
-        """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_card_collections_org_mode
+                ON card_collections(organization_mode, primary_category)
+            """)
 
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_card_collections_set
-            ON card_collections(set_code, card_number)
-        """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_card_collections_set
+                ON card_collections(set_code, card_number)
+            """)
 
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_card_collections_sport_year
-            ON card_collections(sport, year, brand)
-        """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_card_collections_sport_year
+                ON card_collections(sport, year, brand)
+            """)
 
-        # Notifications/alerts table
-        cursor.execute("""
+            # Notifications/alerts table
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS notifications (
                 id SERIAL PRIMARY KEY,
                 type TEXT NOT NULL,
@@ -666,8 +666,8 @@ class Database:
             )
         """)
 
-        # Price alerts
-        cursor.execute("""
+            # Price alerts
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS price_alerts (
                 id SERIAL PRIMARY KEY,
                 collectible_id INTEGER NOT NULL,
@@ -679,8 +679,8 @@ class Database:
             )
         """)
 
-        # Activity logs
-        cursor.execute("""
+            # Activity logs
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS activity_logs (
                 id SERIAL PRIMARY KEY,
                 user_id UUID,
@@ -695,80 +695,84 @@ class Database:
             )
         """)
 
-        # Create indexes for better performance
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_listings_uuid
-            ON listings(listing_uuid)
-        """)
+            # Create indexes for better performance
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_listings_uuid
+                ON listings(listing_uuid)
+            """)
 
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_listings_status
-            ON listings(status)
-        """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_listings_status
+                ON listings(status)
+            """)
 
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_listings_user_id
-            ON listings(user_id)
-        """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_listings_user_id
+                ON listings(user_id)
+            """)
 
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_platform_listings_status
-            ON platform_listings(status)
-        """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_platform_listings_status
+                ON platform_listings(status)
+            """)
 
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_collectibles_name
-            ON collectibles(name)
-        """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_collectibles_name
+                ON collectibles(name)
+            """)
 
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_notifications_unread
-            ON notifications(is_read)
-        """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_notifications_unread
+                ON notifications(is_read)
+            """)
 
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id
-            ON activity_logs(user_id)
-        """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id
+                ON activity_logs(user_id)
+            """)
 
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_activity_logs_action
-            ON activity_logs(action)
-        """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_activity_logs_action
+                ON activity_logs(action)
+            """)
 
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_users_is_admin
-            ON users(is_admin)
-        """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_users_is_admin
+                ON users(is_admin)
+            """)
 
-        # Mobile app tables
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS inventory (
-                id SERIAL PRIMARY KEY,
-                title TEXT NOT NULL,
-                storage_location TEXT,
-                photos TEXT,  -- JSON array of photo objects
-                barcode TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+            # Mobile app tables
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS inventory (
+                    id SERIAL PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    storage_location TEXT,
+                    photos TEXT,  -- JSON array of photo objects
+                    barcode TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS templates (
-                id SERIAL PRIMARY KEY,
-                name TEXT NOT NULL,
-                title TEXT NOT NULL,
-                description TEXT,
-                brand TEXT,
-                size TEXT,
-                color TEXT,
-                condition TEXT DEFAULT 'good',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-
-        self.conn.commit()
-        print("✅ PostgreSQL tables created successfully")
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS templates (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    brand TEXT,
+                    size TEXT,
+                    color TEXT,
+                    condition TEXT DEFAULT 'good',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Commit all table creation
+            conn.commit()
+            print("✅ PostgreSQL tables created successfully")
+        finally:
+            cursor.close()
+            self._return_connection(conn, commit=False)
 
     # ========================================================================
     # COLLECTIBLES METHODS

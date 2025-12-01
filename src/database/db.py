@@ -76,10 +76,8 @@ class Database:
         retry_count = 0
 
         while retry_count < max_retries:
-            cursor = None
-            conn = None
             try:
-                cursor, conn = self._get_cursor()
+                cursor = self._get_cursor()
 
                 # Add supabase_uid column if it doesn't exist
                 cursor.execute("""
@@ -96,9 +94,9 @@ class Database:
                     ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
                 """)
 
-                conn.commit()
-                cursor.close()
-                self._return_connection(conn, commit=False)
+                self.conn.commit()
+                if cursor:
+                    cursor.close()
                 self._oauth_columns_checked = True  # Mark as checked
                 print("✅ OAuth columns migration complete")
                 return  # Success, exit
@@ -110,11 +108,16 @@ class Database:
                         cursor.close()
                     except:
                         pass
-                if conn:
-                    self._return_connection(conn, commit=False, error=True)
                 retry_count += 1
                 if retry_count == 1:  # Only log first attempt to reduce noise
                     print(f"⚠️  Migration connection error: {type(e).__name__}")
+
+                # Try to rollback if connection still exists
+                try:
+                    if self.conn and not self.conn.closed:
+                        self.conn.rollback()
+                except:
+                    pass
 
                 # Fast retry for startup
                 if retry_count < max_retries:
@@ -122,6 +125,21 @@ class Database:
                     if retry_count < 2:  # Only log first retry
                         print(f"⏳ Retrying migration in {wait_time:.1f}s... (attempt {retry_count}/{max_retries})")
                     time.sleep(wait_time)
+
+                    # Reconnect before retrying
+                    try:
+                        if self.conn and not self.conn.closed:
+                            self.conn.close()
+                    except:
+                        pass
+                    try:
+                        self._connect()
+                        time.sleep(0.2)  # Let connection stabilize
+                    except Exception as conn_err:
+                        if retry_count >= max_retries - 1:  # Only log if this is final attempt
+                            print(f"⚠️  Migration reconnection failed: {conn_err}")
+                            print(f"⚠️  Skipping OAuth migration - will retry on next request")
+                        return
                 else:
                     # Don't block - migration can happen later on first actual query
                     # Mark as attempted so we don't spam retries
@@ -135,9 +153,13 @@ class Database:
                         cursor.close()
                     except:
                         pass
-                if conn:
-                    self._return_connection(conn, commit=False, error=True)
+                try:
+                    if self.conn and not self.conn.closed:
+                        self.conn.rollback()
+                except:
+                    pass
                 # Don't log non-critical migration errors during startup
+                # print(f"Note: OAuth columns migration: {e}")
                 return  # Non-critical, continue
 
     def _get_connection(self):
@@ -267,32 +289,47 @@ class Database:
             except Exception as e:
                 # Extension may already exist, which is fine
                 pass
+        except Exception as e:
+            self.conn.rollback()
+            print(f"Error creating initial tables: {e}")
+            raise
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                self._return_connection(conn, commit=False, error=False)
 
-            # Add supabase_uid column if it doesn't exist (migration)
-            try:
-                cursor.execute("""
-                    ALTER TABLE users ADD COLUMN IF NOT EXISTS supabase_uid TEXT;
-                """)
-            except Exception as e:
-                print(f"Note: supabase_uid column may already exist: {e}")
+        # Add supabase_uid column if it doesn't exist (migration)
+        try:
+            cursor.execute("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS supabase_uid TEXT;
+            """)
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            print(f"Note: supabase_uid column may already exist: {e}")
 
-            # Add oauth_provider column if it doesn't exist (migration)
-            try:
-                cursor.execute("""
-                    ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_provider TEXT;
-                """)
-            except Exception as e:
-                print(f"Note: oauth_provider column may already exist: {e}")
+        # Add oauth_provider column if it doesn't exist (migration)
+        try:
+            cursor.execute("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_provider TEXT;
+            """)
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            print(f"Note: oauth_provider column may already exist: {e}")
 
-            # Make password_hash nullable for OAuth users (migration)
-            try:
-                cursor.execute("""
-                    ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
-                """)
-            except Exception as e:
-                print(f"Note: password_hash may already be nullable: {e}")
+        # Make password_hash nullable for OAuth users (migration)
+        try:
+            cursor.execute("""
+                ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+            """)
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            print(f"Note: password_hash may already be nullable: {e}")
 
-            # Marketplace credentials - per user
+        # Marketplace credentials - per user
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS marketplace_credentials (
                 id SERIAL PRIMARY KEY,
@@ -307,7 +344,7 @@ class Database:
             )
         """)
 
-            # Collectibles database table
+        # Collectibles database table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS collectibles (
                 id SERIAL PRIMARY KEY,
@@ -336,7 +373,7 @@ class Database:
             )
         """)
 
-            # Listings table - tracks all your listings
+        # Listings table - tracks all your listings
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS listings (
                 id SERIAL PRIMARY KEY,
@@ -368,7 +405,7 @@ class Database:
             )
         """)
 
-            # Training data table - Knowledge Distillation
+        # Training data table - Knowledge Distillation
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS training_data (
                 id SERIAL PRIMARY KEY,
@@ -389,13 +426,13 @@ class Database:
             )
         """)
 
-            # Create index for faster training data queries
+        # Create index for faster training data queries
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_training_data_created
             ON training_data(created_at DESC)
         """)
 
-            # Platform listings - track where each listing is posted
+        # Platform listings - track where each listing is posted
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS platform_listings (
                 id SERIAL PRIMARY KEY,
@@ -414,7 +451,7 @@ class Database:
             )
         """)
 
-            # Sync log - track all sync operations
+        # Sync log - track all sync operations
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS sync_log (
                 id SERIAL PRIMARY KEY,
@@ -428,7 +465,7 @@ class Database:
             )
         """)
 
-            # Platform activity - monitor external platforms
+        # Platform activity - monitor external platforms
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS platform_activity (
                 id SERIAL PRIMARY KEY,
@@ -451,31 +488,33 @@ class Database:
             )
         """)
 
-            # Create index for faster activity queries
+        # Create index for faster activity queries
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_platform_activity_user_unread
             ON platform_activity(user_id, is_read, created_at DESC)
         """)
 
-            # ===== MIGRATION: Add tier column if it doesn't exist =====
-            try:
-                # Check if column exists first to avoid locks
+        # ===== MIGRATION: Add tier column if it doesn't exist =====
+        try:
+            # Check if column exists first to avoid locks
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='users' AND column_name='tier'
+            """)
+
+            if not cursor.fetchone():
+                # Column doesn't exist, add it
                 cursor.execute("""
-                    SELECT column_name
-                    FROM information_schema.columns
-                    WHERE table_name='users' AND column_name='tier'
+                    ALTER TABLE users
+                    ADD COLUMN tier TEXT DEFAULT 'FREE'
                 """)
+                self.conn.commit()
+        except Exception as e:
+            print(f"⚠️  Tier column migration skipped: {e}")
+            self.conn.rollback()
 
-                if not cursor.fetchone():
-                    # Column doesn't exist, add it
-                    cursor.execute("""
-                        ALTER TABLE users
-                        ADD COLUMN tier TEXT DEFAULT 'FREE'
-                    """)
-            except Exception as e:
-                print(f"⚠️  Tier column migration skipped: {e}")
-
-            # Storage bins - for physical organization
+        # Storage bins - for physical organization
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS storage_bins (
                 id SERIAL PRIMARY KEY,
@@ -489,7 +528,7 @@ class Database:
             )
         """)
 
-            # Storage sections - compartments within bins
+        # Storage sections - compartments within bins
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS storage_sections (
                 id SERIAL PRIMARY KEY,
@@ -503,7 +542,7 @@ class Database:
             )
         """)
 
-            # Storage items - physical items in storage
+        # Storage items - physical items in storage
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS storage_items (
                 id SERIAL PRIMARY KEY,
@@ -528,23 +567,23 @@ class Database:
             )
         """)
 
-            # Create indexes for faster storage queries
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_storage_items_user
-                ON storage_items(user_id, created_at DESC)
-            """)
+        # Create indexes for faster storage queries
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_storage_items_user
+            ON storage_items(user_id, created_at DESC)
+        """)
 
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_storage_items_bin_section
-                ON storage_items(bin_id, section_id)
-            """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_storage_items_bin_section
+            ON storage_items(bin_id, section_id)
+        """)
 
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_storage_items_storage_id
-                ON storage_items(storage_id)
-            """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_storage_items_storage_id
+            ON storage_items(storage_id)
+        """)
 
-            # Card collections - unified card data
+        # Card collections - unified card data
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS card_collections (
                 id SERIAL PRIMARY KEY,
@@ -592,7 +631,7 @@ class Database:
             )
         """)
 
-            # Organization presets
+        # Organization presets
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS card_organization_presets (
                 id SERIAL PRIMARY KEY,
@@ -609,7 +648,7 @@ class Database:
             )
         """)
 
-            # Custom categories
+        # Custom categories
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS card_custom_categories (
                 id SERIAL PRIMARY KEY,
@@ -623,33 +662,33 @@ class Database:
             )
         """)
 
-            # Card collection indexes
+        # Card collection indexes
         cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_card_collections_user
-                ON card_collections(user_id, created_at DESC)
-            """)
+            CREATE INDEX IF NOT EXISTS idx_card_collections_user
+            ON card_collections(user_id, created_at DESC)
+        """)
 
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_card_collections_type
-                ON card_collections(card_type)
-            """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_card_collections_type
+            ON card_collections(card_type)
+        """)
 
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_card_collections_org_mode
-                ON card_collections(organization_mode, primary_category)
-            """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_card_collections_org_mode
+            ON card_collections(organization_mode, primary_category)
+        """)
 
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_card_collections_set
-                ON card_collections(set_code, card_number)
-            """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_card_collections_set
+            ON card_collections(set_code, card_number)
+        """)
 
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_card_collections_sport_year
-                ON card_collections(sport, year, brand)
-            """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_card_collections_sport_year
+            ON card_collections(sport, year, brand)
+        """)
 
-            # Notifications/alerts table
+        # Notifications/alerts table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS notifications (
                 id SERIAL PRIMARY KEY,
@@ -666,7 +705,7 @@ class Database:
             )
         """)
 
-            # Price alerts
+        # Price alerts
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS price_alerts (
                 id SERIAL PRIMARY KEY,
@@ -679,7 +718,7 @@ class Database:
             )
         """)
 
-            # Activity logs
+        # Activity logs
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS activity_logs (
                 id SERIAL PRIMARY KEY,
@@ -695,84 +734,80 @@ class Database:
             )
         """)
 
-            # Create indexes for better performance
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_listings_uuid
-                ON listings(listing_uuid)
-            """)
+        # Create indexes for better performance
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_listings_uuid
+            ON listings(listing_uuid)
+        """)
 
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_listings_status
-                ON listings(status)
-            """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_listings_status
+            ON listings(status)
+        """)
 
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_listings_user_id
-                ON listings(user_id)
-            """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_listings_user_id
+            ON listings(user_id)
+        """)
 
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_platform_listings_status
-                ON platform_listings(status)
-            """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_platform_listings_status
+            ON platform_listings(status)
+        """)
 
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_collectibles_name
-                ON collectibles(name)
-            """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_collectibles_name
+            ON collectibles(name)
+        """)
 
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_notifications_unread
-                ON notifications(is_read)
-            """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_notifications_unread
+            ON notifications(is_read)
+        """)
 
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id
-                ON activity_logs(user_id)
-            """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id
+            ON activity_logs(user_id)
+        """)
 
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_activity_logs_action
-                ON activity_logs(action)
-            """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_activity_logs_action
+            ON activity_logs(action)
+        """)
 
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_users_is_admin
-                ON users(is_admin)
-            """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_users_is_admin
+            ON users(is_admin)
+        """)
 
-            # Mobile app tables
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS inventory (
-                    id SERIAL PRIMARY KEY,
-                    title TEXT NOT NULL,
-                    storage_location TEXT,
-                    photos TEXT,  -- JSON array of photo objects
-                    barcode TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
+        # Mobile app tables
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS inventory (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                storage_location TEXT,
+                photos TEXT,  -- JSON array of photo objects
+                barcode TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
 
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS templates (
-                    id SERIAL PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    title TEXT NOT NULL,
-                    description TEXT,
-                    brand TEXT,
-                    size TEXT,
-                    color TEXT,
-                    condition TEXT DEFAULT 'good',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            # Commit all table creation
-            conn.commit()
-            print("✅ PostgreSQL tables created successfully")
-        finally:
-            cursor.close()
-            self._return_connection(conn, commit=False)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS templates (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                brand TEXT,
+                size TEXT,
+                color TEXT,
+                condition TEXT DEFAULT 'good',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        self.conn.commit()
+        print("✅ PostgreSQL tables created successfully")
 
     # ========================================================================
     # COLLECTIBLES METHODS
@@ -1103,82 +1138,53 @@ class Database:
         status: str = 'draft',
     ) -> int:
         """Create a new listing - user_id is UUID"""
-        cursor, conn = self._get_cursor()
-        try:
-            # user_id is UUID in listings table
-            user_id_str = str(user_id) if user_id else None
-            if not user_id_str:
-                raise ValueError("user_id is required and must be a valid UUID")
-            
-            cursor.execute("""
-                INSERT INTO listings (
-                    listing_uuid, user_id, collectible_id, title, description, price,
-                    cost, condition, category, item_type, attributes, photos, quantity,
-                    storage_location, sku, upc, status
-                ) VALUES (%s, %s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """, (
-                listing_uuid, user_id_str, collectible_id, title, description, price,
-                cost, condition, category, item_type,
-                json.dumps(attributes) if attributes else None,
-                json.dumps(photos),
-                quantity,
-                storage_location,
-                sku,
-                upc,
-                status,
-            ))
+        cursor = self._get_cursor()
 
-            result = cursor.fetchone()
-            conn.commit()
-            return result['id']
-        finally:
-            cursor.close()
-            self._return_connection(conn, commit=False)
+        # user_id is UUID in listings table
+        user_id_str = str(user_id) if user_id else None
+        if not user_id_str:
+            raise ValueError("user_id is required and must be a valid UUID")
+        
+        cursor.execute("""
+            INSERT INTO listings (
+                listing_uuid, user_id, collectible_id, title, description, price,
+                cost, condition, category, item_type, attributes, photos, quantity,
+                storage_location, sku, upc, status
+            ) VALUES (%s, %s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (
+            listing_uuid, user_id_str, collectible_id, title, description, price,
+            cost, condition, category, item_type,
+            json.dumps(attributes) if attributes else None,
+            json.dumps(photos),
+            quantity,
+            storage_location,
+            sku,
+            upc,
+            status,
+        ))
+
+        result = cursor.fetchone()
+        self.conn.commit()
+        return result['id']
 
     def get_listing(self, listing_id: int) -> Optional[Dict]:
         """Get a listing by ID"""
-        cursor, conn = self._get_cursor()
-        try:
-            cursor.execute("SELECT * FROM listings WHERE id = %s", (listing_id,))
-            row = cursor.fetchone()
-            result = dict(row) if row else None
-            cursor.close()
-            self._return_connection(conn, commit=False)
-            return result
-        except Exception as e:
-            if cursor:
-                try:
-                    cursor.close()
-                except:
-                    pass
-            if conn:
-                self._return_connection(conn, commit=False, error=True)
-            return None
+        cursor = self._get_cursor()
+        cursor.execute("SELECT * FROM listings WHERE id = %s", (listing_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
 
     def get_listing_by_uuid(self, listing_uuid: str) -> Optional[Dict]:
         """Get a listing by UUID"""
-        cursor, conn = self._get_cursor()
-        try:
-            cursor.execute("SELECT * FROM listings WHERE listing_uuid = %s", (listing_uuid,))
-            row = cursor.fetchone()
-            result = dict(row) if row else None
-            cursor.close()
-            self._return_connection(conn, commit=False)
-            return result
-        except Exception as e:
-            if cursor:
-                try:
-                    cursor.close()
-                except:
-                    pass
-            if conn:
-                self._return_connection(conn, commit=False, error=True)
-            return None
+        cursor = self._get_cursor()
+        cursor.execute("SELECT * FROM listings WHERE listing_uuid = %s", (listing_uuid,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
 
     def get_drafts(self, limit: int = 100, user_id: Optional[str] = None) -> List[Dict]:
         """Get all draft listings - user_id is UUID string"""
-        cursor, conn = self._get_cursor()
+        cursor = self._get_cursor()
         try:
             if user_id is not None:
                 user_id_str = str(user_id)
@@ -1195,18 +1201,8 @@ class Database:
                     ORDER BY created_at DESC
                     LIMIT %s
                 """, (limit,))
-            result = [dict(row) for row in cursor.fetchall()]
-            cursor.close()
-            self._return_connection(conn, commit=False)
-            return result
+            return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
-            if cursor:
-                try:
-                    cursor.close()
-                except:
-                    pass
-            if conn:
-                self._return_connection(conn, commit=False, error=True)
             print(f"Error getting drafts: {e}")
             import traceback
             traceback.print_exc()
@@ -1226,28 +1222,20 @@ class Database:
 
     def update_listing_status(self, listing_id: int, status: str):
         """Update listing status"""
-        cursor, conn = self._get_cursor()
-        try:
-            cursor.execute("""
-                UPDATE listings
-                SET status = %s, updated_at = CURRENT_TIMESTAMP
-                WHERE id = %s
-            """, (status, listing_id))
-            conn.commit()
-        finally:
-            cursor.close()
-            self._return_connection(conn, commit=False)
+        cursor = self._get_cursor()
+        cursor.execute("""
+            UPDATE listings
+            SET status = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+        """, (status, listing_id))
+        self.conn.commit()
 
     def delete_listing(self, listing_id: int):
         """Delete a listing and its platform listings"""
-        cursor, conn = self._get_cursor()
-        try:
-            cursor.execute("DELETE FROM platform_listings WHERE listing_id = %s", (listing_id,))
-            cursor.execute("DELETE FROM listings WHERE id = %s", (listing_id,))
-            conn.commit()
-        finally:
-            cursor.close()
-            self._return_connection(conn, commit=False)
+        cursor = self._get_cursor()
+        cursor.execute("DELETE FROM platform_listings WHERE listing_id = %s", (listing_id,))
+        cursor.execute("DELETE FROM listings WHERE id = %s", (listing_id,))
+        self.conn.commit()
 
     def update_listing(
         self,
@@ -1789,28 +1777,31 @@ class Database:
 
     def get_user_by_username(self, username: str) -> Optional[Dict]:
         """Get user by username with retry logic"""
-        max_retries = 2
+        max_retries = 3
         for attempt in range(max_retries):
             cursor = None
-            conn = None
             try:
-                cursor, conn = self._get_cursor()
+                cursor = self._get_cursor()
                 cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
                 row = cursor.fetchone()
-                cursor.close()
-                result = dict(row) if row else None
-                self._return_connection(conn, commit=False)
-                return result
+                if cursor:
+                    cursor.close()
+                return dict(row) if row else None
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
                 if cursor:
                     try:
                         cursor.close()
                     except:
                         pass
-                if conn:
-                    self._return_connection(conn, commit=False, error=True)
                 if attempt < max_retries - 1:
-                    time.sleep(0.3 * (attempt + 1))
+                    print(f"⚠️  Database connection error in get_user_by_username (attempt {attempt + 1}/{max_retries}), retrying...")
+                    time.sleep(0.5 * (attempt + 1))
+                    try:
+                        if self.conn and not self.conn.closed:
+                            self.conn.close()
+                    except:
+                        pass
+                    self._connect()
                 else:
                     print(f"❌ Failed to get user by username after {max_retries} attempts: {e}")
                     return None
@@ -1820,35 +1811,36 @@ class Database:
                         cursor.close()
                     except:
                         pass
-                if conn:
-                    self._return_connection(conn, commit=False, error=True)
                 print(f"Unexpected error in get_user_by_username: {e}")
                 return None
 
     def get_user_by_email(self, email: str) -> Optional[Dict]:
         """Get user by email with retry logic"""
-        max_retries = 2
+        max_retries = 3
         for attempt in range(max_retries):
             cursor = None
-            conn = None
             try:
-                cursor, conn = self._get_cursor()
+                cursor = self._get_cursor()
                 cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
                 row = cursor.fetchone()
-                cursor.close()
-                result = dict(row) if row else None
-                self._return_connection(conn, commit=False)
-                return result
+                if cursor:
+                    cursor.close()
+                return dict(row) if row else None
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
                 if cursor:
                     try:
                         cursor.close()
                     except:
                         pass
-                if conn:
-                    self._return_connection(conn, commit=False, error=True)
                 if attempt < max_retries - 1:
-                    time.sleep(0.3 * (attempt + 1))
+                    print(f"⚠️  Database connection error in get_user_by_email (attempt {attempt + 1}/{max_retries}), retrying...")
+                    time.sleep(0.5 * (attempt + 1))
+                    try:
+                        if self.conn and not self.conn.closed:
+                            self.conn.close()
+                    except:
+                        pass
+                    self._connect()
                 else:
                     print(f"❌ Failed to get user by email after {max_retries} attempts: {e}")
                     return None
@@ -1858,35 +1850,31 @@ class Database:
                         cursor.close()
                     except:
                         pass
-                if conn:
-                    self._return_connection(conn, commit=False, error=True)
                 print(f"Unexpected error in get_user_by_email: {e}")
                 return None
 
     def get_user_by_id(self, user_id) -> Optional[Dict]:
         """Get user by ID (UUID) with retry logic for connection issues"""
-        max_retries = 2
+        max_retries = 3
         for attempt in range(max_retries):
             cursor = None
-            conn = None
             try:
                 # Ensure user_id is a string UUID
                 user_id_str = str(user_id) if user_id else None
                 if not user_id_str:
                     return None
                 
-                cursor, conn = self._get_cursor()
+                cursor = self._get_cursor()
                 cursor.execute("SELECT * FROM users WHERE id::text = %s", (user_id_str,))
                 row = cursor.fetchone()
-                cursor.close()
+                if cursor:
+                    cursor.close()
                 
                 if row:
                     result = dict(row)
                     # Ensure id is returned as string UUID
                     result['id'] = str(result['id'])
-                    self._return_connection(conn, commit=False)
                     return result
-                self._return_connection(conn, commit=False)
                 return None
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
                 if cursor:
@@ -1894,10 +1882,16 @@ class Database:
                         cursor.close()
                     except:
                         pass
-                if conn:
-                    self._return_connection(conn, commit=False, error=True)
                 if attempt < max_retries - 1:
-                    time.sleep(0.3 * (attempt + 1))
+                    print(f"⚠️  Database connection error in get_user_by_id (attempt {attempt + 1}/{max_retries}), retrying...")
+                    time.sleep(0.5 * (attempt + 1))
+                    # Force reconnection
+                    try:
+                        if self.conn and not self.conn.closed:
+                            self.conn.close()
+                    except:
+                        pass
+                    self._connect()
                 else:
                     print(f"❌ Failed to get user after {max_retries} attempts: {e}")
                     return None
@@ -1907,8 +1901,6 @@ class Database:
                         cursor.close()
                     except:
                         pass
-                if conn:
-                    self._return_connection(conn, commit=False, error=True)
                 print(f"Invalid user_id format: {user_id}, error: {e}")
                 return None
             except Exception as e:
@@ -1917,8 +1909,6 @@ class Database:
                         cursor.close()
                     except:
                         pass
-                if conn:
-                    self._return_connection(conn, commit=False, error=True)
                 print(f"Unexpected error in get_user_by_id: {e}")
                 return None
 
@@ -1954,37 +1944,29 @@ class Database:
     def create_oauth_user(self, username: str, email: str, supabase_uid: str, oauth_provider: str) -> str:
         """Create a new OAuth user (no password) - returns UUID string"""
         import uuid
-        cursor, conn = self._get_cursor()
-        try:
-            user_uuid = uuid.uuid4()
-            cursor.execute("""
-                INSERT INTO users (id, username, email, supabase_uid, oauth_provider, email_verified)
-                VALUES (%s, %s, %s, %s, %s, TRUE)
-                RETURNING id
-            """, (str(user_uuid), username, email, supabase_uid, oauth_provider))
-            result = cursor.fetchone()
-            conn.commit()
-            return str(result['id'])
-        finally:
-            cursor.close()
-            self._return_connection(conn, commit=False)
+        cursor = self._get_cursor()
+        user_uuid = uuid.uuid4()
+        cursor.execute("""
+            INSERT INTO users (id, username, email, supabase_uid, oauth_provider, email_verified)
+            VALUES (%s, %s, %s, %s, %s, TRUE)
+            RETURNING id
+        """, (str(user_uuid), username, email, supabase_uid, oauth_provider))
+        result = cursor.fetchone()
+        self.conn.commit()
+        return str(result['id'])
 
     def link_supabase_account(self, user_id: str, supabase_uid: str, oauth_provider: str):
         """Link an existing user account to Supabase OAuth - user_id is UUID"""
-        cursor, conn = self._get_cursor()
-        try:
-            user_id_str = str(user_id)
-            cursor.execute("""
-                UPDATE users
-                SET supabase_uid = %s,
-                    oauth_provider = %s,
-                    email_verified = TRUE
-                WHERE id::text = %s
-            """, (supabase_uid, oauth_provider, user_id_str))
-            conn.commit()
-        finally:
-            cursor.close()
-            self._return_connection(conn, commit=False)
+        cursor = self._get_cursor()
+        user_id_str = str(user_id)
+        cursor.execute("""
+            UPDATE users
+            SET supabase_uid = %s,
+                oauth_provider = %s,
+                email_verified = TRUE
+            WHERE id::text = %s
+        """, (supabase_uid, oauth_provider, user_id_str))
+        self.conn.commit()
 
     # ========================================================================
     # MARKETPLACE CREDENTIALS METHODS
@@ -1992,86 +1974,52 @@ class Database:
 
     def save_marketplace_credentials(self, user_id, platform: str, username: str, password: str):
         """Save or update marketplace credentials - user_id is UUID"""
-        cursor, conn = self._get_cursor()
-        try:
-            user_id_str = str(user_id)
+        cursor = self._get_cursor()
+        user_id_str = str(user_id)
 
-            cursor.execute("""
-                INSERT INTO marketplace_credentials
-                (user_id, platform, username, password, updated_at)
-                VALUES (%s::uuid, %s, %s, %s, CURRENT_TIMESTAMP)
-                ON CONFLICT (user_id, platform) DO UPDATE SET
-                    username = EXCLUDED.username,
-                    password = EXCLUDED.password,
-                    updated_at = CURRENT_TIMESTAMP
-            """, (user_id_str, platform, username, password))
+        cursor.execute("""
+            INSERT INTO marketplace_credentials
+            (user_id, platform, username, password, updated_at)
+            VALUES (%s::uuid, %s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (user_id, platform) DO UPDATE SET
+                username = EXCLUDED.username,
+                password = EXCLUDED.password,
+                updated_at = CURRENT_TIMESTAMP
+        """, (user_id_str, platform, username, password))
 
-            conn.commit()
-        finally:
-            cursor.close()
-            self._return_connection(conn, commit=False)
+        self.conn.commit()
 
     def get_marketplace_credentials(self, user_id: str, platform: str) -> Optional[Dict]:
         """Get marketplace credentials for a specific platform - user_id is UUID"""
-        cursor, conn = self._get_cursor()
-        try:
-            user_id_str = str(user_id)
-            cursor.execute("""
-                SELECT * FROM marketplace_credentials
-                WHERE user_id::text = %s AND platform = %s
-            """, (user_id_str, platform))
-            row = cursor.fetchone()
-            result = dict(row) if row else None
-            cursor.close()
-            self._return_connection(conn, commit=False)
-            return result
-        except Exception as e:
-            if cursor:
-                try:
-                    cursor.close()
-                except:
-                    pass
-            if conn:
-                self._return_connection(conn, commit=False, error=True)
-            return None
+        cursor = self._get_cursor()
+        user_id_str = str(user_id)
+        cursor.execute("""
+            SELECT * FROM marketplace_credentials
+            WHERE user_id::text = %s AND platform = %s
+        """, (user_id_str, platform))
+        row = cursor.fetchone()
+        return dict(row) if row else None
 
     def get_all_marketplace_credentials(self, user_id: str) -> List[Dict]:
         """Get all marketplace credentials for a user - user_id is UUID"""
-        cursor, conn = self._get_cursor()
-        try:
-            user_id_str = str(user_id)
-            cursor.execute("""
-                SELECT * FROM marketplace_credentials
-                WHERE user_id::text = %s
-                ORDER BY platform
-            """, (user_id_str,))
-            result = [dict(row) for row in cursor.fetchall()]
-            cursor.close()
-            self._return_connection(conn, commit=False)
-            return result
-        except Exception as e:
-            if cursor:
-                try:
-                    cursor.close()
-                except:
-                    pass
-            if conn:
-                self._return_connection(conn, commit=False, error=True)
-            return []
+        cursor = self._get_cursor()
+        user_id_str = str(user_id)
+        cursor.execute("""
+            SELECT * FROM marketplace_credentials
+            WHERE user_id::text = %s
+            ORDER BY platform
+        """, (user_id_str,))
+        return [dict(row) for row in cursor.fetchall()]
 
     def delete_marketplace_credentials(self, user_id: str, platform: str):
         """Delete marketplace credentials for a platform - user_id is UUID"""
-        cursor, conn = self._get_cursor()
-        try:
-            user_id_str = str(user_id)
-            cursor.execute("""
-                DELETE FROM marketplace_credentials
-                WHERE user_id::text = %s AND platform = %s
-            """, (user_id_str, platform))
-            conn.commit()
-        finally:
-            cursor.close()
-            self._return_connection(conn, commit=False)
+        cursor = self._get_cursor()
+        user_id_str = str(user_id)
+        cursor.execute("""
+            DELETE FROM marketplace_credentials
+            WHERE user_id::text = %s AND platform = %s
+        """, (user_id_str, platform))
+        self.conn.commit()
 
     # ========================================================================
     # ACTIVITY LOG METHODS
@@ -2088,10 +2036,8 @@ class Database:
         user_agent: Optional[str] = None,
     ):
         """Log a user activity - user_id is UUID string"""
-        cursor = None
-        conn = None
         try:
-            cursor, conn = self._get_cursor()
+            cursor = self._get_cursor()
             user_id_uuid = None
             if user_id:
                 user_id_uuid = str(user_id)
@@ -2106,18 +2052,9 @@ class Database:
                 json.dumps(details) if details else None,
                 ip_address, user_agent
             ))
-            conn.commit()
-            cursor.close()
-            self._return_connection(conn, commit=False)
+            self.conn.commit()
         except Exception as e:
             # Silently skip activity logging if it fails
-            if cursor:
-                try:
-                    cursor.close()
-                except:
-                    pass
-            if conn:
-                self._return_connection(conn, commit=False, error=True)
             print(f"⚠️  Activity logging skipped: {e}")
             pass
 

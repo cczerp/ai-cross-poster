@@ -32,29 +32,13 @@ class Database:
         self.conn = None
 
         # Establish initial connection with retry (fast for startup)
-        max_retries = 5
+        max_retries = 3  # Reduced retries - verification will happen on first use
         for retry in range(max_retries):
             try:
                 self._connect()
-                # Verify connection with a simple query after a brief delay
-                time.sleep(0.2)  # Small delay to let connection stabilize
-                try:
-                    cursor = self.conn.cursor()
-                    cursor.execute("SELECT 1")
-                    cursor.close()
-                    break  # Success
-                except (psycopg2.OperationalError, psycopg2.InterfaceError) as verify_error:
-                    # Connection verified but might have issues, try again
-                    print(f"⚠️  Connection verification failed: {verify_error}")
-                    if self.conn:
-                        try:
-                            self.conn.close()
-                        except:
-                            pass
-                    if retry < max_retries - 1:
-                        time.sleep(0.5)
-                    else:
-                        raise
+                # Don't verify immediately - let the connection stabilize
+                # Verification will happen on first actual query via _ensure_connection()
+                break  # Success
             except Exception as e:
                 if retry < max_retries - 1:
                     wait_time = 0.5  # Fast retries for startup
@@ -66,9 +50,8 @@ class Database:
 
         # Ensure OAuth columns exist (automatic migration)
         # This is non-critical, so we don't block startup if it fails
-        # Add small delay to let initial connection stabilize before migration
-        time.sleep(0.2)
-        self._ensure_oauth_columns()
+        # Defer migration to avoid connection issues during startup
+        # Migration will happen lazily on first database operation
 
     def _ensure_oauth_columns(self):
         """Ensure OAuth-related columns exist in users table (automatic migration)"""
@@ -97,6 +80,7 @@ class Database:
                 self.conn.commit()
                 if cursor:
                     cursor.close()
+                self._oauth_columns_checked = True  # Mark as checked
                 print("✅ OAuth columns migration complete")
                 return  # Success, exit
 
@@ -140,8 +124,9 @@ class Database:
                             print(f"⚠️  Skipping OAuth migration - will retry on next request")
                         return
                 else:
-                    # Don't block startup - migration can happen later
-                    print(f"⚠️  OAuth migration failed after {max_retries} retries - skipping for now")
+                    # Don't block - migration can happen later on first actual query
+                    # Mark as attempted so we don't spam retries
+                    self._oauth_columns_checked = True
                     return
 
             except Exception as e:

@@ -293,7 +293,7 @@ class Database:
                 print(f"Note: password_hash may already be nullable: {e}")
 
             # Marketplace credentials - per user
-            cursor.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS marketplace_credentials (
                 id SERIAL PRIMARY KEY,
                 user_id UUID NOT NULL,
@@ -308,7 +308,7 @@ class Database:
         """)
 
             # Collectibles database table
-            cursor.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS collectibles (
                 id SERIAL PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -337,7 +337,7 @@ class Database:
         """)
 
             # Listings table - tracks all your listings
-            cursor.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS listings (
                 id SERIAL PRIMARY KEY,
                 listing_uuid TEXT UNIQUE NOT NULL,
@@ -369,7 +369,7 @@ class Database:
         """)
 
             # Training data table - Knowledge Distillation
-            cursor.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS training_data (
                 id SERIAL PRIMARY KEY,
                 user_id UUID,
@@ -390,13 +390,13 @@ class Database:
         """)
 
             # Create index for faster training data queries
-            cursor.execute("""
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_training_data_created
             ON training_data(created_at DESC)
         """)
 
             # Platform listings - track where each listing is posted
-            cursor.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS platform_listings (
                 id SERIAL PRIMARY KEY,
                 listing_id INTEGER NOT NULL,
@@ -415,7 +415,7 @@ class Database:
         """)
 
             # Sync log - track all sync operations
-            cursor.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS sync_log (
                 id SERIAL PRIMARY KEY,
                 listing_id INTEGER NOT NULL,
@@ -429,7 +429,7 @@ class Database:
         """)
 
             # Platform activity - monitor external platforms
-            cursor.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS platform_activity (
                 id SERIAL PRIMARY KEY,
                 user_id UUID NOT NULL,
@@ -452,7 +452,7 @@ class Database:
         """)
 
             # Create index for faster activity queries
-            cursor.execute("""
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_platform_activity_user_unread
             ON platform_activity(user_id, is_read, created_at DESC)
         """)
@@ -476,7 +476,7 @@ class Database:
                 print(f"⚠️  Tier column migration skipped: {e}")
 
             # Storage bins - for physical organization
-            cursor.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS storage_bins (
                 id SERIAL PRIMARY KEY,
                 user_id UUID NOT NULL,
@@ -490,7 +490,7 @@ class Database:
         """)
 
             # Storage sections - compartments within bins
-            cursor.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS storage_sections (
                 id SERIAL PRIMARY KEY,
                 bin_id INTEGER NOT NULL,
@@ -504,7 +504,7 @@ class Database:
         """)
 
             # Storage items - physical items in storage
-            cursor.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS storage_items (
                 id SERIAL PRIMARY KEY,
                 user_id UUID NOT NULL,
@@ -545,7 +545,7 @@ class Database:
             """)
 
             # Card collections - unified card data
-            cursor.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS card_collections (
                 id SERIAL PRIMARY KEY,
                 user_id UUID NOT NULL,
@@ -593,7 +593,7 @@ class Database:
         """)
 
             # Organization presets
-            cursor.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS card_organization_presets (
                 id SERIAL PRIMARY KEY,
                 user_id UUID NOT NULL,
@@ -610,7 +610,7 @@ class Database:
         """)
 
             # Custom categories
-            cursor.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS card_custom_categories (
                 id SERIAL PRIMARY KEY,
                 user_id UUID NOT NULL,
@@ -624,7 +624,7 @@ class Database:
         """)
 
             # Card collection indexes
-            cursor.execute("""
+        cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_card_collections_user
                 ON card_collections(user_id, created_at DESC)
             """)
@@ -650,7 +650,7 @@ class Database:
             """)
 
             # Notifications/alerts table
-            cursor.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS notifications (
                 id SERIAL PRIMARY KEY,
                 type TEXT NOT NULL,
@@ -667,7 +667,7 @@ class Database:
         """)
 
             # Price alerts
-            cursor.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS price_alerts (
                 id SERIAL PRIMARY KEY,
                 collectible_id INTEGER NOT NULL,
@@ -680,7 +680,7 @@ class Database:
         """)
 
             # Activity logs
-            cursor.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS activity_logs (
                 id SERIAL PRIMARY KEY,
                 user_id UUID,

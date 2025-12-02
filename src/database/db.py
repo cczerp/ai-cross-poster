@@ -162,11 +162,13 @@ class Database:
                     # Reconnect before retrying
                     try:
                         if self.conn and not self.conn.closed:
-                            self.conn.close()
+                            # Return connection to pool and get a new one
+                            self.pool.putconn(self.conn, close=True)
+                            self.conn = None
                     except:
                         pass
                     try:
-                        self._connect()
+                        self._get_connection_from_pool()
                         time.sleep(0.2)  # Let connection stabilize
                     except Exception as conn_err:
                         if retry_count >= max_retries - 1:  # Only log if this is final attempt
@@ -247,7 +249,11 @@ class Database:
                 raise
     
     def _return_connection(self, conn, commit=True, error=False):
-        """Return connection to pool"""
+        """Return connection to pool - DEPRECATED: Now using per-instance connections"""
+        # This method is deprecated but kept for backward compatibility
+        # with old code that still calls it. It's a no-op now.
+        if conn is None:
+            return
         try:
             if error:
                 try:
@@ -296,6 +302,7 @@ class Database:
     def _create_tables(self):
         """Create all database tables"""
         cursor = self._get_cursor()
+        conn = None  # Not used anymore, keeping for backward compat in finally block
         try:
             # Users table - for authentication (UUID primary key)
             cursor.execute("""

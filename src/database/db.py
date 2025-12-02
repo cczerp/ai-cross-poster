@@ -1780,78 +1780,60 @@ class Database:
         max_retries = 3
         for attempt in range(max_retries):
             cursor = None
+            conn = None
             try:
-                cursor = self._get_cursor()
+                cursor, conn = self._get_cursor()
                 cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
                 row = cursor.fetchone()
-                if cursor:
-                    cursor.close()
                 return dict(row) if row else None
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
-                if cursor:
-                    try:
-                        cursor.close()
-                    except:
-                        pass
                 if attempt < max_retries - 1:
                     print(f"⚠️  Database connection error in get_user_by_username (attempt {attempt + 1}/{max_retries}), retrying...")
                     time.sleep(0.5 * (attempt + 1))
-                    try:
-                        if self.conn and not self.conn.closed:
-                            self.conn.close()
-                    except:
-                        pass
-                    self._connect()
                 else:
                     print(f"❌ Failed to get user by username after {max_retries} attempts: {e}")
                     return None
             except Exception as e:
+                print(f"Unexpected error in get_user_by_username: {e}")
+                return None
+            finally:
                 if cursor:
                     try:
                         cursor.close()
                     except:
                         pass
-                print(f"Unexpected error in get_user_by_username: {e}")
-                return None
+                if conn:
+                    self._return_connection(conn, commit=False, error=False)
 
     def get_user_by_email(self, email: str) -> Optional[Dict]:
         """Get user by email with retry logic"""
         max_retries = 3
         for attempt in range(max_retries):
             cursor = None
+            conn = None
             try:
-                cursor = self._get_cursor()
+                cursor, conn = self._get_cursor()
                 cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
                 row = cursor.fetchone()
-                if cursor:
-                    cursor.close()
                 return dict(row) if row else None
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
-                if cursor:
-                    try:
-                        cursor.close()
-                    except:
-                        pass
                 if attempt < max_retries - 1:
                     print(f"⚠️  Database connection error in get_user_by_email (attempt {attempt + 1}/{max_retries}), retrying...")
                     time.sleep(0.5 * (attempt + 1))
-                    try:
-                        if self.conn and not self.conn.closed:
-                            self.conn.close()
-                    except:
-                        pass
-                    self._connect()
                 else:
                     print(f"❌ Failed to get user by email after {max_retries} attempts: {e}")
                     return None
             except Exception as e:
+                print(f"Unexpected error in get_user_by_email: {e}")
+                return None
+            finally:
                 if cursor:
                     try:
                         cursor.close()
                     except:
                         pass
-                print(f"Unexpected error in get_user_by_email: {e}")
-                return None
+                if conn:
+                    self._return_connection(conn, commit=False, error=False)
 
     def get_user_by_id(self, user_id) -> Optional[Dict]:
         """Get user by ID (UUID) with retry logic for connection issues"""
@@ -1864,11 +1846,9 @@ class Database:
                 if not user_id_str:
                     return None
                 
-                cursor = self._get_cursor()
+                cursor, conn = self._get_cursor()
                 cursor.execute("SELECT * FROM users WHERE id::text = %s", (user_id_str,))
                 row = cursor.fetchone()
-                if cursor:
-                    cursor.close()
                 
                 if row:
                     result = dict(row)
@@ -1877,51 +1857,47 @@ class Database:
                     return result
                 return None
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
-                if cursor:
-                    try:
-                        cursor.close()
-                    except:
-                        pass
                 if attempt < max_retries - 1:
                     print(f"⚠️  Database connection error in get_user_by_id (attempt {attempt + 1}/{max_retries}), retrying...")
                     time.sleep(0.5 * (attempt + 1))
-                    # Force reconnection
-                    try:
-                        if self.conn and not self.conn.closed:
-                            self.conn.close()
-                    except:
-                        pass
-                    self._connect()
                 else:
                     print(f"❌ Failed to get user after {max_retries} attempts: {e}")
                     return None
             except (ValueError, TypeError) as e:
-                if cursor:
-                    try:
-                        cursor.close()
-                    except:
-                        pass
                 print(f"Invalid user_id format: {user_id}, error: {e}")
                 return None
             except Exception as e:
+                print(f"Unexpected error in get_user_by_id: {e}")
+                return None
+            finally:
                 if cursor:
                     try:
                         cursor.close()
                     except:
                         pass
-                print(f"Unexpected error in get_user_by_id: {e}")
-                return None
+                if conn:
+                    self._return_connection(conn, commit=False, error=False)
 
     def update_last_login(self, user_id):
         """Update user's last login timestamp - user_id is UUID"""
-        cursor = self._get_cursor()
-        user_id_str = str(user_id)
-        cursor.execute("""
-            UPDATE users
-            SET last_login = CURRENT_TIMESTAMP
-            WHERE id::text = %s
-        """, (user_id_str,))
-        self.conn.commit()
+        cursor = None
+        conn = None
+        try:
+            cursor, conn = self._get_cursor()
+            user_id_str = str(user_id)
+            cursor.execute("""
+                UPDATE users
+                SET last_login = CURRENT_TIMESTAMP
+                WHERE id::text = %s
+            """, (user_id_str,))
+        finally:
+            if cursor:
+                try:
+                    cursor.close()
+                except:
+                    pass
+            if conn:
+                self._return_connection(conn, commit=True, error=False)
 
     def update_notification_email(self, user_id: int, notification_email: str):
         """Update user's notification email"""
@@ -1936,37 +1912,68 @@ class Database:
     # OAuth-specific methods
     def get_user_by_supabase_uid(self, supabase_uid: str) -> Optional[Dict]:
         """Get user by Supabase UID (for OAuth)"""
-        cursor = self._get_cursor()
-        cursor.execute("SELECT * FROM users WHERE supabase_uid = %s", (supabase_uid,))
-        row = cursor.fetchone()
-        return dict(row) if row else None
+        cursor = None
+        conn = None
+        try:
+            cursor, conn = self._get_cursor()
+            cursor.execute("SELECT * FROM users WHERE supabase_uid = %s", (supabase_uid,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            if cursor:
+                try:
+                    cursor.close()
+                except:
+                    pass
+            if conn:
+                self._return_connection(conn, commit=False, error=False)
 
     def create_oauth_user(self, username: str, email: str, supabase_uid: str, oauth_provider: str) -> str:
         """Create a new OAuth user (no password) - returns UUID string"""
         import uuid
-        cursor = self._get_cursor()
-        user_uuid = uuid.uuid4()
-        cursor.execute("""
-            INSERT INTO users (id, username, email, supabase_uid, oauth_provider, email_verified)
-            VALUES (%s, %s, %s, %s, %s, TRUE)
-            RETURNING id
-        """, (str(user_uuid), username, email, supabase_uid, oauth_provider))
-        result = cursor.fetchone()
-        self.conn.commit()
-        return str(result['id'])
+        cursor = None
+        conn = None
+        try:
+            cursor, conn = self._get_cursor()
+            user_uuid = uuid.uuid4()
+            cursor.execute("""
+                INSERT INTO users (id, username, email, supabase_uid, oauth_provider, email_verified)
+                VALUES (%s, %s, %s, %s, %s, TRUE)
+                RETURNING id
+            """, (str(user_uuid), username, email, supabase_uid, oauth_provider))
+            result = cursor.fetchone()
+            return str(result['id'])
+        finally:
+            if cursor:
+                try:
+                    cursor.close()
+                except:
+                    pass
+            if conn:
+                self._return_connection(conn, commit=True, error=False)
 
     def link_supabase_account(self, user_id: str, supabase_uid: str, oauth_provider: str):
         """Link an existing user account to Supabase OAuth - user_id is UUID"""
-        cursor = self._get_cursor()
-        user_id_str = str(user_id)
-        cursor.execute("""
-            UPDATE users
-            SET supabase_uid = %s,
-                oauth_provider = %s,
-                email_verified = TRUE
-            WHERE id::text = %s
-        """, (supabase_uid, oauth_provider, user_id_str))
-        self.conn.commit()
+        cursor = None
+        conn = None
+        try:
+            cursor, conn = self._get_cursor()
+            user_id_str = str(user_id)
+            cursor.execute("""
+                UPDATE users
+                SET supabase_uid = %s,
+                    oauth_provider = %s,
+                    email_verified = TRUE
+                WHERE id::text = %s
+            """, (supabase_uid, oauth_provider, user_id_str))
+        finally:
+            if cursor:
+                try:
+                    cursor.close()
+                except:
+                    pass
+            if conn:
+                self._return_connection(conn, commit=True, error=False)
 
     # ========================================================================
     # MARKETPLACE CREDENTIALS METHODS
@@ -2036,8 +2043,10 @@ class Database:
         user_agent: Optional[str] = None,
     ):
         """Log a user activity - user_id is UUID string"""
+        cursor = None
+        conn = None
         try:
-            cursor = self._get_cursor()
+            cursor, conn = self._get_cursor()
             user_id_uuid = None
             if user_id:
                 user_id_uuid = str(user_id)
@@ -2052,11 +2061,18 @@ class Database:
                 json.dumps(details) if details else None,
                 ip_address, user_agent
             ))
-            self.conn.commit()
         except Exception as e:
             # Silently skip activity logging if it fails
             print(f"⚠️  Activity logging skipped: {e}")
             pass
+        finally:
+            if cursor:
+                try:
+                    cursor.close()
+                except:
+                    pass
+            if conn:
+                self._return_connection(conn, commit=True, error=False)
 
     def get_activity_logs(
         self,

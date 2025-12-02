@@ -66,9 +66,42 @@ class Database:
         """Initialize Database instance - uses global connection pool"""
         self.cursor_factory = psycopg2.extras.RealDictCursor
         self.pool = _get_connection_pool()
-        
+
+        # Get a dedicated connection from the pool for this Database instance
+        # This connection will be held for the lifetime of the Database object
+        self.conn = None
+        self._get_connection_from_pool()
+
         # Mark OAuth migration as not checked yet
         self._oauth_columns_checked = False
+
+    def close(self):
+        """Return connection to pool - should be called when done with Database instance"""
+        if self.conn is not None:
+            try:
+                if not self.conn.closed:
+                    # Rollback any pending transactions
+                    try:
+                        self.conn.rollback()
+                    except:
+                        pass
+                # Return connection to pool
+                self.pool.putconn(self.conn)
+            except Exception as e:
+                # If we can't return to pool, try to close it
+                try:
+                    self.conn.close()
+                except:
+                    pass
+            finally:
+                self.conn = None
+
+    def __del__(self):
+        """Cleanup - return connection to pool when Database instance is garbage collected"""
+        try:
+            self.close()
+        except:
+            pass
 
     def _ensure_oauth_columns(self):
         """Ensure OAuth-related columns exist in users table (automatic migration)"""
@@ -162,49 +195,55 @@ class Database:
                 # print(f"Note: OAuth columns migration: {e}")
                 return  # Non-critical, continue
 
-    def _get_connection(self):
-        """Get connection from pool - DO NOT store as instance variable"""
+    def _get_connection_from_pool(self):
+        """Get a connection from pool and store it as self.conn"""
         try:
-            conn = self.pool.getconn()
-            if conn.closed:
-                # Connection is closed, return it to pool and get a new one
-                self.pool.putconn(conn, close=True)
-                conn = self.pool.getconn()
-            return conn
+            if self.conn is None or self.conn.closed:
+                self.conn = self.pool.getconn()
+                if self.conn.closed:
+                    # Connection is closed, return it to pool and get a new one
+                    self.pool.putconn(self.conn, close=True)
+                    self.conn = self.pool.getconn()
         except Exception as e:
             print(f"❌ Failed to get connection from pool: {e}", flush=True)
             raise
 
     def _get_cursor(self, retries=2):
-        """Get PostgreSQL cursor from connection pool - returns (cursor, connection) tuple"""
+        """Get PostgreSQL cursor from self.conn - returns cursor only (not tuple)"""
         for attempt in range(retries):
-            conn = None
             try:
-                conn = self._get_connection()
+                # Ensure we have a valid connection
+                if self.conn is None or self.conn.closed:
+                    self._get_connection_from_pool()
+
                 # Test connection with simple query
-                test_cursor = conn.cursor()
+                test_cursor = self.conn.cursor()
                 test_cursor.execute("SELECT 1")
                 test_cursor.close()
-                # Connection is good, return cursor and connection for actual use
-                cursor = conn.cursor(cursor_factory=self.cursor_factory)
-                return cursor, conn
+
+                # Connection is good, return cursor for actual use
+                cursor = self.conn.cursor(cursor_factory=self.cursor_factory)
+                return cursor
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
-                if conn:
+                # Connection error - try to get a new connection
+                if self.conn:
                     try:
                         # Return bad connection to pool (will be closed)
-                        self.pool.putconn(conn, close=True)
+                        self.pool.putconn(self.conn, close=True)
+                        self.conn = None
                     except:
                         pass
+
                 if attempt < retries - 1:
                     time.sleep(0.2 * (attempt + 1))
+                    # Try to get a new connection for next attempt
+                    try:
+                        self._get_connection_from_pool()
+                    except:
+                        pass
                 else:
                     raise
             except Exception as e:
-                if conn:
-                    try:
-                        self.pool.putconn(conn)
-                    except:
-                        pass
                 raise
     
     def _return_connection(self, conn, commit=True, error=False):
@@ -234,17 +273,16 @@ class Database:
     def _with_connection(self, func, commit=True):
         """Context manager pattern for database operations"""
         cursor = None
-        conn = None
         try:
-            cursor, conn = self._get_cursor()
+            cursor = self._get_cursor()
             result = func(cursor)
             if commit:
-                conn.commit()
+                self.conn.commit()
             return result
         except Exception as e:
-            if conn:
+            if self.conn:
                 try:
-                    conn.rollback()
+                    self.conn.rollback()
                 except:
                     pass
             raise
@@ -254,12 +292,10 @@ class Database:
                     cursor.close()
                 except:
                     pass
-            if conn:
-                self._return_connection(conn, commit=False, error=False)
 
     def _create_tables(self):
         """Create all database tables"""
-        cursor, conn = self._get_cursor()
+        cursor = self._get_cursor()
         try:
             # Users table - for authentication (UUID primary key)
             cursor.execute("""
@@ -1782,7 +1818,7 @@ class Database:
             cursor = None
             conn = None
             try:
-                cursor, conn = self._get_cursor()
+                cursor = self._get_cursor()
                 cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
                 row = cursor.fetchone()
                 return dict(row) if row else None
@@ -1812,7 +1848,7 @@ class Database:
             cursor = None
             conn = None
             try:
-                cursor, conn = self._get_cursor()
+                cursor = self._get_cursor()
                 cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
                 row = cursor.fetchone()
                 return dict(row) if row else None
@@ -1846,7 +1882,7 @@ class Database:
                 if not user_id_str:
                     return None
                 
-                cursor, conn = self._get_cursor()
+                cursor = self._get_cursor()
                 cursor.execute("SELECT * FROM users WHERE id::text = %s", (user_id_str,))
                 row = cursor.fetchone()
                 
@@ -1883,7 +1919,7 @@ class Database:
         cursor = None
         conn = None
         try:
-            cursor, conn = self._get_cursor()
+            cursor = self._get_cursor()
             user_id_str = str(user_id)
             cursor.execute("""
                 UPDATE users
@@ -1915,7 +1951,7 @@ class Database:
         cursor = None
         conn = None
         try:
-            cursor, conn = self._get_cursor()
+            cursor = self._get_cursor()
             cursor.execute("SELECT * FROM users WHERE supabase_uid = %s", (supabase_uid,))
             row = cursor.fetchone()
             return dict(row) if row else None
@@ -1934,7 +1970,7 @@ class Database:
         cursor = None
         conn = None
         try:
-            cursor, conn = self._get_cursor()
+            cursor = self._get_cursor()
             user_uuid = uuid.uuid4()
             cursor.execute("""
                 INSERT INTO users (id, username, email, supabase_uid, oauth_provider, email_verified)
@@ -1957,7 +1993,7 @@ class Database:
         cursor = None
         conn = None
         try:
-            cursor, conn = self._get_cursor()
+            cursor = self._get_cursor()
             user_id_str = str(user_id)
             cursor.execute("""
                 UPDATE users
@@ -2046,7 +2082,7 @@ class Database:
         cursor = None
         conn = None
         try:
-            cursor, conn = self._get_cursor()
+            cursor = self._get_cursor()
             user_id_uuid = None
             if user_id:
                 user_id_uuid = str(user_id)

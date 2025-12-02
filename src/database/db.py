@@ -1985,6 +1985,7 @@ class Database:
                 RETURNING id
             """, (str(user_uuid), username, email, supabase_uid, oauth_provider))
             result = cursor.fetchone()
+            self.conn.commit()  # Commit the transaction
             return str(result['id'])
         finally:
             if cursor:
@@ -2009,6 +2010,7 @@ class Database:
                     email_verified = TRUE
                 WHERE id::text = %s
             """, (supabase_uid, oauth_provider, user_id_str))
+            self.conn.commit()  # Commit the transaction
         finally:
             if cursor:
                 try:
@@ -2104,6 +2106,7 @@ class Database:
                 json.dumps(details) if details else None,
                 ip_address, user_agent
             ))
+            self.conn.commit()  # Commit the transaction
         except Exception as e:
             # Silently skip activity logging if it fails
             print(f"⚠️  Activity logging skipped: {e}")

@@ -210,7 +210,7 @@ class Database:
             print(f"❌ Failed to get connection from pool: {e}", flush=True)
             raise
 
-    def _get_cursor(self, retries=2):
+    def _get_cursor(self, retries=3):
         """Get PostgreSQL cursor from self.conn - returns cursor only (not tuple)"""
         for attempt in range(retries):
             try:
@@ -227,25 +227,32 @@ class Database:
                 cursor = self.conn.cursor(cursor_factory=self.cursor_factory)
                 return cursor
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
-                # Connection error - try to get a new connection
+                print(f"⚠️  Connection error (attempt {attempt + 1}/{retries}): {e}")
+                # Connection error - force close and get a new connection
                 if self.conn:
                     try:
                         # Return bad connection to pool (will be closed)
                         self.pool.putconn(self.conn, close=True)
-                        self.conn = None
                     except:
                         pass
+                    self.conn = None
 
                 if attempt < retries - 1:
-                    time.sleep(0.2 * (attempt + 1))
-                    # Try to get a new connection for next attempt
+                    # Wait before retrying (exponential backoff)
+                    wait_time = 0.5 * (2 ** attempt)
+                    time.sleep(wait_time)
+                    # Force get a fresh connection for next attempt
                     try:
                         self._get_connection_from_pool()
-                    except:
+                        print(f"✅ Got fresh connection from pool")
+                    except Exception as conn_err:
+                        print(f"❌ Failed to get connection: {conn_err}")
                         pass
                 else:
+                    print(f"❌ Failed after {retries} attempts")
                     raise
             except Exception as e:
+                print(f"❌ Unexpected error in _get_cursor: {e}")
                 raise
     
     def _return_connection(self, conn, commit=True, error=False):

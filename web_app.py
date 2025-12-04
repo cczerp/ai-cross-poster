@@ -36,6 +36,13 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-product
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
 app.config['UPLOAD_FOLDER'] = './data/uploads'
 
+# Session configuration for Flask-Login
+app.config['SESSION_COOKIE_SECURE'] = os.getenv('FLASK_ENV') == 'production'  # HTTPS only in production
+app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent XSS attacks
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
+app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
+app.config['REMEMBER_COOKIE_DURATION'] = 86400  # 24 hours
+
 # Ensure upload folder exists
 Path(app.config['UPLOAD_FOLDER']).mkdir(parents=True, exist_ok=True)
 
@@ -113,13 +120,23 @@ def load_user(user_id):
         # user_id is UUID string in PostgreSQL
         user_id_str = str(user_id) if user_id else None
         if not user_id_str:
+            print(f"[USER_LOADER] No user_id provided")
             return None
-        return User.get(user_id_str)
+
+        print(f"[USER_LOADER] Loading user with ID: {user_id_str}")
+        user = User.get(user_id_str)
+
+        if user:
+            print(f"[USER_LOADER] Successfully loaded user: {user.username}")
+        else:
+            print(f"[USER_LOADER] User not found for ID: {user_id_str}")
+
+        return user
     except (ValueError, TypeError) as e:
-        print(f"Error loading user (invalid user_id): {e}")
+        print(f"[USER_LOADER ERROR] Invalid user_id: {e}")
         return None
     except Exception as e:
-        print(f"Error loading user: {e}")
+        print(f"[USER_LOADER ERROR] Error loading user: {e}")
         import traceback
         traceback.print_exc()
         return None

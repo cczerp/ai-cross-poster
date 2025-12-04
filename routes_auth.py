@@ -37,7 +37,9 @@ def login():
         username = data.get('username')
         password = data.get('password')
 
-        print(f"[LOGIN] Attempting login for username: {username}")
+        print(f"[LOGIN] Attempting login for username: {username}", flush=True)
+        import time
+        start_time = time.time()
 
         if not username or not password:
             flash("Username and password required.", "error")
@@ -105,7 +107,8 @@ def login():
         except Exception as e:
             print(f"[LOGIN WARNING] Failed to log activity: {e}")
 
-        print(f"[LOGIN] Redirecting to index for username: {username}")
+        elapsed = time.time() - start_time
+        print(f"[LOGIN] ✅ Login successful for {username} (took {elapsed:.2f}s)", flush=True)
         return redirect(url_for('index'))
     
     except Exception as e:

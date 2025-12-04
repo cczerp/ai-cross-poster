@@ -213,9 +213,21 @@ class Database:
                 # Connection is closed, return it to pool and get a new one
                 self.pool.putconn(self.conn, close=True)
                 self.conn = self.pool.getconn()
+
+            print(f"✅ Connection acquired from pool", flush=True)
+
         except Exception as e:
             print(f"❌ Failed to get connection from pool: {e}", flush=True)
             raise
+
+    def _commit_read(self):
+        """Commit or rollback after read operations to close transaction"""
+        try:
+            if self.conn and not self.conn.closed:
+                self.conn.rollback()  # Use rollback for reads (safer than commit)
+        except Exception as e:
+            # Ignore errors - connection might be in bad state
+            pass
 
     def _get_cursor(self, retries=3):
         """Get PostgreSQL cursor from self.conn - returns cursor only (not tuple)"""
@@ -225,12 +237,7 @@ class Database:
                 if self.conn is None or self.conn.closed:
                     self._get_connection_from_pool()
 
-                # Test connection with simple query
-                test_cursor = self.conn.cursor()
-                test_cursor.execute("SELECT 1")
-                test_cursor.close()
-
-                # Connection is good, return cursor for actual use
+                # Return cursor for use
                 cursor = self.conn.cursor(cursor_factory=self.cursor_factory)
                 return cursor
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
@@ -1841,9 +1848,9 @@ class Database:
                 cursor = self._get_cursor()
                 cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
                 row = cursor.fetchone()
-                # Commit to close transaction (no-op for SELECT but prevents hanging)
-                self.conn.commit()
-                return dict(row) if row else None
+                result = dict(row) if row else None
+                self._commit_read()  # Close transaction after read
+                return result
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
                 print(f"⚠️  Database connection error in get_user_by_username (attempt {attempt + 1}/{max_retries}): {e}")
                 # Force a fresh connection on retry
@@ -1877,9 +1884,9 @@ class Database:
                 cursor = self._get_cursor()
                 cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
                 row = cursor.fetchone()
-                # Commit to close transaction (no-op for SELECT but prevents hanging)
-                self.conn.commit()
-                return dict(row) if row else None
+                result = dict(row) if row else None
+                self._commit_read()  # Close transaction after read
+                return result
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
                 print(f"⚠️  Database connection error in get_user_by_email (attempt {attempt + 1}/{max_retries}): {e}")
                 # Force a fresh connection on retry
@@ -1919,14 +1926,13 @@ class Database:
                 cursor.execute("SELECT * FROM users WHERE id::text = %s", (user_id_str,))
                 row = cursor.fetchone()
 
-                # Commit to close transaction (no-op for SELECT but prevents hanging)
-                self.conn.commit()
-
                 if row:
                     result = dict(row)
                     # Ensure id is returned as string UUID
                     result['id'] = str(result['id'])
+                    self._commit_read()  # Close transaction after read
                     return result
+                self._commit_read()  # Close transaction even if no result
                 return None
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
                 print(f"⚠️  Database connection error in get_user_by_id (attempt {attempt + 1}/{max_retries}): {e}")
@@ -1988,40 +1994,24 @@ class Database:
 
     # OAuth-specific methods
     def get_user_by_supabase_uid(self, supabase_uid: str) -> Optional[Dict]:
-        """Get user by Supabase UID (for OAuth) with retry logic"""
-        max_retries = 3
-        for attempt in range(max_retries):
-            cursor = None
-            try:
-                cursor = self._get_cursor()
-                cursor.execute("SELECT * FROM users WHERE supabase_uid = %s", (supabase_uid,))
-                row = cursor.fetchone()
-                # Commit to close transaction (no-op for SELECT but prevents hanging)
-                self.conn.commit()
-                return dict(row) if row else None
-            except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
-                print(f"⚠️  Database connection error in get_user_by_supabase_uid (attempt {attempt + 1}/{max_retries}): {e}")
-                # Force a fresh connection on retry
-                if attempt < max_retries - 1:
-                    try:
-                        self._get_connection_from_pool()
-                    except Exception as reconnect_error:
-                        print(f"Failed to reconnect: {reconnect_error}")
-                    time.sleep(0.5 * (attempt + 1))
-                else:
-                    print(f"❌ Failed to get user by supabase_uid after {max_retries} attempts")
-                    return None
-            except Exception as e:
-                print(f"Unexpected error in get_user_by_supabase_uid: {e}")
-                import traceback
-                traceback.print_exc()
-                return None
-            finally:
-                if cursor:
-                    try:
-                        cursor.close()
-                    except:
-                        pass
+        """Get user by Supabase UID (for OAuth)"""
+        cursor = None
+        conn = None
+        try:
+            cursor = self._get_cursor()
+            cursor.execute("SELECT * FROM users WHERE supabase_uid = %s", (supabase_uid,))
+            row = cursor.fetchone()
+            result = dict(row) if row else None
+            self._commit_read()  # Close transaction after read
+            return result
+        finally:
+            if cursor:
+                try:
+                    cursor.close()
+                except:
+                    pass
+            if conn:
+                self._return_connection(conn, commit=False, error=False)
 
     def create_oauth_user(self, username: str, email: str, supabase_uid: str, oauth_provider: str) -> str:
         """Create a new OAuth user (no password) - returns UUID string"""
@@ -2158,11 +2148,15 @@ class Database:
                 json.dumps(details) if details else None,
                 ip_address, user_agent
             ))
-            self.conn.commit()  # Commit the transaction
+            self.conn.commit()  # Commit write operation
         except Exception as e:
             # Silently skip activity logging if it fails
             print(f"⚠️  Activity logging skipped: {e}")
-            pass
+            try:
+                if self.conn and not self.conn.closed:
+                    self.conn.rollback()
+            except:
+                pass
         finally:
             if cursor:
                 try:

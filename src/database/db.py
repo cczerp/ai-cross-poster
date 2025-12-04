@@ -214,25 +214,20 @@ class Database:
                 self.pool.putconn(self.conn, close=True)
                 self.conn = self.pool.getconn()
 
-            # CRITICAL FIX: Enable autocommit to prevent transaction buildup and blocking
-            # This prevents SELECT queries from starting transactions that never get committed
-            self.conn.autocommit = True
-            print(f"✅ Connection configured: autocommit=True", flush=True)
+            print(f"✅ Connection acquired from pool", flush=True)
 
         except Exception as e:
             print(f"❌ Failed to get connection from pool: {e}", flush=True)
             raise
 
-        # Set statement timeout to prevent queries from blocking forever (30 second timeout)
-        # This is a safety feature - if it fails, we continue anyway
+    def _commit_read(self):
+        """Commit or rollback after read operations to close transaction"""
         try:
-            cur = self.conn.cursor()
-            cur.execute("SET statement_timeout = '30s'")
-            cur.close()
-            print(f"✅ Statement timeout set to 30s", flush=True)
-        except Exception as timeout_err:
-            # Non-critical - log warning but continue
-            print(f"⚠️  Could not set statement timeout (non-critical): {timeout_err}", flush=True)
+            if self.conn and not self.conn.closed:
+                self.conn.rollback()  # Use rollback for reads (safer than commit)
+        except Exception as e:
+            # Ignore errors - connection might be in bad state
+            pass
 
     def _get_cursor(self, retries=3):
         """Get PostgreSQL cursor from self.conn - returns cursor only (not tuple)"""
@@ -242,7 +237,7 @@ class Database:
                 if self.conn is None or self.conn.closed:
                     self._get_connection_from_pool()
 
-                # Return cursor for use (no test query needed with autocommit)
+                # Return cursor for use
                 cursor = self.conn.cursor(cursor_factory=self.cursor_factory)
                 return cursor
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
@@ -1854,8 +1849,9 @@ class Database:
                 cursor = self._get_cursor()
                 cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
                 row = cursor.fetchone()
-                # No commit needed - autocommit is enabled on connection
-                return dict(row) if row else None
+                result = dict(row) if row else None
+                self._commit_read()  # Close transaction after read
+                return result
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
                 if attempt < max_retries - 1:
                     print(f"⚠️  Database connection error in get_user_by_username (attempt {attempt + 1}/{max_retries}), retrying...")
@@ -1885,8 +1881,9 @@ class Database:
                 cursor = self._get_cursor()
                 cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
                 row = cursor.fetchone()
-                # No commit needed - autocommit is enabled on connection
-                return dict(row) if row else None
+                result = dict(row) if row else None
+                self._commit_read()  # Close transaction after read
+                return result
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
                 if attempt < max_retries - 1:
                     print(f"⚠️  Database connection error in get_user_by_email (attempt {attempt + 1}/{max_retries}), retrying...")
@@ -1921,13 +1918,13 @@ class Database:
                 cursor.execute("SELECT * FROM users WHERE id::text = %s", (user_id_str,))
                 row = cursor.fetchone()
 
-                # No commit needed - autocommit is enabled on connection
-
                 if row:
                     result = dict(row)
                     # Ensure id is returned as string UUID
                     result['id'] = str(result['id'])
+                    self._commit_read()  # Close transaction after read
                     return result
+                self._commit_read()  # Close transaction even if no result
                 return None
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
                 if attempt < max_retries - 1:
@@ -1991,8 +1988,9 @@ class Database:
             cursor = self._get_cursor()
             cursor.execute("SELECT * FROM users WHERE supabase_uid = %s", (supabase_uid,))
             row = cursor.fetchone()
-            # No commit needed - autocommit is enabled on connection
-            return dict(row) if row else None
+            result = dict(row) if row else None
+            self._commit_read()  # Close transaction after read
+            return result
         finally:
             if cursor:
                 try:
@@ -2137,11 +2135,15 @@ class Database:
                 json.dumps(details) if details else None,
                 ip_address, user_agent
             ))
-            # No commit needed - autocommit is enabled on connection
+            self.conn.commit()  # Commit write operation
         except Exception as e:
             # Silently skip activity logging if it fails
             print(f"⚠️  Activity logging skipped: {e}")
-            pass
+            try:
+                if self.conn and not self.conn.closed:
+                    self.conn.rollback()
+            except:
+                pass
         finally:
             if cursor:
                 try:

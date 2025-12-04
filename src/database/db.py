@@ -200,12 +200,19 @@ class Database:
     def _get_connection_from_pool(self):
         """Get a connection from pool and store it as self.conn"""
         try:
-            if self.conn is None or self.conn.closed:
+            # If we already have a connection, return the old one to pool first
+            if self.conn is not None and not self.conn.closed:
+                try:
+                    self.pool.putconn(self.conn)
+                except:
+                    pass
+
+            # Get fresh connection from pool
+            self.conn = self.pool.getconn()
+            if self.conn.closed:
+                # Connection is closed, return it to pool and get a new one
+                self.pool.putconn(self.conn, close=True)
                 self.conn = self.pool.getconn()
-                if self.conn.closed:
-                    # Connection is closed, return it to pool and get a new one
-                    self.pool.putconn(self.conn, close=True)
-                    self.conn = self.pool.getconn()
         except Exception as e:
             print(f"❌ Failed to get connection from pool: {e}", flush=True)
             raise

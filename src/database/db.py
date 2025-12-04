@@ -213,6 +213,16 @@ class Database:
                 # Connection is closed, return it to pool and get a new one
                 self.pool.putconn(self.conn, close=True)
                 self.conn = self.pool.getconn()
+
+            # CRITICAL FIX: Enable autocommit to prevent transaction buildup and blocking
+            # This prevents SELECT queries from starting transactions that never get committed
+            self.conn.autocommit = True
+            print(f"✅ Connection configured: autocommit=True", flush=True)
+
+            # Set statement timeout to prevent queries from blocking forever (30 second timeout)
+            with self.conn.cursor() as cur:
+                cur.execute("SET statement_timeout = '30s'")
+            print(f"✅ Statement timeout set to 30s", flush=True)
         except Exception as e:
             print(f"❌ Failed to get connection from pool: {e}", flush=True)
             raise
@@ -225,12 +235,7 @@ class Database:
                 if self.conn is None or self.conn.closed:
                     self._get_connection_from_pool()
 
-                # Test connection with simple query
-                test_cursor = self.conn.cursor()
-                test_cursor.execute("SELECT 1")
-                test_cursor.close()
-
-                # Connection is good, return cursor for actual use
+                # Return cursor for use (no test query needed with autocommit)
                 cursor = self.conn.cursor(cursor_factory=self.cursor_factory)
                 return cursor
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
@@ -1842,8 +1847,7 @@ class Database:
                 cursor = self._get_cursor()
                 cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
                 row = cursor.fetchone()
-                # Commit to close transaction (no-op for SELECT but prevents hanging)
-                self.conn.commit()
+                # No commit needed - autocommit is enabled on connection
                 return dict(row) if row else None
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
                 if attempt < max_retries - 1:
@@ -1874,8 +1878,7 @@ class Database:
                 cursor = self._get_cursor()
                 cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
                 row = cursor.fetchone()
-                # Commit to close transaction (no-op for SELECT but prevents hanging)
-                self.conn.commit()
+                # No commit needed - autocommit is enabled on connection
                 return dict(row) if row else None
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
                 if attempt < max_retries - 1:
@@ -1911,8 +1914,7 @@ class Database:
                 cursor.execute("SELECT * FROM users WHERE id::text = %s", (user_id_str,))
                 row = cursor.fetchone()
 
-                # Commit to close transaction (no-op for SELECT but prevents hanging)
-                self.conn.commit()
+                # No commit needed - autocommit is enabled on connection
 
                 if row:
                     result = dict(row)
@@ -1982,8 +1984,7 @@ class Database:
             cursor = self._get_cursor()
             cursor.execute("SELECT * FROM users WHERE supabase_uid = %s", (supabase_uid,))
             row = cursor.fetchone()
-            # Commit to close transaction (no-op for SELECT but prevents hanging)
-            self.conn.commit()
+            # No commit needed - autocommit is enabled on connection
             return dict(row) if row else None
         finally:
             if cursor:
@@ -2129,7 +2130,7 @@ class Database:
                 json.dumps(details) if details else None,
                 ip_address, user_agent
             ))
-            self.conn.commit()  # Commit the transaction
+            # No commit needed - autocommit is enabled on connection
         except Exception as e:
             # Silently skip activity logging if it fails
             print(f"⚠️  Activity logging skipped: {e}")

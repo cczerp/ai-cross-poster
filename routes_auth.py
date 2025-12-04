@@ -223,7 +223,12 @@ def api_login():
     if not user_data:
         return jsonify({"error": "User not found"}), 404
 
-    if not check_password_hash(user_data['password_hash'], password):
+    # Check if user has a password (OAuth users may not have password_hash)
+    password_hash = user_data.get('password_hash')
+    if not password_hash:
+        return jsonify({"error": "This account uses Google sign-in. Please use the 'Sign in with Google' button."}), 400
+
+    if not check_password_hash(password_hash, password):
         return jsonify({"error": "Invalid password"}), 401
 
     # Ensure id is UUID string

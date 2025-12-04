@@ -1837,7 +1837,6 @@ class Database:
         max_retries = 3
         for attempt in range(max_retries):
             cursor = None
-            conn = None
             try:
                 cursor = self._get_cursor()
                 cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
@@ -1846,14 +1845,21 @@ class Database:
                 self.conn.commit()
                 return dict(row) if row else None
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                print(f"⚠️  Database connection error in get_user_by_username (attempt {attempt + 1}/{max_retries}): {e}")
+                # Force a fresh connection on retry
                 if attempt < max_retries - 1:
-                    print(f"⚠️  Database connection error in get_user_by_username (attempt {attempt + 1}/{max_retries}), retrying...")
+                    try:
+                        self._get_connection_from_pool()
+                    except Exception as reconnect_error:
+                        print(f"Failed to reconnect: {reconnect_error}")
                     time.sleep(0.5 * (attempt + 1))
                 else:
-                    print(f"❌ Failed to get user by username after {max_retries} attempts: {e}")
+                    print(f"❌ Failed to get user by username after {max_retries} attempts")
                     return None
             except Exception as e:
                 print(f"Unexpected error in get_user_by_username: {e}")
+                import traceback
+                traceback.print_exc()
                 return None
             finally:
                 if cursor:
@@ -1861,15 +1867,12 @@ class Database:
                         cursor.close()
                     except:
                         pass
-                if conn:
-                    self._return_connection(conn, commit=False, error=False)
 
     def get_user_by_email(self, email: str) -> Optional[Dict]:
         """Get user by email with retry logic"""
         max_retries = 3
         for attempt in range(max_retries):
             cursor = None
-            conn = None
             try:
                 cursor = self._get_cursor()
                 cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
@@ -1878,14 +1881,21 @@ class Database:
                 self.conn.commit()
                 return dict(row) if row else None
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                print(f"⚠️  Database connection error in get_user_by_email (attempt {attempt + 1}/{max_retries}): {e}")
+                # Force a fresh connection on retry
                 if attempt < max_retries - 1:
-                    print(f"⚠️  Database connection error in get_user_by_email (attempt {attempt + 1}/{max_retries}), retrying...")
+                    try:
+                        self._get_connection_from_pool()
+                    except Exception as reconnect_error:
+                        print(f"Failed to reconnect: {reconnect_error}")
                     time.sleep(0.5 * (attempt + 1))
                 else:
-                    print(f"❌ Failed to get user by email after {max_retries} attempts: {e}")
+                    print(f"❌ Failed to get user by email after {max_retries} attempts")
                     return None
             except Exception as e:
                 print(f"Unexpected error in get_user_by_email: {e}")
+                import traceback
+                traceback.print_exc()
                 return None
             finally:
                 if cursor:
@@ -1893,8 +1903,6 @@ class Database:
                         cursor.close()
                     except:
                         pass
-                if conn:
-                    self._return_connection(conn, commit=False, error=False)
 
     def get_user_by_id(self, user_id) -> Optional[Dict]:
         """Get user by ID (UUID) with retry logic for connection issues"""
@@ -1921,17 +1929,24 @@ class Database:
                     return result
                 return None
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                print(f"⚠️  Database connection error in get_user_by_id (attempt {attempt + 1}/{max_retries}): {e}")
+                # Force a fresh connection on retry
                 if attempt < max_retries - 1:
-                    print(f"⚠️  Database connection error in get_user_by_id (attempt {attempt + 1}/{max_retries}), retrying...")
+                    try:
+                        self._get_connection_from_pool()
+                    except Exception as reconnect_error:
+                        print(f"Failed to reconnect: {reconnect_error}")
                     time.sleep(0.5 * (attempt + 1))
                 else:
-                    print(f"❌ Failed to get user after {max_retries} attempts: {e}")
+                    print(f"❌ Failed to get user after {max_retries} attempts")
                     return None
             except (ValueError, TypeError) as e:
                 print(f"Invalid user_id format: {user_id}, error: {e}")
                 return None
             except Exception as e:
                 print(f"Unexpected error in get_user_by_id: {e}")
+                import traceback
+                traceback.print_exc()
                 return None
             finally:
                 if cursor:
@@ -1939,8 +1954,6 @@ class Database:
                         cursor.close()
                     except:
                         pass
-                if conn:
-                    self._return_connection(conn, commit=False, error=False)
 
     def update_last_login(self, user_id):
         """Update user's last login timestamp - user_id is UUID"""
@@ -1975,24 +1988,40 @@ class Database:
 
     # OAuth-specific methods
     def get_user_by_supabase_uid(self, supabase_uid: str) -> Optional[Dict]:
-        """Get user by Supabase UID (for OAuth)"""
-        cursor = None
-        conn = None
-        try:
-            cursor = self._get_cursor()
-            cursor.execute("SELECT * FROM users WHERE supabase_uid = %s", (supabase_uid,))
-            row = cursor.fetchone()
-            # Commit to close transaction (no-op for SELECT but prevents hanging)
-            self.conn.commit()
-            return dict(row) if row else None
-        finally:
-            if cursor:
-                try:
-                    cursor.close()
-                except:
-                    pass
-            if conn:
-                self._return_connection(conn, commit=False, error=False)
+        """Get user by Supabase UID (for OAuth) with retry logic"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            cursor = None
+            try:
+                cursor = self._get_cursor()
+                cursor.execute("SELECT * FROM users WHERE supabase_uid = %s", (supabase_uid,))
+                row = cursor.fetchone()
+                # Commit to close transaction (no-op for SELECT but prevents hanging)
+                self.conn.commit()
+                return dict(row) if row else None
+            except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                print(f"⚠️  Database connection error in get_user_by_supabase_uid (attempt {attempt + 1}/{max_retries}): {e}")
+                # Force a fresh connection on retry
+                if attempt < max_retries - 1:
+                    try:
+                        self._get_connection_from_pool()
+                    except Exception as reconnect_error:
+                        print(f"Failed to reconnect: {reconnect_error}")
+                    time.sleep(0.5 * (attempt + 1))
+                else:
+                    print(f"❌ Failed to get user by supabase_uid after {max_retries} attempts")
+                    return None
+            except Exception as e:
+                print(f"Unexpected error in get_user_by_supabase_uid: {e}")
+                import traceback
+                traceback.print_exc()
+                return None
+            finally:
+                if cursor:
+                    try:
+                        cursor.close()
+                    except:
+                        pass
 
     def create_oauth_user(self, username: str, email: str, supabase_uid: str, oauth_provider: str) -> str:
         """Create a new OAuth user (no password) - returns UUID string"""

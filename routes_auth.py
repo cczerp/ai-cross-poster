@@ -37,15 +37,28 @@ def login():
         username = data.get('username')
         password = data.get('password')
 
+        print(f"[LOGIN] Attempting login for username: {username}", flush=True)
+        import time
+        start_time = time.time()
+
         if not username or not password:
             flash("Username and password required.", "error")
             return render_template('login.html')
 
+        # Check database connection first
+        if db is None:
+            print("[LOGIN ERROR] Database not initialized!")
+            flash("Database connection error. Please try again.", "error")
+            return render_template('login.html')
+
         user_data = db.get_user_by_username(username)
 
-        if not user_data:
+        if user_data is None:
+            print(f"[LOGIN] User not found or database error for username: {username}")
             flash("User not found.", "error")
             return render_template('login.html')
+
+        print(f"[LOGIN] User found: {username}, has password_hash: {bool(user_data.get('password_hash'))}")
 
         # Check if user has a password (OAuth users may not have password_hash)
         password_hash = user_data.get('password_hash')
@@ -54,12 +67,21 @@ def login():
             return render_template('login.html')
 
         if not check_password_hash(password_hash, password):
+            print(f"[LOGIN] Password verification failed for username: {username}")
             flash("Incorrect password.", "error")
             return render_template('login.html')
 
-        # Create User object for Flask-Login
+        print(f"[LOGIN] Password verified for username: {username}")
+
+        # Create User object for Flask-Login - ensure id is UUID string
+        user_id_str = str(user_data['id']) if user_data.get('id') else None
+        if not user_id_str:
+            print(f"[LOGIN ERROR] Invalid user ID for username: {username}")
+            flash("Invalid user data. Please try again.", "error")
+            return render_template('login.html')
+
         user = User(
-            user_data['id'],
+            user_id_str,
             user_data['username'],
             user_data['email'],
             user_data.get('is_admin', False),
@@ -67,21 +89,26 @@ def login():
             user_data.get('tier', 'FREE')
         )
 
+        print(f"[LOGIN] Logging in user: {username} (ID: {user_id_str})")
         login_user(user)
-        
+        print(f"[LOGIN] Flask-Login completed for username: {username}")
+
         # Log activity (with error handling)
         try:
             db.log_activity(
                 action="login",
-                user_id=user.id,
+                user_id=user_id_str,
                 resource_type="user",
-                resource_id=user.id,
+                resource_id=None,  # Don't use user.id as resource_id since it's UUID
                 ip_address=request.remote_addr,
                 user_agent=request.headers.get("User-Agent")
             )
+            print(f"[LOGIN] Activity logged for username: {username}")
         except Exception as e:
-            print(f"Failed to log activity: {e}")
+            print(f"[LOGIN WARNING] Failed to log activity: {e}")
 
+        elapsed = time.time() - start_time
+        print(f"[LOGIN] ✅ Login successful for {username} (took {elapsed:.2f}s)", flush=True)
         return redirect(url_for('index'))
     
     except Exception as e:
@@ -125,8 +152,18 @@ def register():
     user_id = db.create_user(username, email, password_hash)
 
     user_data = db.get_user_by_id(user_id)
+    if not user_data:
+        flash("Failed to retrieve user data. Please try again.", "error")
+        return render_template('register.html')
+    
+    # Ensure id is UUID string
+    user_id_str = str(user_data['id']) if user_data.get('id') else None
+    if not user_id_str:
+        flash("Invalid user data. Please try again.", "error")
+        return render_template('register.html')
+    
     user = User(
-        user_data['id'],
+        user_id_str,
         user_data['username'],
         user_data['email'],
         user_data.get('is_admin', False),
@@ -137,9 +174,9 @@ def register():
 
     db.log_activity(
         action="register",
-        user_id=user.id,
+        user_id=user_id_str,
         resource_type="user",
-        resource_id=user.id,
+        resource_id=None,
         ip_address=request.remote_addr,
         user_agent=request.headers.get("User-Agent")
     )
@@ -208,11 +245,21 @@ def api_login():
     if not user_data:
         return jsonify({"error": "User not found"}), 404
 
-    if not check_password_hash(user_data['password_hash'], password):
+    # Check if user has a password (OAuth users may not have password_hash)
+    password_hash = user_data.get('password_hash')
+    if not password_hash:
+        return jsonify({"error": "This account uses Google sign-in. Please use the 'Sign in with Google' button."}), 400
+
+    if not check_password_hash(password_hash, password):
         return jsonify({"error": "Invalid password"}), 401
 
+    # Ensure id is UUID string
+    user_id_str = str(user_data['id']) if user_data.get('id') else None
+    if not user_id_str:
+        return jsonify({"error": "Invalid user data"}), 500
+    
     user = User(
-        user_data['id'],
+        user_id_str,
         user_data['username'],
         user_data['email'],
         user_data.get('is_admin', False),
@@ -223,9 +270,9 @@ def api_login():
 
     db.log_activity(
         action="api_login",
-        user_id=user.id,
+        user_id=user_id_str,
         resource_type="user",
-        resource_id=user.id,
+        resource_id=None,
         ip_address=request.remote_addr,
         user_agent=request.headers.get("User-Agent")
     )
@@ -489,9 +536,14 @@ def auth_callback():
                 flash("Failed to retrieve user account. Please try again.", "error")
                 return redirect(url_for('auth.login'))
 
-            # Create Flask-Login User object
+            # Create Flask-Login User object - ensure id is UUID string
+            user_id_str = str(local_user['id']) if local_user.get('id') else None
+            if not user_id_str:
+                flash("Invalid user data. Please try again.", "error")
+                return redirect(url_for('auth.login'))
+            
             user = User(
-                local_user['id'],
+                user_id_str,
                 local_user['username'],
                 local_user['email'],
                 local_user.get('is_admin', False),
@@ -506,9 +558,9 @@ def auth_callback():
             try:
                 db.log_activity(
                     action="google_login",
-                    user_id=user.id,
+                    user_id=user_id_str,
                     resource_type="user",
-                    resource_id=user.id,
+                    resource_id=None,
                     ip_address=request.remote_addr,
                     user_agent=request.headers.get("User-Agent")
                 )

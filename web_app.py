@@ -36,6 +36,13 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-product
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
 app.config['UPLOAD_FOLDER'] = './data/uploads'
 
+# Session configuration for Flask-Login
+app.config['SESSION_COOKIE_SECURE'] = os.getenv('FLASK_ENV') == 'production'  # HTTPS only in production
+app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent XSS attacks
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
+app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
+app.config['REMEMBER_COOKIE_DURATION'] = 86400  # 24 hours
+
 # Ensure upload folder exists
 Path(app.config['UPLOAD_FOLDER']).mkdir(parents=True, exist_ok=True)
 
@@ -108,36 +115,30 @@ login_manager.login_message = 'Please log in to access this page.'
 
 @login_manager.user_loader
 def load_user(user_id):
-    """Load user for Flask-Login - with timeout protection"""
+    """Load user for Flask-Login - user_id is UUID string"""
     try:
-        # Keep user_id as string (UUID from Supabase)
-        # Don't convert to int - users.id is UUID in Supabase
-        user_id = str(user_id)
-
-        # Try to load user with a reasonable timeout
-        # If database is slow/failing, return None quickly instead of blocking
-        import signal
-
-        def timeout_handler(signum, frame):
-            raise TimeoutError("User load timeout")
-
-        # Set 2-second timeout for user loading
-        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(2)
-
-        try:
-            user = User.get(user_id)
-            signal.alarm(0)  # Cancel alarm
-            signal.signal(signal.SIGALRM, old_handler)  # Restore old handler
-            return user
-        except TimeoutError:
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old_handler)
-            print(f"⚠️  User load timeout for {user_id} - database too slow", flush=True)
+        # user_id is UUID string in PostgreSQL
+        user_id_str = str(user_id) if user_id else None
+        if not user_id_str:
+            print(f"[USER_LOADER] No user_id provided")
             return None
 
+        print(f"[USER_LOADER] Loading user with ID: {user_id_str}")
+        user = User.get(user_id_str)
+
+        if user:
+            print(f"[USER_LOADER] Successfully loaded user: {user.username}")
+        else:
+            print(f"[USER_LOADER] User not found for ID: {user_id_str}")
+
+        return user
+    except (ValueError, TypeError) as e:
+        print(f"[USER_LOADER ERROR] Invalid user_id: {e}")
+        return None
     except Exception as e:
-        print(f"Error loading user: {e}", flush=True)
+        print(f"[USER_LOADER ERROR] Error loading user: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 # ============================================================================
@@ -208,17 +209,32 @@ def index():
         return render_template('index.html')
 
 @app.route('/create')
+@login_required
 def create_listing():
     """Create new listing page"""
-    return render_template('create.html')
+    from flask import request
+    draft_id = request.args.get('draft_id', type=int)
+    return render_template('create.html', draft_id=draft_id)
 
 @app.route('/drafts')
 @login_required
 def drafts():
     """Drafts page"""
-    # Fetch all drafts for current user
-    drafts_list = get_db_instance().get_drafts(user_id=current_user.id, limit=100)
-    return render_template('drafts.html', drafts=drafts_list)
+    try:
+        # Fetch all drafts for current user - user_id is UUID
+        user_id_str = str(current_user.id) if current_user and current_user.id else None
+        if not user_id_str:
+            flash("User not authenticated", "error")
+            return redirect(url_for('auth.login'))
+        
+        drafts_list = get_db_instance().get_drafts(user_id=user_id_str, limit=100)
+        return render_template('drafts.html', drafts=drafts_list)
+    except Exception as e:
+        print(f"Error loading drafts page: {e}")
+        import traceback
+        traceback.print_exc()
+        flash("Error loading drafts. Please try again.", "error")
+        return redirect(url_for('index'))
 
 @app.route('/listings')
 @login_required
@@ -226,14 +242,17 @@ def listings():
     """Listings page"""
     db_instance = get_db_instance()
     cursor = db_instance._get_cursor()
-    # Cast user_id to handle UUID/INTEGER type mismatch
-    cursor.execute("""
-        SELECT * FROM listings
-        WHERE user_id::text = %s::text AND status != 'draft'
-        ORDER BY created_at DESC
-    """, (str(current_user.id),))
-    user_listings = [dict(row) for row in cursor.fetchall()]
-    return render_template('listings.html', listings=user_listings)
+    try:
+        # Cast user_id to handle UUID/INTEGER type mismatch
+        cursor.execute("""
+            SELECT * FROM listings
+            WHERE user_id::text = %s::text AND status != 'draft'
+            ORDER BY created_at DESC
+        """, (str(current_user.id),))
+        user_listings = [dict(row) for row in cursor.fetchall()]
+        return render_template('listings.html', listings=user_listings)
+    finally:
+        cursor.close()
 
 @app.route('/notifications')
 @login_required
@@ -286,30 +305,33 @@ def settings():
     # Get user info
     db = get_db_instance()
     cursor = db._get_cursor()
-    cursor.execute("SELECT * FROM users WHERE id = %s", (current_user.id,))
-    user = dict(cursor.fetchone())
+    try:
+        cursor.execute("SELECT * FROM users WHERE id = %s", (current_user.id,))
+        user = dict(cursor.fetchone())
 
-    # Get marketplace credentials
-    cursor.execute("SELECT * FROM marketplace_credentials WHERE user_id = %s", (current_user.id,))
-    creds_rows = cursor.fetchall()
-    credentials = {row['platform']: dict(row) for row in creds_rows}
+        # Get marketplace credentials
+        cursor.execute("SELECT * FROM marketplace_credentials WHERE user_id = %s", (current_user.id,))
+        creds_rows = cursor.fetchall()
+        credentials = {row['platform']: dict(row) for row in creds_rows}
 
-    # Define platforms
-    platforms = [
-        {'id': 'poshmark', 'name': 'Poshmark', 'icon': 'fas fa-tshirt', 'color': 'text-danger'},
-        {'id': 'mercari', 'name': 'Mercari', 'icon': 'fas fa-shopping-bag', 'color': 'text-primary'},
-        {'id': 'ebay', 'name': 'eBay', 'icon': 'fab fa-ebay', 'color': 'text-warning'},
-        {'id': 'grailed', 'name': 'Grailed', 'icon': 'fas fa-tshirt', 'color': 'text-dark'},
-        {'id': 'depop', 'name': 'Depop', 'icon': 'fas fa-store', 'color': 'text-danger'},
-        {'id': 'vinted', 'name': 'Vinted', 'icon': 'fas fa-tag', 'color': 'text-success'},
-        {'id': 'whatnot', 'name': 'Whatnot', 'icon': 'fas fa-video', 'color': 'text-purple'},
-        {'id': 'facebook', 'name': 'Facebook Marketplace', 'icon': 'fab fa-facebook', 'color': 'text-primary'},
-        {'id': 'offerup', 'name': 'OfferUp', 'icon': 'fas fa-handshake', 'color': 'text-success'},
-        {'id': 'rubylane', 'name': 'Ruby Lane', 'icon': 'fas fa-gem', 'color': 'text-danger'},
-        {'id': 'chairish', 'name': 'Chairish', 'icon': 'fas fa-couch', 'color': 'text-info'},
-    ]
+        # Define platforms
+        platforms = [
+            {'id': 'poshmark', 'name': 'Poshmark', 'icon': 'fas fa-tshirt', 'color': 'text-danger'},
+            {'id': 'mercari', 'name': 'Mercari', 'icon': 'fas fa-shopping-bag', 'color': 'text-primary'},
+            {'id': 'ebay', 'name': 'eBay', 'icon': 'fab fa-ebay', 'color': 'text-warning'},
+            {'id': 'grailed', 'name': 'Grailed', 'icon': 'fas fa-tshirt', 'color': 'text-dark'},
+            {'id': 'depop', 'name': 'Depop', 'icon': 'fas fa-store', 'color': 'text-danger'},
+            {'id': 'vinted', 'name': 'Vinted', 'icon': 'fas fa-tag', 'color': 'text-success'},
+            {'id': 'whatnot', 'name': 'Whatnot', 'icon': 'fas fa-video', 'color': 'text-purple'},
+            {'id': 'facebook', 'name': 'Facebook Marketplace', 'icon': 'fab fa-facebook', 'color': 'text-primary'},
+            {'id': 'offerup', 'name': 'OfferUp', 'icon': 'fas fa-handshake', 'color': 'text-success'},
+            {'id': 'rubylane', 'name': 'Ruby Lane', 'icon': 'fas fa-gem', 'color': 'text-danger'},
+            {'id': 'chairish', 'name': 'Chairish', 'icon': 'fas fa-couch', 'color': 'text-info'},
+        ]
 
-    return render_template('settings.html', user=user, credentials=credentials, platforms=platforms)
+        return render_template('settings.html', user=user, credentials=credentials, platforms=platforms)
+    finally:
+        cursor.close()
 
 # ============================================================================
 # RUN SERVER

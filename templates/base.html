@@ -732,6 +732,10 @@
             padding-right: calc(50vw - 50%);
         }
 
+        [data-theme="dark"] .section-alt {
+            background: #1a1a1a;
+        }
+
         .section-dark {
             background: linear-gradient(135deg, #0A0A0A 0%, #1a0a1f 20%, #4C1D95 40%, #5B21B6 60%, #991B1B 85%, #7F1D1D 100%);
             color: white;
@@ -1220,6 +1224,20 @@
         </div>
 
         <div class="nav-item">
+            <a href="{{ url_for('inventory') }}" class="nav-link {% if request.endpoint == 'inventory' %}active{% endif %}">
+                <i class="fas fa-boxes"></i>
+                <span>Inventory</span>
+            </a>
+        </div>
+
+        <div class="nav-item">
+            <a href="{{ url_for('invoicing') }}" class="nav-link {% if request.endpoint == 'invoicing' %}active{% endif %}">
+                <i class="fas fa-file-invoice-dollar"></i>
+                <span>Invoicing</span>
+            </a>
+        </div>
+
+        <div class="nav-item">
             <a href="{{ url_for('storage') }}" class="nav-link {% if request.endpoint in ['storage','storage_clothing','storage_map','cards.cards_collection'] %}active{% endif %}">
                 <i class="fas fa-box"></i>
                 <span>Storage</span>
@@ -1259,6 +1277,10 @@
             <a href="{{ url_for('drafts') }}" class="account-menu-item">
                 <i class="fas fa-folder"></i>
                 <span>Drafts</span>
+            </a>
+            <a href="{{ url_for('main.billing') }}" class="account-menu-item">
+                <i class="fas fa-credit-card"></i>
+                <span>Billing & Subscription</span>
             </a>
             <hr>
             <a href="{{ url_for('auth.logout') }}" class="account-menu-item text-danger">

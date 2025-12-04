@@ -4,7 +4,7 @@ services:
     env: python
     region: oregon
     plan: free
-    branch: claude/fix-render-deployment-01SVzB9WMbKsjsAT84BX9oqj
+    branch: main
     buildCommand: pip install --upgrade pip && pip install gunicorn && pip install -r requirements.txt
     startCommand: gunicorn web_app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120 --threads 4
     maxUploadSizeMB: 50

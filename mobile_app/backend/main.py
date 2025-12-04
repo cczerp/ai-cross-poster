@@ -420,6 +420,124 @@ async def get_stats(current_user: dict = Depends(get_current_user)):
 
 
 # ============================================================================
+# NEW MOBILE FEATURES ENDPOINTS
+# ============================================================================
+
+@app.get("/inventory")
+async def get_inventory(current_user: dict = Depends(get_current_user)):
+    """Get user's inventory items"""
+    cursor = db._get_cursor()
+    cursor.execute("""
+        SELECT * FROM inventory
+        ORDER BY created_at DESC
+    """)
+    items = [dict(row) for row in cursor.fetchall()]
+    return {"inventory": items}
+
+
+@app.post("/inventory")
+async def add_to_inventory(
+    title: str,
+    storage_location: str,
+    photos: List[dict],
+    current_user: dict = Depends(get_current_user)
+):
+    """Add item to inventory"""
+    cursor = db._get_cursor()
+    cursor.execute("""
+        INSERT INTO inventory (title, storage_location, photos, created_at)
+        VALUES (?, ?, ?, ?)
+    """, (title, storage_location, json.dumps(photos), datetime.now()))
+
+    db.conn.commit()
+    return {"success": True, "id": cursor.lastrowid}
+
+
+@app.get("/inventory/barcode/{barcode}")
+async def lookup_by_barcode(
+    barcode: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Lookup item by barcode"""
+    cursor = db._get_cursor()
+    cursor.execute("""
+        SELECT * FROM inventory
+        WHERE barcode = ?
+    """, (barcode,))
+
+    item = cursor.fetchone()
+    if item:
+        return dict(item)
+    else:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+
+@app.get("/inventory/export-csv")
+async def export_inventory_csv(current_user: dict = Depends(get_current_user)):
+    """Export inventory as CSV"""
+    cursor = db._get_cursor()
+    cursor.execute("""
+        SELECT title, storage_location, created_at, photos
+        FROM inventory
+        ORDER BY created_at DESC
+    """)
+
+    import csv
+    import io
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Write header
+    writer.writerow(['Title', 'Storage Location', 'Date Added', 'Photos'])
+
+    # Write data
+    for row in cursor.fetchall():
+        writer.writerow([
+            row['title'],
+            row['storage_location'],
+            row['created_at'],
+            len(json.loads(row['photos'] or '[]'))  # Count photos
+        ])
+
+    return output.getvalue()
+
+
+@app.get("/templates")
+async def get_templates(current_user: dict = Depends(get_current_user)):
+    """Get user's saved templates"""
+    cursor = db._get_cursor()
+    cursor.execute("""
+        SELECT * FROM templates
+        ORDER BY created_at DESC
+    """)
+    templates = [dict(row) for row in cursor.fetchall()]
+    return {"templates": templates}
+
+
+@app.post("/templates")
+async def save_template(
+    name: str,
+    title: str,
+    description: str,
+    brand: Optional[str] = None,
+    size: Optional[str] = None,
+    color: Optional[str] = None,
+    condition: str = "good",
+    current_user: dict = Depends(get_current_user)
+):
+    """Save a listing template"""
+    cursor = db._get_cursor()
+    cursor.execute("""
+        INSERT INTO templates (name, title, description, brand, size, color, condition, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (name, title, description, brand, size, color, condition, datetime.now()))
+
+    db.conn.commit()
+    return {"success": True, "id": cursor.lastrowid}
+
+
+# ============================================================================
 # MAIN
 # ============================================================================
 

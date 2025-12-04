@@ -22,9 +22,15 @@ import {
   ActivityIndicator,
   SafeAreaView,
   Platform,
+  FlatList,
+  Modal,
 } from 'react-native';
 import { Camera, CameraType } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
+import { BarCodeScanner } from 'expo-barcode-scanner';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import * as Clipboard from 'expo-clipboard';
 import axios from 'axios';
 
 // API Configuration
@@ -46,6 +52,25 @@ interface AIAnalysis {
   color?: string;
   condition: string;
   category?: string;
+}
+
+interface InventoryItem {
+  id: string;
+  title: string;
+  storage_location: string;
+  photos: Photo[];
+  created_at: string;
+}
+
+interface ListingTemplate {
+  id: string;
+  name: string;
+  title: string;
+  description: string;
+  brand?: string;
+  size?: string;
+  color?: string;
+  condition: string;
 }
 
 export default function App() {
@@ -72,6 +97,15 @@ export default function App() {
     ebay: true,
     mercari: true,
   });
+
+  // New mobile features state
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [scannedBarcode, setScannedBarcode] = useState('');
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [templates, setTemplates] = useState<ListingTemplate[]>([]);
+  const [showInventory, setShowInventory] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [currentScreen, setCurrentScreen] = useState<'camera' | 'inventory' | 'templates'>('camera');
 
   const cameraRef = useRef<Camera>(null);
 
@@ -264,6 +298,141 @@ export default function App() {
     }
   };
 
+  // ===== NEW MOBILE FEATURES =====
+
+  // Barcode Scanning
+  const requestBarcodePermission = async () => {
+    const { status } = await BarCodeScanner.requestPermissionsAsync();
+    return status === 'granted';
+  };
+
+  const handleBarCodeScanned = ({ type, data }: { type: string; data: string }) => {
+    setScannedBarcode(data);
+    setShowBarcodeScanner(false);
+    Alert.alert('Barcode Scanned', `Type: ${type}\nData: ${data}`);
+    // Use barcode data to lookup item in inventory
+    lookupItemByBarcode(data);
+  };
+
+  const lookupItemByBarcode = async (barcode: string) => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/inventory/barcode/${barcode}`);
+      if (response.data) {
+        // Populate form with item data
+        setTitle(response.data.title);
+        setStorageLocation(response.data.storage_location);
+        setPhotos(response.data.photos || []);
+        Alert.alert('Item Found', `Found: ${response.data.title}`);
+      }
+    } catch (error) {
+      Alert.alert('Not Found', 'No item found with this barcode');
+    }
+  };
+
+  // CSV Download
+  const downloadCSV = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/inventory/export-csv`);
+      const csvContent = response.data;
+
+      const filename = `inventory_${new Date().toISOString().split('T')[0]}.csv`;
+      const fileUri = FileSystem.documentDirectory + filename;
+
+      await FileSystem.writeAsStringAsync(fileUri, csvContent, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri);
+      } else {
+        Alert.alert('Success', `CSV saved to: ${fileUri}`);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to download CSV');
+    }
+  };
+
+  // Template Management
+  const saveAsTemplate = async () => {
+    if (!title.trim()) {
+      Alert.alert('Error', 'Title is required to save template');
+      return;
+    }
+
+    const templateName = await new Promise<string>((resolve) => {
+      Alert.prompt(
+        'Template Name',
+        'Enter a name for this template:',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Save', onPress: resolve },
+        ]
+      );
+    });
+
+    if (templateName) {
+      const template: ListingTemplate = {
+        id: Date.now().toString(),
+        name: templateName,
+        title,
+        description,
+        brand,
+        size,
+        color,
+        condition,
+      };
+
+      setTemplates([...templates, template]);
+      Alert.alert('Success', 'Template saved!');
+    }
+  };
+
+  const loadTemplate = (template: ListingTemplate) => {
+    setTitle(template.title);
+    setDescription(template.description);
+    setBrand(template.brand || '');
+    setSize(template.size || '');
+    setColor(template.color || '');
+    setCondition(template.condition);
+    setShowTemplates(false);
+    Alert.alert('Template Loaded', `Loaded: ${template.name}`);
+  };
+
+  const copyToClipboard = async (text: string) => {
+    await Clipboard.setStringAsync(text);
+    Alert.alert('Copied', 'Text copied to clipboard');
+  };
+
+  // Inventory Management
+  const loadInventory = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/inventory`);
+      setInventory(response.data);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to load inventory');
+    }
+  };
+
+  const addToInventory = async () => {
+    if (!title.trim() || !storageLocation.trim()) {
+      Alert.alert('Error', 'Title and storage location are required');
+      return;
+    }
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/inventory`, {
+        title,
+        storage_location: storageLocation,
+        photos: photos.map(p => ({ photo_id: p.photo_id, url: p.url })),
+      });
+
+      setInventory([...inventory, response.data]);
+      Alert.alert('Success', 'Added to inventory!');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to add to inventory');
+    }
+  };
+
   if (hasPermission === null) {
     return <View style={styles.container}><Text>Requesting permissions...</Text></View>;
   }
@@ -311,6 +480,28 @@ export default function App() {
           <Text style={styles.subtitle}>Snap, List, Sell!</Text>
         </View>
 
+        {/* Navigation Buttons */}
+        <View style={styles.navButtons}>
+          <TouchableOpacity
+            style={[styles.navButton, currentScreen === 'camera' && styles.navButtonActive]}
+            onPress={() => setCurrentScreen('camera')}>
+            <Text style={styles.navButtonText}>📷 Camera</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.navButton, currentScreen === 'inventory' && styles.navButtonActive]}
+            onPress={() => {
+              setCurrentScreen('inventory');
+              loadInventory();
+            }}>
+            <Text style={styles.navButtonText}>📦 Inventory</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.navButton, currentScreen === 'templates' && styles.navButtonActive]}
+            onPress={() => setCurrentScreen('templates')}>
+            <Text style={styles.navButtonText}>📋 Templates</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Photo Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Photos ({photos.length})</Text>
@@ -341,6 +532,19 @@ export default function App() {
               onPress={pickImage}
               disabled={uploading}>
               <Text style={styles.actionButtonText}>🖼️ Gallery</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionButton, styles.barcodeButton]}
+              onPress={async () => {
+                const granted = await requestBarcodePermission();
+                if (granted) {
+                  setShowBarcodeScanner(true);
+                } else {
+                  Alert.alert('Permission Denied', 'Camera permission is required for barcode scanning');
+                }
+              }}>
+              <Text style={styles.actionButtonText}>📱 Scan Barcode</Text>
             </TouchableOpacity>
           </View>
 
@@ -459,6 +663,27 @@ export default function App() {
           </View>
         </View>
 
+        {/* Template and Utility Buttons */}
+        <View style={styles.utilityButtons}>
+          <TouchableOpacity
+            style={[styles.utilityButton, styles.templateButton]}
+            onPress={() => setShowTemplates(true)}>
+            <Text style={styles.utilityButtonText}>📋 Templates</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.utilityButton, styles.csvButton]}
+            onPress={downloadCSV}>
+            <Text style={styles.utilityButtonText}>📊 Download CSV</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.utilityButton, styles.inventoryButton]}
+            onPress={() => setShowInventory(true)}>
+            <Text style={styles.utilityButtonText}>📦 Inventory</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Post Button */}
         <TouchableOpacity
           style={[styles.actionButton, styles.postButton]}
@@ -471,6 +696,85 @@ export default function App() {
 
         <View style={styles.bottomPadding} />
       </ScrollView>
+
+      {/* Barcode Scanner Modal */}
+      <Modal visible={showBarcodeScanner} animationType="slide">
+        <View style={styles.modalContainer}>
+          <BarCodeScanner
+            onBarCodeScanned={handleBarCodeScanned}
+            style={StyleSheet.absoluteFillObject}
+          />
+          <View style={styles.barcodeOverlay}>
+            <Text style={styles.barcodeText}>Scan Barcode</Text>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setShowBarcodeScanner(false)}>
+              <Text style={styles.closeButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Inventory Modal */}
+      <Modal visible={showInventory} animationType="slide">
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>📦 Inventory</Text>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setShowInventory(false)}>
+              <Text style={styles.closeButtonText}>×</Text>
+            </TouchableOpacity>
+          </View>
+          <FlatList
+            data={inventory}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <View style={styles.inventoryItem}>
+                <Text style={styles.inventoryTitle}>{item.title}</Text>
+                <Text style={styles.inventoryLocation}>{item.storage_location}</Text>
+                <Text style={styles.inventoryDate}>
+                  {new Date(item.created_at).toLocaleDateString()}
+                </Text>
+              </View>
+            )}
+            ListEmptyComponent={<Text style={styles.emptyText}>No items in inventory</Text>}
+          />
+          <TouchableOpacity style={styles.addToInventoryButton} onPress={addToInventory}>
+            <Text style={styles.addToInventoryText}>Add Current Item to Inventory</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
+      {/* Templates Modal */}
+      <Modal visible={showTemplates} animationType="slide">
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>📋 Templates</Text>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setShowTemplates(false)}>
+              <Text style={styles.closeButtonText}>×</Text>
+            </TouchableOpacity>
+          </View>
+          <FlatList
+            data={templates}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.templateItem}
+                onPress={() => loadTemplate(item)}>
+                <Text style={styles.templateName}>{item.name}</Text>
+                <Text style={styles.templatePreview}>{item.title}</Text>
+              </TouchableOpacity>
+            )}
+            ListEmptyComponent={<Text style={styles.emptyText}>No templates saved</Text>}
+          />
+          <TouchableOpacity style={styles.saveTemplateButton} onPress={saveAsTemplate}>
+            <Text style={styles.saveTemplateText}>Save Current as Template</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -656,5 +960,159 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: 50,
+  },
+
+  // New mobile feature styles
+  navButtons: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: '#2a2a2a',
+  },
+  navButton: {
+    flex: 1,
+    padding: 10,
+    marginHorizontal: 5,
+    borderRadius: 8,
+    backgroundColor: '#3a3a3a',
+    alignItems: 'center',
+  },
+  navButtonActive: {
+    backgroundColor: '#4CAF50',
+  },
+  navButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  barcodeButton: {
+    backgroundColor: '#FF6B35',
+  },
+  utilityButtons: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  utilityButton: {
+    flex: 1,
+    padding: 12,
+    marginHorizontal: 5,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  templateButton: {
+    backgroundColor: '#9C27B0',
+  },
+  csvButton: {
+    backgroundColor: '#2196F3',
+  },
+  inventoryButton: {
+    backgroundColor: '#FF9800',
+  },
+  utilityButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#1a1a1a',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  closeButton: {
+    padding: 10,
+  },
+  closeButtonText: {
+    color: '#fff',
+    fontSize: 18,
+  },
+  barcodeOverlay: {
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  barcodeText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: 10,
+    borderRadius: 8,
+  },
+  inventoryItem: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  inventoryTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  inventoryLocation: {
+    color: '#ccc',
+    fontSize: 14,
+  },
+  inventoryDate: {
+    color: '#999',
+    fontSize: 12,
+  },
+  templateItem: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  templateName: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  templatePreview: {
+    color: '#ccc',
+    fontSize: 14,
+  },
+  emptyText: {
+    color: '#666',
+    textAlign: 'center',
+    padding: 20,
+    fontSize: 16,
+  },
+  addToInventoryButton: {
+    backgroundColor: '#4CAF50',
+    padding: 15,
+    margin: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  addToInventoryText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  saveTemplateButton: {
+    backgroundColor: '#9C27B0',
+    padding: 15,
+    margin: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  saveTemplateText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

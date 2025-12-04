@@ -1,0 +1,615 @@
+{% extends "base.html" %}
+
+{% block title %}Inventory Management{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0"><i class="fas fa-boxes"></i> Inventory Management</h2>
+    <div class="btn-group">
+        <button class="btn btn-outline-primary" onclick="exportInventory()">
+            <i class="fas fa-download"></i> Export
+        </button>
+        <button class="btn btn-outline-success" onclick="refreshInventory()">
+            <i class="fas fa-sync"></i> Refresh
+        </button>
+    </div>
+</div>
+
+<p class="text-muted">
+    Centralized inventory table with all listing states: draft, active, sold, shipped, archived.
+    Filter, search, and manage your entire inventory from one place.
+</p>
+
+<!-- Inventory Stats Cards -->
+<div class="row mb-4" id="statsCards">
+    <!-- Stats will be loaded dynamically -->
+</div>
+
+<!-- Filters and Search -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Status</label>
+                <select class="form-select" id="statusFilter">
+                    <option value="all">All Statuses</option>
+                    <option value="draft">Draft</option>
+                    <option value="active">Active</option>
+                    <option value="sold">Sold</option>
+                    <option value="shipped">Shipped</option>
+                    <option value="archived">Archived</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Category</label>
+                <input type="text" class="form-control" id="categoryFilter" placeholder="Filter by category">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Platform</label>
+                <select class="form-select" id="platformFilter">
+                    <option value="all">All Platforms</option>
+                    <option value="ebay">eBay</option>
+                    <option value="mercari">Mercari</option>
+                    <option value="poshmark">Poshmark</option>
+                    <option value="etsy">Etsy</option>
+                    <option value="facebook">Facebook</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Search</label>
+                <input type="text" class="form-control" id="searchInput" placeholder="Title, SKU, UPC...">
+            </div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-12">
+                <button class="btn btn-primary me-2" onclick="applyFilters()">
+                    <i class="fas fa-filter"></i> Apply Filters
+                </button>
+                <button class="btn btn-outline-secondary" onclick="clearFilters()">
+                    <i class="fas fa-times"></i> Clear
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Actions Bar (hidden by default) -->
+<div id="bulkActionBar" class="card mb-3" style="display:none;">
+    <div class="card-body">
+        <h5><i class="fas fa-tasks"></i> Bulk Actions (<span id="selectedCount">0</span> selected)</h5>
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Change Status</label>
+                <select class="form-select" id="bulkStatus">
+                    <option value="">Select Status</option>
+                    <option value="active">Active</option>
+                    <option value="sold">Sold</option>
+                    <option value="shipped">Shipped</option>
+                    <option value="archived">Archived</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Change Category</label>
+                <input type="text" class="form-control" id="bulkCategory" placeholder="New category">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">&nbsp;</label>
+                <div>
+                    <button class="btn btn-success me-2" onclick="applyBulkUpdate()">
+                        <i class="fas fa-check"></i> Apply Changes
+                    </button>
+                    <button class="btn btn-danger me-2" onclick="bulkDelete()">
+                        <i class="fas fa-trash"></i> Delete Selected
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="clearSelection()">
+                        <i class="fas fa-times"></i> Clear Selection
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Inventory Table -->
+<div class="card">
+    <div class="card-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Inventory Items</h5>
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" onclick="changeView('table')" id="tableViewBtn">
+                    <i class="fas fa-table"></i>
+                </button>
+                <button class="btn btn-outline-secondary" onclick="changeView('card')" id="cardViewBtn">
+                    <i class="fas fa-th"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- Table View -->
+        <div id="tableView">
+            <div class="table-responsive">
+                <table class="table table-hover" id="inventoryTable">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                            <th><a href="#" onclick="sortBy('title')">Title</a></th>
+                            <th><a href="#" onclick="sortBy('status')">Status</a></th>
+                            <th><a href="#" onclick="sortBy('price')">Price</a></th>
+                            <th>SKU</th>
+                            <th>Platforms</th>
+                            <th>Storage</th>
+                            <th><a href="#" onclick="sortBy('created_at')">Created</a></th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventoryTableBody">
+                        <!-- Table rows will be loaded dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Card View -->
+        <div id="cardView" style="display:none;">
+            <div class="row" id="inventoryCards">
+                <!-- Cards will be loaded dynamically -->
+            </div>
+        </div>
+
+        <!-- Loading indicator -->
+        <div id="loadingIndicator" class="text-center py-4">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading inventory...</p>
+        </div>
+
+        <!-- Pagination -->
+        <nav id="paginationNav" class="mt-4" style="display:none;">
+            <ul class="pagination justify-content-center" id="paginationControls">
+                <!-- Pagination controls will be loaded dynamically -->
+            </ul>
+        </nav>
+    </div>
+</div>
+
+<!-- Item Detail Modal -->
+<div class="modal fade" id="itemDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="itemDetailTitle">Item Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="itemDetailBody">
+                <!-- Item details will be loaded dynamically -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="editItem()">Edit</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Global variables
+let currentPage = 1;
+let currentSort = 'created_at';
+let currentOrder = 'desc';
+let selectedItems = new Set();
+
+// Initialize page
+document.addEventListener('DOMContentLoaded', function() {
+    loadInventory();
+    loadStats();
+});
+
+// Load inventory data
+async function loadInventory() {
+    showLoading(true);
+
+    const params = new URLSearchParams({
+        page: currentPage,
+        sort: currentSort,
+        order: currentOrder,
+        status: document.getElementById('statusFilter').value,
+        category: document.getElementById('categoryFilter').value,
+        platform: document.getElementById('platformFilter').value,
+        search: document.getElementById('searchInput').value
+    });
+
+    try {
+        const response = await fetch(`/api/inventory/listings?${params}`);
+        const data = await response.json();
+
+        if (data.success) {
+            renderTable(data.listings);
+            renderPagination(data.pagination);
+        } else {
+            showError('Failed to load inventory: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        showError('Network error: ' + error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Load inventory stats
+async function loadStats() {
+    try {
+        const response = await fetch('/api/inventory/listings?page=1&per_page=1');
+        const data = await response.json();
+
+        if (data.success && data.stats) {
+            renderStats(data.stats);
+        }
+    } catch (error) {
+        console.error('Failed to load stats:', error);
+    }
+}
+
+// Render stats cards
+function renderStats(stats) {
+    const statsHtml = `
+        <div class="col-md-2 mb-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <h3 class="text-primary">${stats.total_count || 0}</h3>
+                    <p class="mb-0">Total Items</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2 mb-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <h3 class="text-warning">${stats.draft_count || 0}</h3>
+                    <p class="mb-0">Drafts</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2 mb-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <h3 class="text-success">${stats.active_count || 0}</h3>
+                    <p class="mb-0">Active</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2 mb-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <h3 class="text-info">${stats.sold_count || 0}</h3>
+                    <p class="mb-0">Sold</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2 mb-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <h3 class="text-secondary">${stats.shipped_count || 0}</h3>
+                    <p class="mb-0">Shipped</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2 mb-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <h3 class="text-muted">${stats.archived_count || 0}</h3>
+                    <p class="mb-0">Archived</p>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('statsCards').innerHTML = statsHtml;
+}
+
+// Render table
+function renderTable(listings) {
+    const tbody = document.getElementById('inventoryTableBody');
+
+    if (listings.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="9" class="text-center py-4">
+                    <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+                    <p class="text-muted">No items found matching your criteria.</p>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    const rows = listings.map(item => {
+        const statusBadge = getStatusBadge(item.status);
+        const platforms = item.platforms ? item.platforms.split(', ').filter(p => p).join(', ') : 'None';
+        const storage = item.storage_location || 'Not set';
+        const created = new Date(item.created_at).toLocaleDateString();
+
+        return `
+            <tr>
+                <td><input type="checkbox" class="item-checkbox" value="${item.id}" onchange="updateSelection()"></td>
+                <td>
+                    <div class="d-flex align-items-center">
+                        ${item.photos && item.photos.length > 0 ?
+                            `<img src="${JSON.parse(item.photos)[0]}" class="me-2" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;">` :
+                            '<i class="fas fa-image me-2 text-muted"></i>'
+                        }
+                        <div>
+                            <strong>${item.title}</strong>
+                            ${item.category ? `<br><small class="text-muted">${item.category}</small>` : ''}
+                        </div>
+                    </div>
+                </td>
+                <td>${statusBadge}</td>
+                <td>$${parseFloat(item.price || 0).toFixed(2)}</td>
+                <td>${item.sku || '-'}</td>
+                <td><small>${platforms}</small></td>
+                <td><small>${storage}</small></td>
+                <td><small>${created}</small></td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary btn-sm" onclick="viewItem(${item.id})">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="editItem(${item.id})">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    tbody.innerHTML = rows;
+}
+
+// Get status badge
+function getStatusBadge(status) {
+    const badges = {
+        'draft': '<span class="badge bg-warning">Draft</span>',
+        'active': '<span class="badge bg-success">Active</span>',
+        'sold': '<span class="badge bg-info">Sold</span>',
+        'shipped': '<span class="badge bg-secondary">Shipped</span>',
+        'archived': '<span class="badge bg-dark">Archived</span>'
+    };
+    return badges[status] || `<span class="badge bg-light text-dark">${status}</span>`;
+}
+
+// Render pagination
+function renderPagination(pagination) {
+    const nav = document.getElementById('paginationNav');
+    const controls = document.getElementById('paginationControls');
+
+    if (pagination.pages <= 1) {
+        nav.style.display = 'none';
+        return;
+    }
+
+    nav.style.display = 'block';
+
+    let html = '';
+
+    // Previous button
+    if (pagination.page > 1) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="changePage(${pagination.page - 1})">Previous</a></li>`;
+    } else {
+        html += `<li class="page-item disabled"><span class="page-link">Previous</span></li>`;
+    }
+
+    // Page numbers
+    for (let i = Math.max(1, pagination.page - 2); i <= Math.min(pagination.pages, pagination.page + 2); i++) {
+        if (i === pagination.page) {
+            html += `<li class="page-item active"><span class="page-link">${i}</span></li>`;
+        } else {
+            html += `<li class="page-item"><a class="page-link" href="#" onclick="changePage(${i})">${i}</a></li>`;
+        }
+    }
+
+    // Next button
+    if (pagination.page < pagination.pages) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="changePage(${pagination.page + 1})">Next</a></li>`;
+    } else {
+        html += `<li class="page-item disabled"><span class="page-link">Next</span></li>`;
+    }
+
+    controls.innerHTML = html;
+}
+
+// Event handlers
+function applyFilters() {
+    currentPage = 1;
+    loadInventory();
+}
+
+function clearFilters() {
+    document.getElementById('statusFilter').value = 'all';
+    document.getElementById('categoryFilter').value = '';
+    document.getElementById('platformFilter').value = 'all';
+    document.getElementById('searchInput').value = '';
+    currentPage = 1;
+    loadInventory();
+}
+
+function sortBy(field) {
+    if (currentSort === field) {
+        currentOrder = currentOrder === 'asc' ? 'desc' : 'asc';
+    } else {
+        currentSort = field;
+        currentOrder = 'desc';
+    }
+    loadInventory();
+}
+
+function changePage(page) {
+    currentPage = page;
+    loadInventory();
+}
+
+function toggleSelectAll() {
+    const selectAll = document.getElementById('selectAll');
+    const checkboxes = document.querySelectorAll('.item-checkbox');
+
+    checkboxes.forEach(cb => {
+        cb.checked = selectAll.checked;
+    });
+
+    updateSelection();
+}
+
+function updateSelection() {
+    const checkboxes = document.querySelectorAll('.item-checkbox:checked');
+    selectedItems.clear();
+
+    checkboxes.forEach(cb => {
+        selectedItems.add(parseInt(cb.value));
+    });
+
+    const bar = document.getElementById('bulkActionBar');
+    const count = document.getElementById('selectedCount');
+
+    if (selectedItems.size > 0) {
+        bar.style.display = 'block';
+        count.textContent = selectedItems.size;
+    } else {
+        bar.style.display = 'none';
+    }
+}
+
+function clearSelection() {
+    selectedItems.clear();
+    document.querySelectorAll('.item-checkbox').forEach(cb => cb.checked = false);
+    document.getElementById('selectAll').checked = false;
+    document.getElementById('bulkActionBar').style.display = 'none';
+}
+
+async function applyBulkUpdate() {
+    const status = document.getElementById('bulkStatus').value;
+    const category = document.getElementById('bulkCategory').value.trim();
+
+    if (!status && !category) {
+        alert('Please select a status or enter a category to update.');
+        return;
+    }
+
+    const updates = {};
+    if (status) updates.status = status;
+    if (category) updates.category = category;
+
+    try {
+        const response = await fetch('/api/inventory/bulk-update', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                listing_ids: Array.from(selectedItems),
+                updates: updates
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert(`Updated ${data.updated} items successfully.`);
+            clearSelection();
+            loadInventory();
+            loadStats();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        alert('Network error: ' + error.message);
+    }
+}
+
+async function bulkDelete() {
+    if (!confirm(`Are you sure you want to delete ${selectedItems.size} items? This action cannot be undone.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/inventory/bulk-delete', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                listing_ids: Array.from(selectedItems),
+                confirm: true
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert(`Deleted ${data.deleted} items successfully.`);
+            clearSelection();
+            loadInventory();
+            loadStats();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        alert('Network error: ' + error.message);
+    }
+}
+
+function exportInventory() {
+    const params = new URLSearchParams({
+        type: document.getElementById('statusFilter').value,
+        format: 'csv'
+    });
+
+    window.open(`/api/inventory/export?${params}`, '_blank');
+}
+
+function refreshInventory() {
+    loadInventory();
+    loadStats();
+}
+
+function viewItem(itemId) {
+    // TODO: Implement item detail view
+    alert('Item detail view coming soon!');
+}
+
+function editItem(itemId) {
+    // TODO: Implement item editing
+    alert('Item editing coming soon!');
+}
+
+function changeView(view) {
+    const tableView = document.getElementById('tableView');
+    const cardView = document.getElementById('cardView');
+    const tableBtn = document.getElementById('tableViewBtn');
+    const cardBtn = document.getElementById('cardViewBtn');
+
+    if (view === 'table') {
+        tableView.style.display = 'block';
+        cardView.style.display = 'none';
+        tableBtn.classList.add('active');
+        cardBtn.classList.remove('active');
+    } else {
+        tableView.style.display = 'none';
+        cardView.style.display = 'block';
+        tableBtn.classList.remove('active');
+        cardBtn.classList.add('active');
+    }
+}
+
+// Utility functions
+function showLoading(show) {
+    document.getElementById('loadingIndicator').style.display = show ? 'block' : 'none';
+}
+
+function showError(message) {
+    // Simple error display - could be enhanced with a toast notification
+    alert('Error: ' + message);
+}
+</script>
+
+{% endblock %}

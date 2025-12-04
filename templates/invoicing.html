@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+
+{% block title %}Invoicing{% endblock %}
+
+{% block content %}
+<h2 class="mb-4"><i class="fas fa-file-invoice-dollar"></i> Invoicing System</h2>
+
+<!-- Create Invoice Section -->
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0"><i class="fas fa-plus"></i> Create Invoice</h5>
+    </div>
+    <div class="card-body">
+        <form id="createInvoiceForm">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="listingSelect" class="form-label">Select Sold Item</label>
+                        <select class="form-select" id="listingSelect" required>
+                            <option value="">Choose an item...</option>
+                            <!-- Will be populated via JavaScript -->
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="buyerEmail" class="form-label">Buyer Email</label>
+                        <input type="email" class="form-control" id="buyerEmail" required>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label for="taxRate" class="form-label">Tax Rate (%)</label>
+                        <input type="number" class="form-control" id="taxRate" step="0.01" value="8.25">
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label for="shippingCost" class="form-label">Shipping Cost</label>
+                        <input type="number" class="form-control" id="shippingCost" step="0.01" value="0.00">
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label for="discount" class="form-label">Discount</label>
+                        <input type="number" class="form-control" id="discount" step="0.01" value="0.00">
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-success">
+                <i class="fas fa-file-invoice-dollar"></i> Generate Invoice
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Recent Invoices -->
+<div class="card">
+    <div class="card-header bg-info text-white">
+        <h5 class="mb-0"><i class="fas fa-history"></i> Recent Invoices</h5>
+    </div>
+    <div class="card-body">
+        <div id="invoicesList">
+            <div class="text-center py-4">
+                <i class="fas fa-spinner fa-spin fa-2x text-muted mb-3"></i>
+                <p class="text-muted">Loading invoices...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Invoice Modal -->
+<div class="modal fade" id="invoiceModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Invoice</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="invoiceContent">
+                <!-- Invoice content will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="printInvoice()">
+                    <i class="fas fa-print"></i> Print
+                </button>
+                <button type="button" class="btn btn-success" onclick="emailInvoice()">
+                    <i class="fas fa-envelope"></i> Email
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentInvoiceId = null;
+
+async function loadSoldItems() {
+    try {
+        const response = await fetch('/api/listings?status=sold');
+        const data = await response.json();
+
+        const select = document.getElementById('listingSelect');
+        select.innerHTML = '<option value="">Choose an item...</option>';
+
+        data.listings.forEach(listing => {
+            const option = document.createElement('option');
+            option.value = listing.id;
+            option.textContent = `${listing.title} - $${listing.price}`;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading sold items:', error);
+    }
+}
+
+async function loadInvoices() {
+    try {
+        const response = await fetch('/api/invoices');
+        const data = await response.json();
+
+        const container = document.getElementById('invoicesList');
+
+        if (!data.invoices || data.invoices.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-4">
+                    <i class="fas fa-file-invoice-dollar fa-3x text-muted mb-3"></i>
+                    <h5>No Invoices Yet</h5>
+                    <p class="text-muted">Create your first invoice above</p>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '<div class="list-group">';
+        data.invoices.forEach(invoice => {
+            html += `
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">Invoice #${invoice.number}</h6>
+                            <p class="mb-1 text-muted">${invoice.item_title}</p>
+                            <small class="text-muted">Created: ${new Date(invoice.created_at).toLocaleDateString()}</small>
+                        </div>
+                        <div class="text-end">
+                            <div class="fw-bold">$${invoice.total.toFixed(2)}</div>
+                            <button class="btn btn-sm btn-outline-primary mt-1" onclick="viewInvoice('${invoice.id}')">
+                                <i class="fas fa-eye"></i> View
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+
+        container.innerHTML = html;
+    } catch (error) {
+        console.error('Error loading invoices:', error);
+        document.getElementById('invoicesList').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle"></i> Error loading invoices
+            </div>
+        `;
+    }
+}
+
+document.getElementById('createInvoiceForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const formData = {
+        listing_id: document.getElementById('listingSelect').value,
+        buyer_email: document.getElementById('buyerEmail').value,
+        tax_rate: parseFloat(document.getElementById('taxRate').value),
+        shipping_cost: parseFloat(document.getElementById('shippingCost').value),
+        discount: parseFloat(document.getElementById('discount').value)
+    };
+
+    showLoading();
+
+    try {
+        const response = await fetch('/api/create-invoice', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(formData)
+        });
+
+        const data = await response.json();
+        hideLoading();
+
+        if (data.success) {
+            showAlert('Invoice created successfully!', 'success');
+            document.getElementById('createInvoiceForm').reset();
+            loadInvoices();
+            viewInvoice(data.invoice_id);
+        } else {
+            showAlert(data.error || 'Failed to create invoice', 'danger');
+        }
+    } catch (error) {
+        hideLoading();
+        showAlert('Error: ' + error.message, 'danger');
+    }
+});
+
+async function viewInvoice(invoiceId) {
+    currentInvoiceId = invoiceId;
+
+    try {
+        const response = await fetch(`/api/invoice/${invoiceId}`);
+        const data = await response.json();
+
+        if (data.success) {
+            document.getElementById('invoiceContent').innerHTML = data.html;
+            const modal = new bootstrap.Modal(document.getElementById('invoiceModal'));
+            modal.show();
+        } else {
+            showAlert(data.error || 'Failed to load invoice', 'danger');
+        }
+    } catch (error) {
+        showAlert('Error loading invoice', 'danger');
+    }
+}
+
+function printInvoice() {
+    const printContent = document.getElementById('invoiceContent').innerHTML;
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+        <html>
+        <head>
+            <title>Invoice</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                .invoice-header { border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+                .invoice-details { margin-bottom: 20px; }
+                .invoice-total { font-size: 18px; font-weight: bold; }
+            </style>
+        </head>
+        <body>
+            ${printContent}
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
+}
+
+async function emailInvoice() {
+    if (!currentInvoiceId) return;
+
+    const email = prompt('Enter recipient email address:');
+    if (!email) return;
+
+    showLoading();
+
+    try {
+        const response = await fetch(`/api/email-invoice/${currentInvoiceId}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({email: email})
+        });
+
+        const data = await response.json();
+        hideLoading();
+
+        if (data.success) {
+            showAlert('Invoice emailed successfully!', 'success');
+        } else {
+            showAlert(data.error || 'Failed to email invoice', 'danger');
+        }
+    } catch (error) {
+        hideLoading();
+        showAlert('Error emailing invoice', 'danger');
+    }
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    loadSoldItems();
+    loadInvoices();
+});
+</script>
+{% endblock %}</content>
+<parameter name="filePath">c:\Users\Dragon\Desktop\projettccs\resell-rebel\templates\invoicing.html

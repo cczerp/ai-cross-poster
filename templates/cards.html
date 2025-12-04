@@ -122,6 +122,11 @@
                             <i class="fas fa-file-csv"></i> Import CSV
                         </button>
                     </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#draftsTab">
+                            <i class="fas fa-folder-open"></i> From Drafts
+                        </button>
+                    </li>
                 </ul>
 
                 <div class="tab-content">
@@ -218,6 +223,31 @@
                         <hr>
                         <small class="text-muted">
                             CSV should have columns: Card Type, Card Name, Brand, Card Number, Year, Quantity, Storage Location
+                        </small>
+                    </div>
+
+                    <!-- From Drafts Tab -->
+                    <div class="tab-pane fade" id="draftsTab">
+                        <div class="mb-3">
+                            <label class="form-label">Select Draft with Card</label>
+                            <select class="form-select" id="draftSelect">
+                                <option value="">Loading drafts...</option>
+                            </select>
+                        </div>
+                        <div id="draftCardPreview" class="mb-3" style="display: none;">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h6 id="draftCardTitle"></h6>
+                                    <p id="draftCardDetails" class="text-muted small"></p>
+                                </div>
+                            </div>
+                        </div>
+                        <button class="btn btn-success w-100" id="pullCardFromDraftBtn" onclick="pullCardFromDraft()" disabled>
+                            <i class="fas fa-download"></i> Pull Card from Draft
+                        </button>
+                        <hr>
+                        <small class="text-muted">
+                            Select a draft that contains a trading card to add it to your collection
                         </small>
                     </div>
                 </div>
@@ -561,6 +591,154 @@ async function changeOrganization() {
         }
     } catch (error) {
         showAlert('Failed to change organization: ' + error, 'danger');
+    } finally {
+        hideLoading();
+    }
+}
+
+// Load drafts when drafts tab is shown
+document.querySelector('[data-bs-target="#draftsTab"]').addEventListener('shown.bs.tab', async function() {
+    await loadDraftsForCards();
+});
+
+async function loadDraftsForCards() {
+    const draftSelect = document.getElementById('draftSelect');
+    draftSelect.innerHTML = '<option value="">Loading drafts...</option>';
+
+    try {
+        const response = await fetch('/drafts');
+        const html = await response.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        
+        // Get drafts from API
+        const apiResponse = await fetch('/api/get-drafts');
+        const apiData = await apiResponse.json();
+        
+        if (apiData.success && apiData.drafts && apiData.drafts.length > 0) {
+            draftSelect.innerHTML = '<option value="">Select a draft...</option>';
+            apiData.drafts.forEach(draft => {
+                const option = document.createElement('option');
+                option.value = draft.id;
+                option.textContent = `${draft.title || 'Untitled'} - $${(draft.price || 0).toFixed(2)}`;
+                draftSelect.appendChild(option);
+            });
+        } else {
+            draftSelect.innerHTML = '<option value="">No drafts found</option>';
+        }
+        
+        if (apiData.success && apiData.drafts) {
+            draftSelect.innerHTML = '<option value="">Select a draft...</option>';
+            apiData.drafts.forEach(draft => {
+                const option = document.createElement('option');
+                option.value = draft.id;
+                option.textContent = `${draft.title} - $${draft.price?.toFixed(2) || '0.00'}`;
+                draftSelect.appendChild(option);
+            });
+        } else {
+            // Fallback: try to parse from page
+            draftSelect.innerHTML = '<option value="">No drafts found</option>';
+        }
+    } catch (error) {
+        console.error('Error loading drafts:', error);
+        draftSelect.innerHTML = '<option value="">Error loading drafts</option>';
+    }
+}
+
+// Handle draft selection
+document.getElementById('draftSelect').addEventListener('change', async function() {
+    const draftId = this.value;
+    const previewDiv = document.getElementById('draftCardPreview');
+    const pullBtn = document.getElementById('pullCardFromDraftBtn');
+
+    if (!draftId) {
+        previewDiv.style.display = 'none';
+        pullBtn.disabled = true;
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/get-draft/${draftId}`);
+        const data = await response.json();
+
+        if (data.success && data.listing) {
+            const listing = data.listing;
+            // Check if it's a card (item_type is trading_card or has card-related attributes)
+            const isCard = listing.item_type === 'trading_card' || 
+                          (listing.attributes && (listing.attributes.card_type || listing.attributes.card_name));
+
+            if (isCard) {
+                document.getElementById('draftCardTitle').textContent = listing.title;
+                document.getElementById('draftCardDetails').textContent = 
+                    `Price: $${listing.price?.toFixed(2) || '0.00'} | Storage: ${listing.storage_location || 'Not set'}`;
+                previewDiv.style.display = 'block';
+                pullBtn.disabled = false;
+            } else {
+                previewDiv.style.display = 'none';
+                pullBtn.disabled = true;
+                showAlert('This draft does not appear to be a trading card', 'warning');
+            }
+        }
+    } catch (error) {
+        showAlert('Failed to load draft: ' + error, 'danger');
+    }
+});
+
+async function pullCardFromDraft() {
+    const draftId = document.getElementById('draftSelect').value;
+    if (!draftId) {
+        showAlert('Please select a draft', 'warning');
+        return;
+    }
+
+    showLoading();
+
+    try {
+        // Get draft data
+        const draftResponse = await fetch(`/api/get-draft/${draftId}`);
+        const draftData = await draftResponse.json();
+
+        if (!draftData.success || !draftData.listing) {
+            showAlert('Failed to load draft', 'danger');
+            return;
+        }
+
+        const listing = draftData.listing;
+
+        // Create card data from listing
+        const cardData = {
+            card_type: listing.attributes?.card_type || 'unknown',
+            title: listing.title,
+            brand: listing.attributes?.brand || listing.brand,
+            card_number: listing.attributes?.card_number,
+            year: listing.attributes?.year,
+            quantity: listing.quantity || 1,
+            storage_location: listing.storage_location,
+            photos: listing.photos || []
+        };
+
+        // Add card to collection
+        const addResponse = await fetch('/api/cards/add', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                manual_entry: cardData,
+                photos: listing.photos || []
+            })
+        });
+
+        const addData = await addResponse.json();
+
+        if (addData.success) {
+            showAlert('Card pulled from draft and added to collection!', 'success');
+            addCardModal.hide();
+            loadCards();
+            loadStats();
+        } else {
+            showAlert('Failed to add card: ' + (addData.error || 'Unknown error'), 'danger');
+        }
+    } catch (error) {
+        showAlert('Failed to pull card: ' + error, 'danger');
     } finally {
         hideLoading();
     }

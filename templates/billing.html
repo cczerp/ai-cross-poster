@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block title %}Billing & Subscription{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-900 mb-8">Billing & Subscription</h1>
+
+        <!-- Current Plan -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-xl font-semibold mb-4">Current Plan</h2>
+            <div class="flex items-center justify-between">
+                <div>
+                    <span class="text-2xl font-bold text-blue-600">{{ user_tier }}</span>
+                    <span class="text-gray-600 ml-2">Plan</span>
+                </div>
+                {% if user_tier != 'FREE' %}
+                <button id="cancel-subscription" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded">
+                    Cancel Subscription
+                </button>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Usage Stats -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-xl font-semibold mb-4">Usage This Month</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-green-600">{{ tier_limits.listings_per_month if tier_limits.listings_per_month != -1 else '∞' }}</div>
+                    <div class="text-gray-600">Listings Limit</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-blue-600">{{ tier_limits.platforms|length if tier_limits.platforms != ['all'] else 'All' }}</div>
+                    <div class="text-gray-600">Platforms</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-purple-600">{{ tier_limits.api_platforms if tier_limits.api_platforms != -1 else '∞' }}</div>
+                    <div class="text-gray-600">API Platforms</div>
+                </div>
+            </div>
+            {% if not can_create_listing %}
+            <div class="mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+                {{ limit_message }}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Subscription Tiers -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- Free Tier -->
+            <div class="bg-white rounded-lg shadow-md p-6 {% if user_tier == 'FREE' %}border-2 border-blue-500{% endif %}">
+                <h3 class="text-xl font-semibold mb-4">FREE</h3>
+                <div class="text-3xl font-bold mb-4">$0<span class="text-lg font-normal">/month</span></div>
+                <ul class="space-y-2 mb-6">
+                    <li>✓ 10 listings per month</li>
+                    <li>✓ Poshmark, Facebook (CSV only)</li>
+                    <li>✗ API platforms</li>
+                    <li>✗ Bulk operations</li>
+                    <li>✗ Auto sync</li>
+                    <li>✗ Advanced SEO</li>
+                    <li>✗ Storage management</li>
+                    <li>✗ Analytics</li>
+                </ul>
+                {% if user_tier != 'FREE' %}
+                <button class="w-full bg-gray-300 text-gray-600 px-4 py-2 rounded cursor-not-allowed">
+                    Current Plan
+                </button>
+                {% endif %}
+            </div>
+
+            <!-- Pro Tier -->
+            <div class="bg-white rounded-lg shadow-md p-6 {% if user_tier == 'PRO' %}border-2 border-blue-500{% endif %}">
+                <h3 class="text-xl font-semibold mb-4">PRO</h3>
+                <div class="text-3xl font-bold mb-4">$9.99<span class="text-lg font-normal">/month</span></div>
+                <ul class="space-y-2 mb-6">
+                    <li>✓ Unlimited listings</li>
+                    <li>✓ Poshmark, Facebook, Etsy, Shopify</li>
+                    <li>✓ 3 API platforms</li>
+                    <li>✓ Bulk operations</li>
+                    <li>✓ Auto sync</li>
+                    <li>✓ Advanced SEO</li>
+                    <li>✓ Storage management</li>
+                    <li>✗ Analytics</li>
+                </ul>
+                {% if user_tier != 'PRO' %}
+                <button onclick="upgradeToPro()" class="w-full bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded">
+                    {% if user_tier == 'FREE' %}Upgrade{% else %}Change Plan{% endif %}
+                </button>
+                {% endif %}
+            </div>
+
+            <!-- Business Tier -->
+            <div class="bg-white rounded-lg shadow-md p-6 {% if user_tier == 'BUSINESS' %}border-2 border-blue-500{% endif %}">
+                <h3 class="text-xl font-semibold mb-4">BUSINESS</h3>
+                <div class="text-3xl font-bold mb-4">$29.99<span class="text-lg font-normal">/month</span></div>
+                <ul class="space-y-2 mb-6">
+                    <li>✓ Unlimited listings</li>
+                    <li>✓ All platforms</li>
+                    <li>✓ Unlimited API platforms</li>
+                    <li>✓ Bulk operations</li>
+                    <li>✓ Auto sync</li>
+                    <li>✓ Advanced SEO</li>
+                    <li>✓ Storage management</li>
+                    <li>✓ Analytics</li>
+                </ul>
+                {% if user_tier != 'BUSINESS' %}
+                <button onclick="upgradeToBusiness()" class="w-full bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded">
+                    {% if user_tier == 'FREE' or user_tier == 'PRO' %}Upgrade{% else %}Change Plan{% endif %}
+                </button>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Feature Access Check -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-semibold mb-4">Feature Access</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <button onclick="checkFeature('bulk_operations')" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded text-sm">
+                    Bulk Operations
+                </button>
+                <button onclick="checkFeature('auto_sync')" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded text-sm">
+                    Auto Sync
+                </button>
+                <button onclick="checkFeature('advanced_seo')" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded text-sm">
+                    Advanced SEO
+                </button>
+                <button onclick="checkFeature('storage_management')" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded text-sm">
+                    Storage Management
+                </button>
+                <button onclick="checkFeature('analytics')" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded text-sm">
+                    Analytics
+                </button>
+                <button onclick="checkFeature('api_platforms')" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded text-sm">
+                    API Platforms
+                </button>
+            </div>
+            <div id="feature-result" class="mt-4 p-4 bg-gray-100 rounded hidden"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function upgradeToPro() {
+    await createCheckoutSession('PRO');
+}
+
+async function upgradeToBusiness() {
+    await createCheckoutSession('BUSINESS');
+}
+
+async function createCheckoutSession(tier) {
+    try {
+        const response = await fetch('/api/billing/create-checkout-session', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ tier: tier })
+        });
+
+        const data = await response.json();
+
+        if (data.url) {
+            window.location.href = data.url;
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function checkFeature(feature) {
+    try {
+        const response = await fetch(`/api/billing/check-feature-access?feature=${feature}`);
+        const data = await response.json();
+
+        const resultDiv = document.getElementById('feature-result');
+        resultDiv.classList.remove('hidden');
+        resultDiv.className = `mt-4 p-4 rounded ${data.can_access ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`;
+
+        resultDiv.textContent = `${feature}: ${data.can_access ? '✓ Available' : '✗ Not Available'}`;
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+document.getElementById('cancel-subscription')?.addEventListener('click', async () => {
+    if (confirm('Are you sure you want to cancel your subscription? You will be downgraded to FREE tier at the end of your billing period.')) {
+        try {
+            const response = await fetch('/api/billing/cancel-subscription', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+});
+</script>
+{% endblock %}

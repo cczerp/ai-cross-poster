@@ -83,11 +83,14 @@ def admin_user_detail(user_id):
 
     # Get recent listings
     cursor = db._get_cursor()
-    cursor.execute(
-        "SELECT * FROM listings WHERE user_id::text = %s::text ORDER BY created_at DESC LIMIT 50",
-        (user_id,)
-    )
-    listings = [dict(row) for row in cursor.fetchall()]
+    try:
+        cursor.execute(
+            "SELECT * FROM listings WHERE user_id::text = %s::text ORDER BY created_at DESC LIMIT 50",
+            (user_id,)
+        )
+        listings = [dict(row) for row in cursor.fetchall()]
+    finally:
+        cursor.close()
 
     # Get activity logs
     logs = db.get_activity_logs(user_id=user_id, limit=50)

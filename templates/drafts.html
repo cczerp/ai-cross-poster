@@ -205,11 +205,11 @@ async function confirmPostDraft(id) {
             }
 
             // Then post to platforms
-            const response2 = await fetch('/api/bulk-post', {
+            const response2 = await fetch('/api/publish-drafts', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
-                    listing_ids: [id],
+                    draft_ids: [id],
                     platforms: platforms
                 })
             });

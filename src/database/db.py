@@ -41,12 +41,12 @@ def _get_connection_pool():
             if 'connect_timeout=' not in connection_params:
                 connection_params += '&connect_timeout=10'
         
-        # Create connection pool: min 2, max 5 connections per worker
-        # This prevents connection exhaustion while reusing connections
+        # Create connection pool with resilient settings
+        # Keepalives prevent Render from closing idle SSL connections
         print("🔌 Creating PostgreSQL connection pool...", flush=True)
         _connection_pool = psycopg2.pool.ThreadedConnectionPool(
             minconn=1,  # Minimum connections in pool
-            maxconn=5,  # Maximum connections in pool (per worker)
+            maxconn=20,  # Maximum connections (increased for resilience)
             dsn=connection_params,
             connect_timeout=10,
             keepalives=1,
@@ -1994,49 +1994,86 @@ class Database:
 
     # OAuth-specific methods
     def get_user_by_supabase_uid(self, supabase_uid: str) -> Optional[Dict]:
-        """Get user by Supabase UID (for OAuth)"""
-        cursor = None
-        conn = None
-        try:
-            cursor = self._get_cursor()
-            cursor.execute("SELECT * FROM users WHERE supabase_uid = %s", (supabase_uid,))
-            row = cursor.fetchone()
-            result = dict(row) if row else None
-            self._commit_read()  # Close transaction after read
-            return result
-        finally:
-            if cursor:
-                try:
-                    cursor.close()
-                except:
-                    pass
-            if conn:
-                self._return_connection(conn, commit=False, error=False)
+        """Get user by Supabase UID (for OAuth) - with auto-reconnect"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            cursor = None
+            conn = None
+            try:
+                cursor = self._get_cursor()
+                cursor.execute("SELECT * FROM users WHERE supabase_uid = %s", (supabase_uid,))
+                row = cursor.fetchone()
+                result = dict(row) if row else None
+                self._commit_read()  # Close transaction after read
+                return result
+            except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                if attempt < max_retries - 1:
+                    print(f"⚠️  Database connection error in get_user_by_supabase_uid (attempt {attempt + 1}/{max_retries}), retrying...")
+                    time.sleep(0.5 * (attempt + 1))
+                    try:
+                        self._get_connection_from_pool()  # Force reconnect
+                    except:
+                        pass
+                else:
+                    print(f"❌ Failed to get user by supabase_uid after {max_retries} attempts: {e}")
+                    return None
+            except Exception as e:
+                print(f"Unexpected error in get_user_by_supabase_uid: {e}")
+                return None
+            finally:
+                if cursor:
+                    try:
+                        cursor.close()
+                    except:
+                        pass
+                if conn:
+                    self._return_connection(conn, commit=False, error=False)
 
     def create_oauth_user(self, username: str, email: str, supabase_uid: str, oauth_provider: str) -> str:
-        """Create a new OAuth user (no password) - returns UUID string"""
+        """Create a new OAuth user (no password) - returns UUID string - with auto-reconnect"""
         import uuid
-        cursor = None
-        conn = None
-        try:
-            cursor = self._get_cursor()
-            user_uuid = uuid.uuid4()
-            cursor.execute("""
-                INSERT INTO users (id, username, email, supabase_uid, oauth_provider, email_verified)
-                VALUES (%s, %s, %s, %s, %s, TRUE)
-                RETURNING id
-            """, (str(user_uuid), username, email, supabase_uid, oauth_provider))
-            result = cursor.fetchone()
-            self.conn.commit()  # Commit the transaction
-            return str(result['id'])
-        finally:
-            if cursor:
-                try:
-                    cursor.close()
-                except:
-                    pass
-            if conn:
-                self._return_connection(conn, commit=True, error=False)
+        max_retries = 3
+        for attempt in range(max_retries):
+            cursor = None
+            conn = None
+            try:
+                cursor = self._get_cursor()
+                user_uuid = uuid.uuid4()
+                cursor.execute("""
+                    INSERT INTO users (id, username, email, supabase_uid, oauth_provider, email_verified)
+                    VALUES (%s, %s, %s, %s, %s, TRUE)
+                    RETURNING id
+                """, (str(user_uuid), username, email, supabase_uid, oauth_provider))
+                result = cursor.fetchone()
+                self.conn.commit()  # Commit the transaction
+                return str(result['id'])
+            except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                if attempt < max_retries - 1:
+                    print(f"⚠️  Database connection error in create_oauth_user (attempt {attempt + 1}/{max_retries}), retrying...")
+                    time.sleep(0.5 * (attempt + 1))
+                    try:
+                        self._get_connection_from_pool()  # Force reconnect
+                    except:
+                        pass
+                else:
+                    print(f"❌ Failed to create OAuth user after {max_retries} attempts: {e}")
+                    raise
+            except Exception as e:
+                print(f"Unexpected error in create_oauth_user: {e}")
+                if self.conn:
+                    try:
+                        self.conn.rollback()
+                    except:
+                        pass
+                raise
+            finally:
+                if cursor:
+                    try:
+                        cursor.close()
+                    except:
+                        pass
+                if conn:
+                    self._return_connection(conn, commit=True, error=False)
 
     def link_supabase_account(self, user_id: str, supabase_uid: str, oauth_provider: str):
         """Link an existing user account to Supabase OAuth - user_id is UUID"""

@@ -6,7 +6,7 @@ services:
     plan: free
     branch: main
     buildCommand: pip install --upgrade pip && pip install gunicorn && pip install -r requirements.txt
-    startCommand: gunicorn web_app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120 --threads 4
+    startCommand: gunicorn web_app:app --bind 0.0.0.0:$PORT --workers 2 --worker-class sync --timeout 120
     maxUploadSizeMB: 50
     disk:
       name: uploads

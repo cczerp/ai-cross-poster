@@ -32,16 +32,40 @@ print("✅ Environment loaded", flush=True)
 # ============================================================================
 
 app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
+
+# CRITICAL: Validate FLASK_SECRET_KEY is set
+flask_secret = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
+if not flask_secret or flask_secret == 'dev-secret-key-change-in-production':
+    print("=" * 80, flush=True)
+    print("⚠️  WARNING: FLASK_SECRET_KEY not set or using default value!", flush=True)
+    print("⚠️  This will cause session loss in production with multiple workers!", flush=True)
+    print("⚠️  Set FLASK_SECRET_KEY environment variable immediately!", flush=True)
+    print("=" * 80, flush=True)
+
+app.secret_key = flask_secret
+print(f"✅ Flask secret key configured (length: {len(flask_secret)})", flush=True)
+
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
 app.config['UPLOAD_FOLDER'] = './data/uploads'
 
-# Session configuration for Flask-Login
-app.config['SESSION_COOKIE_SECURE'] = os.getenv('FLASK_ENV') == 'production'  # HTTPS only in production
+# Session configuration for Flask-Login and OAuth
+# NOTE: Using client-side sessions (default) which should work across workers
+# since session data is stored in signed cookies, not server memory
+is_production = os.getenv('FLASK_ENV') == 'production'
+
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent XSS attacks
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
+# IMPORTANT: Set to 'None' for OAuth flows to allow cross-site cookie sending
+# Lax would block cookies during the OAuth redirect from external provider
+app.config['SESSION_COOKIE_SAMESITE'] = 'None' if is_production else 'Lax'
+# Secure must be True when SameSite=None (required by browsers)
+app.config['SESSION_COOKIE_SECURE'] = True if is_production else False
 app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
 app.config['REMEMBER_COOKIE_DURATION'] = 86400  # 24 hours
+
+print(f"🔧 Session configuration:", flush=True)
+print(f"   - Cookie SameSite: {app.config['SESSION_COOKIE_SAMESITE']}", flush=True)
+print(f"   - Cookie Secure: {app.config['SESSION_COOKIE_SECURE']}", flush=True)
+print(f"   - Cookie HTTPOnly: {app.config['SESSION_COOKIE_HTTPONLY']}", flush=True)
 
 # Ensure upload folder exists
 Path(app.config['UPLOAD_FOLDER']).mkdir(parents=True, exist_ok=True)

@@ -395,6 +395,21 @@ def login_google():
     print(f"Google OAuth: Using redirect URL: {redirect_url}")
 
     try:
+        print("=" * 80, flush=True)
+        print("🟢 [LOGIN_GOOGLE] Starting OAuth flow", flush=True)
+        print("=" * 80, flush=True)
+
+        # Validate Flask secret key
+        from flask import current_app
+        secret_key = current_app.secret_key
+        if not secret_key or secret_key == 'dev-secret-key-change-in-production':
+            print("❌ [LOGIN_GOOGLE ERROR] FLASK_SECRET_KEY not configured!", flush=True)
+            flash("Server configuration error. Please contact administrator.", "error")
+            return redirect(url_for('auth.login'))
+
+        print(f"✅ [LOGIN_GOOGLE] Secret key configured (length: {len(secret_key)})", flush=True)
+        print(f"🔍 [LOGIN_GOOGLE] Session before OAuth: {dict(session)}", flush=True)
+
         # Pass session to store code verifier for PKCE and redirect_override for custom URL
         oauth_url = get_google_oauth_url(session_storage=session, redirect_override=redirect_url)
 
@@ -402,7 +417,13 @@ def login_google():
             flash("Failed to generate Google OAuth URL. Please check Supabase configuration.", "error")
             return redirect(url_for('auth.login'))
 
-        print(f"Google OAuth: Redirecting to: {oauth_url}")
+        # CRITICAL: Mark session as modified to ensure it's saved
+        # This is important for multi-worker environments
+        session.modified = True
+        print(f"🔍 [LOGIN_GOOGLE] Session after OAuth URL generation: {dict(session)}", flush=True)
+        print(f"✅ [LOGIN_GOOGLE] Session marked as modified", flush=True)
+        print(f"✅ [LOGIN_GOOGLE] OAuth URL generated successfully", flush=True)
+        print(f"🚀 [LOGIN_GOOGLE] Redirecting to: {oauth_url[:100]}...", flush=True)
         return redirect(oauth_url)
     except Exception as e:
         print(f"Error in Google OAuth initiation: {e}")
@@ -419,34 +440,66 @@ def auth_callback():
 
     Exchanges authorization code for user session, then logs user in.
     """
+    # CRITICAL: Log immediately at function entry
+    print("=" * 80, flush=True)
+    print("🔵 [CALLBACK] OAuth callback handler STARTED", flush=True)
+    print("=" * 80, flush=True)
+
     from src.auth_utils import exchange_code_for_session
     from flask import session
 
+    # Validate Flask secret key is set
+    from flask import current_app
+    secret_key = current_app.secret_key
+    if not secret_key or secret_key == 'dev-secret-key-change-in-production':
+        print("❌ [CALLBACK ERROR] FLASK_SECRET_KEY not configured properly!", flush=True)
+        flash("Server configuration error. Please contact administrator.", "error")
+        return redirect(url_for('auth.login'))
+
+    print(f"✅ [CALLBACK] Secret key configured (length: {len(secret_key)})", flush=True)
+    print(f"🔍 [CALLBACK] Session cookie name: {current_app.config.get('SESSION_COOKIE_NAME', 'session')}", flush=True)
+    print(f"🔍 [CALLBACK] Session keys present: {list(session.keys())}", flush=True)
+
     try:
         # Log all query parameters for debugging
-        print(f"OAuth callback received with query params: {dict(request.args)}")
+        print(f"🔍 [CALLBACK] Query params received: {dict(request.args)}", flush=True)
 
         # Get authorization code from query params
         code = request.args.get("code")
+        print(f"🔍 [CALLBACK] Authorization code present: {bool(code)}", flush=True)
         if not code:
             # Check if there's an error parameter
             error = request.args.get("error")
             error_description = request.args.get("error_description")
             if error:
-                print(f"OAuth error: {error} - {error_description}")
+                print(f"❌ [CALLBACK] OAuth error from provider: {error} - {error_description}", flush=True)
                 flash(f"OAuth authentication failed: {error_description or error}", "error")
             else:
+                print(f"❌ [CALLBACK] Missing authorization code in callback", flush=True)
                 flash("OAuth authentication failed: Missing authorization code", "error")
             return redirect(url_for('auth.login'))
 
+        print(f"✅ [CALLBACK] Authorization code received (length: {len(code)})", flush=True)
+
         # Retrieve code verifier from session (for PKCE)
+        print(f"🔍 [CALLBACK] Attempting to retrieve code_verifier from session...", flush=True)
+        print(f"🔍 [CALLBACK] Current session data: {dict(session)}", flush=True)
+
         code_verifier = session.get('oauth_code_verifier')
         if code_verifier:
-            print(f"Retrieved code verifier from session")
+            print(f"✅ [CALLBACK] Retrieved code verifier from session: {code_verifier[:10]}...", flush=True)
             # Clean up the session
             session.pop('oauth_code_verifier', None)
+            print(f"🧹 [CALLBACK] Cleaned up code_verifier from session", flush=True)
         else:
-            print(f"Warning: No code verifier found in session")
+            print(f"❌ [CALLBACK ERROR] No code verifier found in session!", flush=True)
+            print(f"❌ [CALLBACK ERROR] This indicates session was LOST between /login/google and /auth/callback", flush=True)
+            print(f"❌ [CALLBACK ERROR] Possible causes:", flush=True)
+            print(f"   1. Multi-worker Gunicorn without shared session storage", flush=True)
+            print(f"   2. FLASK_SECRET_KEY changed or not set", flush=True)
+            print(f"   3. Session cookie not being sent/received", flush=True)
+            # Continue without verifier - some OAuth providers may not require it
+            print(f"⚠️  [CALLBACK] Attempting OAuth exchange WITHOUT code_verifier (may fail)", flush=True)
 
         # Exchange code for session
         session_data = exchange_code_for_session(code, code_verifier)

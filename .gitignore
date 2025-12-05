@@ -69,3 +69,7 @@ data/*.db-journal
 
 # Draft photos storage
 data/draft_photos/
+
+# Flask session storage (server-side sessions)
+flask_session/
+data/flask_session/

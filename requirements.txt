@@ -21,6 +21,8 @@ customtkinter>=5.2.0
 # Web app
 flask>=3.0.0
 flask-login>=0.6.3
+flask-session>=0.6.0  # Server-side session storage for multi-worker support
+cachelib>=0.10.0  # Required by flask-session
 werkzeug>=3.0.0
 gunicorn>=21.2.0  # Production WSGI server for Render deployment
 gevent>=23.9.1  # Async worker for better upload handling
@@ -30,6 +32,7 @@ psycopg2-binary>=2.9.9  # PostgreSQL adapter
 
 # Authentication (Supabase OAuth)
 supabase>=2.3.0  # Supabase Python client
+httpx>=0.25.0  # HTTP client for OAuth token exchange
 pyjwt>=2.8.0  # JWT token handling
 passlib[bcrypt]>=1.7.4  # Password hashing
 python-jose[cryptography]>=3.3.0  # JWT creation and validation

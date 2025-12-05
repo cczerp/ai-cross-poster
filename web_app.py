@@ -16,6 +16,7 @@ from pathlib import Path
 from functools import wraps
 from flask import Flask, render_template, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_required, current_user
+from flask_session import Session
 from werkzeug.security import generate_password_hash
 from dotenv import load_dotenv
 
@@ -66,6 +67,31 @@ print(f"🔧 Session configuration:", flush=True)
 print(f"   - Cookie SameSite: {app.config['SESSION_COOKIE_SAMESITE']}", flush=True)
 print(f"   - Cookie Secure: {app.config['SESSION_COOKIE_SECURE']}", flush=True)
 print(f"   - Cookie HTTPOnly: {app.config['SESSION_COOKIE_HTTPONLY']}", flush=True)
+
+# ============================================================================
+# FLASK-SESSION CONFIGURATION (Server-side session storage)
+# ============================================================================
+# CRITICAL: Use filesystem-based sessions to persist across workers/restarts
+# This fixes the "flow_state_not_found" error from Supabase OAuth
+
+# Create session directory in data folder (survives restarts if on persistent disk)
+session_dir = Path('./data/flask_session')
+session_dir.mkdir(parents=True, exist_ok=True)
+
+app.config['SESSION_TYPE'] = 'filesystem'  # Store sessions on disk
+app.config['SESSION_FILE_DIR'] = str(session_dir)
+app.config['SESSION_PERMANENT'] = False  # Session expires when browser closes
+app.config['SESSION_USE_SIGNER'] = True  # Sign session cookies for security
+app.config['SESSION_FILE_THRESHOLD'] = 500  # Max number of session files
+
+# Initialize Flask-Session
+Session(app)
+
+print(f"✅ Flask-Session initialized:", flush=True)
+print(f"   - Type: filesystem", flush=True)
+print(f"   - Directory: {session_dir.absolute()}", flush=True)
+print(f"   - Permanent: False", flush=True)
+print(f"   - Use Signer: True", flush=True)
 
 # Ensure upload folder exists
 Path(app.config['UPLOAD_FOLDER']).mkdir(parents=True, exist_ok=True)

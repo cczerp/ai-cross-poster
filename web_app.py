@@ -259,7 +259,6 @@ def index():
         return render_template('index.html')
 
 @app.route('/create')
-@login_required
 def create_listing():
     """Create new listing page"""
     from flask import request
@@ -267,7 +266,6 @@ def create_listing():
     return render_template('create.html', draft_id=draft_id)
 
 @app.route('/drafts')
-@login_required
 def drafts():
     """Drafts page"""
     try:
@@ -311,7 +309,6 @@ def notifications():
     return render_template('notifications.html')
 
 @app.route('/storage')
-@login_required
 def storage():
     """Storage overview"""
     storage_map = get_db_instance().get_storage_map(current_user.id)

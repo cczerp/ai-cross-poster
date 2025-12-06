@@ -452,16 +452,24 @@ def api_upload_photos():
         from pathlib import Path
         from werkzeug.utils import secure_filename
 
+        print(f"[UPLOAD] Received upload request", flush=True)
+        print(f"[UPLOAD] Request files keys: {list(request.files.keys())}", flush=True)
+
         if 'photos' not in request.files:
+            print(f"[UPLOAD ERROR] No 'photos' field in request.files", flush=True)
             return jsonify({"error": "No photos provided"}), 400
 
         files = request.files.getlist('photos')
+        print(f"[UPLOAD] Found {len(files)} files", flush=True)
+
         if not files or len(files) == 0:
+            print(f"[UPLOAD ERROR] File list is empty", flush=True)
             return jsonify({"error": "No photos provided"}), 400
 
         # Create unique directory for this upload
         upload_uuid = str(uuid.uuid4())
         upload_dir = Path('data/draft_photos') / upload_uuid
+        print(f"[UPLOAD] Creating directory: {upload_dir}", flush=True)
         upload_dir.mkdir(parents=True, exist_ok=True)
 
         saved_paths = []
@@ -474,12 +482,15 @@ def api_upload_photos():
                 filename = f"{timestamp}_{filename}"
 
                 filepath = upload_dir / filename
+                print(f"[UPLOAD] Saving file to: {filepath}", flush=True)
                 file.save(str(filepath))
 
                 # Return relative path for database storage
                 relative_path = f"data/draft_photos/{upload_uuid}/{filename}"
                 saved_paths.append(relative_path)
+                print(f"[UPLOAD] Saved: {relative_path}", flush=True)
 
+        print(f"[UPLOAD SUCCESS] Uploaded {len(saved_paths)} files", flush=True)
         return jsonify({
             "success": True,
             "paths": saved_paths,
@@ -487,6 +498,9 @@ def api_upload_photos():
         })
 
     except Exception as e:
+        print(f"[UPLOAD ERROR] Exception: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 

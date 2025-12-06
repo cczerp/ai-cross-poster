@@ -475,30 +475,42 @@ let editingListingUuid = null;
 
 // Generic photo handling function for both camera and file upload
 async function handlePhotoSelect(e) {
+    console.log('[UPLOAD] handlePhotoSelect called');
     const files = e.target.files;
-    if (files.length === 0) return;
+    console.log('[UPLOAD] Selected files:', files.length);
+    if (files.length === 0) {
+        console.log('[UPLOAD] No files selected, returning');
+        return;
+    }
 
     const formData = new FormData();
     for (let file of files) {
+        console.log('[UPLOAD] Adding file:', file.name, file.size, 'bytes');
         formData.append('photos', file);
     }
 
+    console.log('[UPLOAD] Showing loading spinner');
     showLoading();
 
     try {
+        console.log('[UPLOAD] Sending fetch request to /api/upload-photos');
         const response = await fetch('/api/upload-photos', {
             method: 'POST',
             body: formData
         });
 
+        console.log('[UPLOAD] Response status:', response.status);
         const data = await response.json();
+        console.log('[UPLOAD] Response data:', data);
 
         if (data.success) {
+            console.log('[UPLOAD] Upload successful, paths:', data.paths);
             // Append to existing photos instead of replacing
             uploadedPhotos = uploadedPhotos.concat(data.paths);
 
             // Show previews (append to existing)
             const previewDiv = document.getElementById('photoPreview');
+            console.log('[UPLOAD] Creating', files.length, 'preview images');
             for (let i = 0; i < files.length; i++) {
                 const img = document.createElement('img');
                 img.src = URL.createObjectURL(files[i]);
@@ -518,18 +530,23 @@ async function handlePhotoSelect(e) {
             const analyzeBtn = document.getElementById('analyzeBtn');
             analyzeBtn.disabled = false;
             analyzeBtn.title = 'Click to analyze photos with AI';
+            console.log('[UPLOAD] Enabled analyze button');
             showAlert(`${data.count} photo(s) added! Total: ${uploadedPhotos.length}`, 'success');
         } else {
+            console.error('[UPLOAD] Upload failed:', data.error);
             showAlert(data.error, 'danger');
         }
     } catch (error) {
+        console.error('[UPLOAD] Exception caught:', error);
         showAlert('Upload failed: ' + error, 'danger');
     } finally {
+        console.log('[UPLOAD] Hiding loading spinner');
         hideLoading();
     }
 
     // Reset input so same file can be selected again
     e.target.value = '';
+    console.log('[UPLOAD] Reset file input');
 }
 
 // ========================================

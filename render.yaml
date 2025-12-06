@@ -13,7 +13,7 @@ services:
     maxUploadSizeMB: 50
     disk:
       name: uploads
-      mountPath: /opt/render/project/src/data/uploads
+      mountPath: /opt/render/project/src/data
       sizeGB: 1
     envVars:
       - key: FLASK_SECRET_KEY

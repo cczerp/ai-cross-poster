@@ -261,6 +261,13 @@ def index():
     else:
         return render_template('index.html')
 
+@app.route('/data/<path:filename>')
+def serve_data_files(filename):
+    """Serve uploaded files from data directory"""
+    from flask import send_from_directory
+    import os
+    return send_from_directory(os.path.join(os.getcwd(), 'data'), filename)
+
 @app.route('/create')
 def create_listing():
     """Create new listing page - accessible to all, but only logged-in users can save"""

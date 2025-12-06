@@ -96,6 +96,9 @@ print(f"   - Use Signer: True", flush=True)
 # Ensure upload folder exists
 Path(app.config['UPLOAD_FOLDER']).mkdir(parents=True, exist_ok=True)
 
+# Ensure draft photos folder exists (for unauthenticated users)
+Path('./data/draft_photos').mkdir(parents=True, exist_ok=True)
+
 # Lazy database initialization - don't create at import time
 db = None
 

@@ -111,7 +111,7 @@ def get_google_oauth_url(session_storage: dict = None, redirect_override: Option
         return None
 
 
-def exchange_code_for_session(auth_code: str, code_verifier: str = None, redirect_uri: str = None parameter) -> Optional[Dict]: 
+def exchange_code_for_session(auth_code: str, code_verifier: str = None, redirect_uri: str = None) -> Optional[Dict]: 
     """
     Exchange OAuth code for user session using PKCE.
 

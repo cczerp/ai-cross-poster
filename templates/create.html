@@ -469,6 +469,12 @@
 
 {% block extra_js %}
 <script>
+console.log('========================================');
+console.log('CREATE.HTML JAVASCRIPT LOADED');
+console.log('Current user authenticated:', {{ 'true' if current_user.is_authenticated else 'false' }});
+console.log('Is guest:', {{ 'true' if is_guest else 'false' }});
+console.log('========================================');
+
 let uploadedPhotos = [];
 let editingDraftId = {{ draft_id if draft_id else 'null' }};
 let editingListingUuid = null;

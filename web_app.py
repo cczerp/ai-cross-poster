@@ -259,24 +259,22 @@ def index():
         return render_template('index.html')
 
 @app.route('/create')
-@login_required
 def create_listing():
-    """Create new listing page"""
+    """Create new listing page - accessible to all, but only logged-in users can save"""
     from flask import request
     draft_id = request.args.get('draft_id', type=int)
     return render_template('create.html', draft_id=draft_id)
 
 @app.route('/drafts')
-@login_required
 def drafts():
-    """Drafts page"""
+    """Drafts page - show empty state for unauthenticated users"""
     try:
+        # Show empty list for unauthenticated users
+        if not current_user.is_authenticated:
+            return render_template('drafts.html', drafts=[])
+
         # Fetch all drafts for current user - user_id is UUID
-        user_id_str = str(current_user.id) if current_user and current_user.id else None
-        if not user_id_str:
-            flash("User not authenticated", "error")
-            return redirect(url_for('auth.login'))
-        
+        user_id_str = str(current_user.id)
         drafts_list = get_db_instance().get_drafts(user_id=user_id_str, limit=100)
         return render_template('drafts.html', drafts=drafts_list)
     except Exception as e:
@@ -305,15 +303,16 @@ def listings():
         cursor.close()
 
 @app.route('/notifications')
-@login_required
 def notifications():
-    """Notifications page"""
+    """Notifications page - accessible to all"""
     return render_template('notifications.html')
 
 @app.route('/storage')
-@login_required
 def storage():
-    """Storage overview"""
+    """Storage overview - show empty state for unauthenticated users"""
+    if not current_user.is_authenticated:
+        return render_template('storage.html', storage_map={})
+
     storage_map = get_db_instance().get_storage_map(current_user.id)
     return render_template('storage.html', storage_map=storage_map)
 

@@ -467,10 +467,20 @@ def api_upload_photos():
             return jsonify({"error": "No photos provided"}), 400
 
         # Create unique directory for this upload
+        # Ensure base directories exist (for Render persistent disk)
+        base_dir = Path('data')
+        base_dir.mkdir(parents=True, exist_ok=True)
+        print(f"[UPLOAD] Base dir absolute path: {base_dir.absolute()}", flush=True)
+
+        draft_photos_dir = base_dir / 'draft_photos'
+        draft_photos_dir.mkdir(parents=True, exist_ok=True)
+        print(f"[UPLOAD] Draft photos dir: {draft_photos_dir.absolute()}", flush=True)
+
         upload_uuid = str(uuid.uuid4())
-        upload_dir = Path('data/draft_photos') / upload_uuid
-        print(f"[UPLOAD] Creating directory: {upload_dir}", flush=True)
+        upload_dir = draft_photos_dir / upload_uuid
+        print(f"[UPLOAD] Creating upload directory: {upload_dir.absolute()}", flush=True)
         upload_dir.mkdir(parents=True, exist_ok=True)
+        print(f"[UPLOAD] Directory created successfully", flush=True)
 
         saved_paths = []
         for file in files:

@@ -549,8 +549,14 @@ async function handlePhotoSelect(e) {
         }
     } catch (error) {
         console.error('[UPLOAD] Exception caught:', error);
-        console.error('[UPLOAD] Error details:', error.message, error.stack);
-        showAlert('Upload failed: ' + error.message, 'danger');
+        const errorMessage = (error && typeof error === 'object' && 'message' in error)
+            ? error.message
+            : String(error);
+        const errorStack = (error && typeof error === 'object' && 'stack' in error)
+            ? error.stack
+            : undefined;
+        console.error('[UPLOAD] Error details:', errorMessage, errorStack);
+        showAlert('Upload failed: ' + errorMessage, 'danger');
     } finally {
         // Hide loading spinner (with error handling)
         try {

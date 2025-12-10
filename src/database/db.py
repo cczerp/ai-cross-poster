@@ -114,7 +114,7 @@ class Database:
 
                 # Add supabase_uid column if it doesn't exist
                 cursor.execute("""
-                    ALTER TABLE users ADD COLUMN IF NOT EXISTS supabase_uid TEXT;
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS supabase_uuid TEXT;
                 """)
 
                 # Add oauth_provider column if it doesn't exist
@@ -323,7 +323,6 @@ class Database:
     def _create_tables(self):
         """Create all database tables"""
         cursor = self._get_cursor()
-        conn = None  # Not used anymore, keeping for backward compat in finally block
         try:
             # Users table - for authentication (UUID primary key)
             cursor.execute("""
@@ -346,532 +345,502 @@ class Database:
                     last_login TIMESTAMP
                 )
             """)
-            
+
             # Enable UUID extension if not already enabled
             try:
                 cursor.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
-            except Exception as e:
-                # Extension may already exist, which is fine
+            except Exception:
                 pass
-        except Exception as e:
-            self.conn.rollback()
-            print(f"Error creating initial tables: {e}")
-            raise
-        finally:
-            if cursor:
-                cursor.close()
-            if conn:
-                self._return_connection(conn, commit=False, error=False)
 
-        # Add supabase_uid column if it doesn't exist (migration)
-        try:
+            # Add supabase_uid column if it doesn't exist (migration)
             cursor.execute("""
                 ALTER TABLE users ADD COLUMN IF NOT EXISTS supabase_uid TEXT;
             """)
-            self.conn.commit()
-        except Exception as e:
-            self.conn.rollback()
-            print(f"Note: supabase_uid column may already exist: {e}")
 
-        # Add oauth_provider column if it doesn't exist (migration)
-        try:
+            # Add oauth_provider column if it doesn't exist (migration)
             cursor.execute("""
                 ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_provider TEXT;
             """)
-            self.conn.commit()
-        except Exception as e:
-            self.conn.rollback()
-            print(f"Note: oauth_provider column may already exist: {e}")
 
-        # Make password_hash nullable for OAuth users (migration)
-        try:
+            # Make password_hash nullable for OAuth users (migration)
             cursor.execute("""
                 ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
             """)
-            self.conn.commit()
-        except Exception as e:
-            self.conn.rollback()
-            print(f"Note: password_hash may already be nullable: {e}")
 
-        # Marketplace credentials - per user
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS marketplace_credentials (
-                id SERIAL PRIMARY KEY,
-                user_id UUID NOT NULL,
-                platform TEXT NOT NULL,
-                username TEXT,
-                password TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                UNIQUE(user_id, platform)
-            )
-        """)
-
-        # Collectibles database table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS collectibles (
-                id SERIAL PRIMARY KEY,
-                name TEXT NOT NULL,
-                category TEXT,
-                brand TEXT,
-                model TEXT,
-                year INTEGER,
-                condition TEXT,
-                estimated_value_low REAL,
-                estimated_value_high REAL,
-                estimated_value_avg REAL,
-                market_data TEXT,
-                attributes TEXT,
-                image_urls TEXT,
-                identified_by TEXT,
-                confidence_score REAL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                times_found INTEGER DEFAULT 1,
-                notes TEXT,
-                deep_analysis TEXT,
-                embedding TEXT,
-                franchise TEXT,
-                rarity_level TEXT
-            )
-        """)
-
-        # Listings table - tracks all your listings
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS listings (
-                id SERIAL PRIMARY KEY,
-                listing_uuid TEXT UNIQUE NOT NULL,
-                user_id UUID NOT NULL,
-                collectible_id INTEGER,
-                title TEXT NOT NULL,
-                description TEXT,
-                price REAL NOT NULL,
-                cost REAL,
-                condition TEXT,
-                category TEXT,
-                item_type TEXT,
-                attributes TEXT,
-                photos TEXT,
-                quantity INTEGER DEFAULT 1,
-                storage_location TEXT,
-                sku TEXT,
-                upc TEXT,
-                status TEXT DEFAULT 'draft',
-                sold_platform TEXT,
-                sold_date TIMESTAMP,
-                sold_price REAL,
-                platform_statuses TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (collectible_id) REFERENCES collectibles(id),
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            )
-        """)
-
-        # Training data table - Knowledge Distillation
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS training_data (
-                id SERIAL PRIMARY KEY,
-                user_id UUID,
-                listing_id INTEGER,
-                collectible_id INTEGER,
-                photo_paths TEXT,
-                input_data TEXT,
-                teacher_output TEXT,
-                student_output TEXT,
-                student_confidence REAL,
-                used_teacher BOOLEAN DEFAULT TRUE,
-                quality_score REAL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                FOREIGN KEY (listing_id) REFERENCES listings(id),
-                FOREIGN KEY (collectible_id) REFERENCES collectibles(id)
-            )
-        """)
-
-        # Create index for faster training data queries
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_training_data_created
-            ON training_data(created_at DESC)
-        """)
-
-        # Platform listings - track where each listing is posted
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS platform_listings (
-                id SERIAL PRIMARY KEY,
-                listing_id INTEGER NOT NULL,
-                platform TEXT NOT NULL,
-                platform_listing_id TEXT,
-                platform_url TEXT,
-                status TEXT DEFAULT 'pending',
-                posted_at TIMESTAMP,
-                last_synced TIMESTAMP,
-                cancel_scheduled_at TIMESTAMP,
-                error_message TEXT,
-                retry_count INTEGER DEFAULT 0,
-                FOREIGN KEY (listing_id) REFERENCES listings(id),
-                UNIQUE(listing_id, platform)
-            )
-        """)
-
-        # Sync log - track all sync operations
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS sync_log (
-                id SERIAL PRIMARY KEY,
-                listing_id INTEGER NOT NULL,
-                platform TEXT NOT NULL,
-                action TEXT NOT NULL,
-                status TEXT,
-                details TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (listing_id) REFERENCES listings(id)
-            )
-        """)
-
-        # Platform activity - monitor external platforms
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS platform_activity (
-                id SERIAL PRIMARY KEY,
-                user_id UUID NOT NULL,
-                platform TEXT NOT NULL,
-                activity_type TEXT NOT NULL,
-                platform_listing_id TEXT,
-                listing_id INTEGER,
-                title TEXT,
-                buyer_username TEXT,
-                message_text TEXT,
-                sold_price REAL,
-                activity_date TIMESTAMP,
-                is_read BOOLEAN DEFAULT FALSE,
-                is_synced_to_inventory BOOLEAN DEFAULT FALSE,
-                raw_data TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                FOREIGN KEY (listing_id) REFERENCES listings(id)
-            )
-        """)
-
-        # Create index for faster activity queries
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_platform_activity_user_unread
-            ON platform_activity(user_id, is_read, created_at DESC)
-        """)
-
-        # ===== MIGRATION: Add tier column if it doesn't exist =====
-        try:
-            # Check if column exists first to avoid locks
+            # Marketplace credentials - per user
             cursor.execute("""
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_name='users' AND column_name='tier'
+                CREATE TABLE IF NOT EXISTS marketplace_credentials (
+                    id SERIAL PRIMARY KEY,
+                    user_id UUID NOT NULL,
+                    platform TEXT NOT NULL,
+                    username TEXT,
+                    password TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id),
+                    UNIQUE(user_id, platform)
+                )
             """)
 
-            if not cursor.fetchone():
-                # Column doesn't exist, add it
+            # Collectibles database table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS collectibles (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    category TEXT,
+                    brand TEXT,
+                    model TEXT,
+                    year INTEGER,
+                    condition TEXT,
+                    estimated_value_low REAL,
+                    estimated_value_high REAL,
+                    estimated_value_avg REAL,
+                    market_data TEXT,
+                    attributes TEXT,
+                    image_urls TEXT,
+                    identified_by TEXT,
+                    confidence_score REAL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    times_found INTEGER DEFAULT 1,
+                    notes TEXT,
+                    deep_analysis TEXT,
+                    embedding TEXT,
+                    franchise TEXT,
+                    rarity_level TEXT
+                )
+            """)
+
+            # Listings table - tracks all your listings
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS listings (
+                    id SERIAL PRIMARY KEY,
+                    listing_uuid TEXT UNIQUE NOT NULL,
+                    user_id UUID NOT NULL,
+                    collectible_id INTEGER,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    price REAL NOT NULL,
+                    cost REAL,
+                    condition TEXT,
+                    category TEXT,
+                    item_type TEXT,
+                    attributes TEXT,
+                    photos TEXT,
+                    quantity INTEGER DEFAULT 1,
+                    storage_location TEXT,
+                    sku TEXT,
+                    upc TEXT,
+                    status TEXT DEFAULT 'draft',
+                    sold_platform TEXT,
+                    sold_date TIMESTAMP,
+                    sold_price REAL,
+                    platform_statuses TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (collectible_id) REFERENCES collectibles(id),
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
+
+            # Training data table - Knowledge Distillation
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS training_data (
+                    id SERIAL PRIMARY KEY,
+                    user_id UUID,
+                    listing_id INTEGER,
+                    collectible_id INTEGER,
+                    photo_paths TEXT,
+                    input_data TEXT,
+                    teacher_output TEXT,
+                    student_output TEXT,
+                    student_confidence REAL,
+                    used_teacher BOOLEAN DEFAULT TRUE,
+                    quality_score REAL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id),
+                    FOREIGN KEY (listing_id) REFERENCES listings(id),
+                    FOREIGN KEY (collectible_id) REFERENCES collectibles(id)
+                )
+            """)
+
+            # Create index for faster training data queries
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_training_data_created
+                ON training_data(created_at DESC)
+            """)
+
+            # Platform listings - track where each listing is posted
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS platform_listings (
+                    id SERIAL PRIMARY KEY,
+                    listing_id INTEGER NOT NULL,
+                    platform TEXT NOT NULL,
+                    platform_listing_id TEXT,
+                    platform_url TEXT,
+                    status TEXT DEFAULT 'pending',
+                    posted_at TIMESTAMP,
+                    last_synced TIMESTAMP,
+                    cancel_scheduled_at TIMESTAMP,
+                    error_message TEXT,
+                    retry_count INTEGER DEFAULT 0,
+                    FOREIGN KEY (listing_id) REFERENCES listings(id),
+                    UNIQUE(listing_id, platform)
+                )
+            """)
+
+            # Sync log - track all sync operations
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS sync_log (
+                    id SERIAL PRIMARY KEY,
+                    listing_id INTEGER NOT NULL,
+                    platform TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    status TEXT,
+                    details TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (listing_id) REFERENCES listings(id)
+                )
+            """)
+
+            # Platform activity - monitor external platforms
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS platform_activity (
+                    id SERIAL PRIMARY KEY,
+                    user_id UUID NOT NULL,
+                    platform TEXT NOT NULL,
+                    activity_type TEXT NOT NULL,
+                    platform_listing_id TEXT,
+                    listing_id INTEGER,
+                    title TEXT,
+                    buyer_username TEXT,
+                    message_text TEXT,
+                    sold_price REAL,
+                    activity_date TIMESTAMP,
+                    is_read BOOLEAN DEFAULT FALSE,
+                    is_synced_to_inventory BOOLEAN DEFAULT FALSE,
+                    raw_data TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id),
+                    FOREIGN KEY (listing_id) REFERENCES listings(id)
+                )
+            """)
+
+            # Create index for faster activity queries
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_platform_activity_user_unread
+                ON platform_activity(user_id, is_read, created_at DESC)
+            """)
+
+            # ===== MIGRATION: Add tier column if it doesn't exist =====
+            try:
                 cursor.execute("""
-                    ALTER TABLE users
-                    ADD COLUMN tier TEXT DEFAULT 'FREE'
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name='users' AND column_name='tier'
                 """)
-                self.conn.commit()
+                if not cursor.fetchone():
+                    cursor.execute("""
+                        ALTER TABLE users
+                        ADD COLUMN tier TEXT DEFAULT 'FREE'
+                    """)
+            except Exception as e:
+                print(f"⚠️  Tier column migration skipped: {e}")
+
+            # Storage bins - for physical organization
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS storage_bins (
+                    id SERIAL PRIMARY KEY,
+                    user_id UUID NOT NULL,
+                    bin_name TEXT NOT NULL,
+                    bin_type TEXT NOT NULL,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id),
+                    UNIQUE(user_id, bin_name, bin_type)
+                )
+            """)
+
+            # Storage sections - compartments within bins
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS storage_sections (
+                    id SERIAL PRIMARY KEY,
+                    bin_id INTEGER NOT NULL,
+                    section_name TEXT NOT NULL,
+                    capacity INTEGER,
+                    item_count INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (bin_id) REFERENCES storage_bins(id),
+                    UNIQUE(bin_id, section_name)
+                )
+            """)
+
+            # Storage items - physical items in storage
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS storage_items (
+                    id SERIAL PRIMARY KEY,
+                    user_id UUID NOT NULL,
+                    storage_id TEXT UNIQUE NOT NULL,
+                    bin_id INTEGER NOT NULL,
+                    section_id INTEGER,
+                    item_type TEXT,
+                    category TEXT,
+                    title TEXT,
+                    description TEXT,
+                    quantity INTEGER DEFAULT 1,
+                    photos TEXT,
+                    notes TEXT,
+                    listing_id INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id),
+                    FOREIGN KEY (bin_id) REFERENCES storage_bins(id),
+                    FOREIGN KEY (section_id) REFERENCES storage_sections(id),
+                    FOREIGN KEY (listing_id) REFERENCES listings(id)
+                )
+            """)
+
+            # Create indexes for faster storage queries
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_storage_items_user
+                ON storage_items(user_id, created_at DESC)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_storage_items_bin_section
+                ON storage_items(bin_id, section_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_storage_items_storage_id
+                ON storage_items(storage_id)
+            """)
+
+            # Card collections - unified card data
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS card_collections (
+                    id SERIAL PRIMARY KEY,
+                    user_id UUID NOT NULL,
+                    card_uuid TEXT UNIQUE NOT NULL,
+                    card_type TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    card_number TEXT,
+                    quantity INTEGER DEFAULT 1,
+                    organization_mode TEXT,
+                    primary_category TEXT,
+                    custom_categories TEXT,
+                    storage_location TEXT,
+                    storage_item_id INTEGER,
+                    game_name TEXT,
+                    set_name TEXT,
+                    set_code TEXT,
+                    set_symbol TEXT,
+                    rarity TEXT,
+                    card_subtype TEXT,
+                    format_legality TEXT,
+                    sport TEXT,
+                    year INTEGER,
+                    brand TEXT,
+                    series TEXT,
+                    player_name TEXT,
+                    team TEXT,
+                    is_rookie_card BOOLEAN DEFAULT FALSE,
+                    parallel_color TEXT,
+                    insert_series TEXT,
+                    grading_company TEXT,
+                    grading_score REAL,
+                    grading_serial TEXT,
+                    estimated_value REAL,
+                    value_tier TEXT,
+                    purchase_price REAL,
+                    photos TEXT,
+                    notes TEXT,
+                    ai_identified BOOLEAN DEFAULT FALSE,
+                    ai_confidence REAL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id),
+                    FOREIGN KEY (storage_item_id) REFERENCES storage_items(id)
+                )
+            """)
+
+            # Organization presets
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS card_organization_presets (
+                    id SERIAL PRIMARY KEY,
+                    user_id UUID NOT NULL,
+                    preset_name TEXT NOT NULL,
+                    card_type_filter TEXT,
+                    organization_mode TEXT NOT NULL,
+                    sort_order TEXT,
+                    filters TEXT,
+                    is_active BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id),
+                    UNIQUE(user_id, preset_name)
+                )
+            """)
+
+            # Custom categories
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS card_custom_categories (
+                    id SERIAL PRIMARY KEY,
+                    user_id UUID NOT NULL,
+                    category_name TEXT NOT NULL,
+                    category_color TEXT,
+                    category_icon TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id),
+                    UNIQUE(user_id, category_name)
+                )
+            """)
+
+            # Card collection indexes
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_card_collections_user
+                ON card_collections(user_id, created_at DESC)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_card_collections_type
+                ON card_collections(card_type)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_card_collections_org_mode
+                ON card_collections(organization_mode, primary_category)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_card_collections_set
+                ON card_collections(set_code, card_number)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_card_collections_sport_year
+                ON card_collections(sport, year, brand)
+            """)
+
+            # Notifications/alerts table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS notifications (
+                    id SERIAL PRIMARY KEY,
+                    type TEXT NOT NULL,
+                    listing_id INTEGER,
+                    platform TEXT,
+                    title TEXT NOT NULL,
+                    message TEXT,
+                    data TEXT,
+                    is_read BOOLEAN DEFAULT FALSE,
+                    sent_email BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (listing_id) REFERENCES listings(id)
+                )
+            """)
+
+            # Price alerts
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS price_alerts (
+                    id SERIAL PRIMARY KEY,
+                    collectible_id INTEGER NOT NULL,
+                    target_price REAL NOT NULL,
+                    condition TEXT,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (collectible_id) REFERENCES collectibles(id)
+                )
+            """)
+
+            # Activity logs
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS activity_logs (
+                    id SERIAL PRIMARY KEY,
+                    user_id UUID,
+                    action TEXT NOT NULL,
+                    resource_type TEXT,
+                    resource_id INTEGER,
+                    details TEXT,
+                    ip_address TEXT,
+                    user_agent TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
+
+            # Create indexes for better performance
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_listings_uuid
+                ON listings(listing_uuid)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_listings_status
+                ON listings(status)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_listings_user_id
+                ON listings(user_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_platform_listings_status
+                ON platform_listings(status)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_collectibles_name
+                ON collectibles(name)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_notifications_unread
+                ON notifications(is_read)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id
+                ON activity_logs(user_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_activity_logs_action
+                ON activity_logs(action)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_users_is_admin
+                ON users(is_admin)
+            """)
+
+            # Mobile app tables
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS inventory (
+                    id SERIAL PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    storage_location TEXT,
+                    photos TEXT,  -- JSON array of photo objects
+                    barcode TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS templates (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    brand TEXT,
+                    size TEXT,
+                    color TEXT,
+                    condition TEXT DEFAULT 'good',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Commit all schema work in one transaction
+            self.conn.commit()
+            print("✅ PostgreSQL tables created successfully")
         except Exception as e:
-            print(f"⚠️  Tier column migration skipped: {e}")
-            self.conn.rollback()
-
-        # Storage bins - for physical organization
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS storage_bins (
-                id SERIAL PRIMARY KEY,
-                user_id UUID NOT NULL,
-                bin_name TEXT NOT NULL,
-                bin_type TEXT NOT NULL,
-                description TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                UNIQUE(user_id, bin_name, bin_type)
-            )
-        """)
-
-        # Storage sections - compartments within bins
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS storage_sections (
-                id SERIAL PRIMARY KEY,
-                bin_id INTEGER NOT NULL,
-                section_name TEXT NOT NULL,
-                capacity INTEGER,
-                item_count INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (bin_id) REFERENCES storage_bins(id),
-                UNIQUE(bin_id, section_name)
-            )
-        """)
-
-        # Storage items - physical items in storage
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS storage_items (
-                id SERIAL PRIMARY KEY,
-                user_id UUID NOT NULL,
-                storage_id TEXT UNIQUE NOT NULL,
-                bin_id INTEGER NOT NULL,
-                section_id INTEGER,
-                item_type TEXT,
-                category TEXT,
-                title TEXT,
-                description TEXT,
-                quantity INTEGER DEFAULT 1,
-                photos TEXT,
-                notes TEXT,
-                listing_id INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                FOREIGN KEY (bin_id) REFERENCES storage_bins(id),
-                FOREIGN KEY (section_id) REFERENCES storage_sections(id),
-                FOREIGN KEY (listing_id) REFERENCES listings(id)
-            )
-        """)
-
-        # Create indexes for faster storage queries
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_storage_items_user
-            ON storage_items(user_id, created_at DESC)
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_storage_items_bin_section
-            ON storage_items(bin_id, section_id)
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_storage_items_storage_id
-            ON storage_items(storage_id)
-        """)
-
-        # Card collections - unified card data
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS card_collections (
-                id SERIAL PRIMARY KEY,
-                user_id UUID NOT NULL,
-                card_uuid TEXT UNIQUE NOT NULL,
-                card_type TEXT NOT NULL,
-                title TEXT NOT NULL,
-                card_number TEXT,
-                quantity INTEGER DEFAULT 1,
-                organization_mode TEXT,
-                primary_category TEXT,
-                custom_categories TEXT,
-                storage_location TEXT,
-                storage_item_id INTEGER,
-                game_name TEXT,
-                set_name TEXT,
-                set_code TEXT,
-                set_symbol TEXT,
-                rarity TEXT,
-                card_subtype TEXT,
-                format_legality TEXT,
-                sport TEXT,
-                year INTEGER,
-                brand TEXT,
-                series TEXT,
-                player_name TEXT,
-                team TEXT,
-                is_rookie_card BOOLEAN DEFAULT FALSE,
-                parallel_color TEXT,
-                insert_series TEXT,
-                grading_company TEXT,
-                grading_score REAL,
-                grading_serial TEXT,
-                estimated_value REAL,
-                value_tier TEXT,
-                purchase_price REAL,
-                photos TEXT,
-                notes TEXT,
-                ai_identified BOOLEAN DEFAULT FALSE,
-                ai_confidence REAL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                FOREIGN KEY (storage_item_id) REFERENCES storage_items(id)
-            )
-        """)
-
-        # Organization presets
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS card_organization_presets (
-                id SERIAL PRIMARY KEY,
-                user_id UUID NOT NULL,
-                preset_name TEXT NOT NULL,
-                card_type_filter TEXT,
-                organization_mode TEXT NOT NULL,
-                sort_order TEXT,
-                filters TEXT,
-                is_active BOOLEAN DEFAULT FALSE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                UNIQUE(user_id, preset_name)
-            )
-        """)
-
-        # Custom categories
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS card_custom_categories (
-                id SERIAL PRIMARY KEY,
-                user_id UUID NOT NULL,
-                category_name TEXT NOT NULL,
-                category_color TEXT,
-                category_icon TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                UNIQUE(user_id, category_name)
-            )
-        """)
-
-        # Card collection indexes
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_card_collections_user
-            ON card_collections(user_id, created_at DESC)
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_card_collections_type
-            ON card_collections(card_type)
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_card_collections_org_mode
-            ON card_collections(organization_mode, primary_category)
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_card_collections_set
-            ON card_collections(set_code, card_number)
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_card_collections_sport_year
-            ON card_collections(sport, year, brand)
-        """)
-
-        # Notifications/alerts table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS notifications (
-                id SERIAL PRIMARY KEY,
-                type TEXT NOT NULL,
-                listing_id INTEGER,
-                platform TEXT,
-                title TEXT NOT NULL,
-                message TEXT,
-                data TEXT,
-                is_read BOOLEAN DEFAULT FALSE,
-                sent_email BOOLEAN DEFAULT FALSE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (listing_id) REFERENCES listings(id)
-            )
-        """)
-
-        # Price alerts
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS price_alerts (
-                id SERIAL PRIMARY KEY,
-                collectible_id INTEGER NOT NULL,
-                target_price REAL NOT NULL,
-                condition TEXT,
-                is_active BOOLEAN DEFAULT TRUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (collectible_id) REFERENCES collectibles(id)
-            )
-        """)
-
-        # Activity logs
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS activity_logs (
-                id SERIAL PRIMARY KEY,
-                user_id UUID,
-                action TEXT NOT NULL,
-                resource_type TEXT,
-                resource_id INTEGER,
-                details TEXT,
-                ip_address TEXT,
-                user_agent TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            )
-        """)
-
-        # Create indexes for better performance
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_listings_uuid
-            ON listings(listing_uuid)
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_listings_status
-            ON listings(status)
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_listings_user_id
-            ON listings(user_id)
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_platform_listings_status
-            ON platform_listings(status)
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_collectibles_name
-            ON collectibles(name)
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_notifications_unread
-            ON notifications(is_read)
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id
-            ON activity_logs(user_id)
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_activity_logs_action
-            ON activity_logs(action)
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_users_is_admin
-            ON users(is_admin)
-        """)
-
-        # Mobile app tables
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS inventory (
-                id SERIAL PRIMARY KEY,
-                title TEXT NOT NULL,
-                storage_location TEXT,
-                photos TEXT,  -- JSON array of photo objects
-                barcode TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS templates (
-                id SERIAL PRIMARY KEY,
-                name TEXT NOT NULL,
-                title TEXT NOT NULL,
-                description TEXT,
-                brand TEXT,
-                size TEXT,
-                color TEXT,
-                condition TEXT DEFAULT 'good',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-
-        self.conn.commit()
-        print("✅ PostgreSQL tables created successfully")
+            try:
+                if self.conn and not self.conn.closed:
+                    self.conn.rollback()
+            except Exception:
+                pass
+            print(f"Error creating tables: {e}")
+            raise
+        finally:
+            if cursor:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
 
     # ========================================================================
     # COLLECTIBLES METHODS

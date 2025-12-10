@@ -1797,16 +1797,26 @@ class Database:
     def create_user(self, username: str, email: str, password_hash: str):
         """Create a new user - returns UUID"""
         import uuid
-        cursor = self._get_cursor()
-        user_uuid = uuid.uuid4()
-        cursor.execute("""
-            INSERT INTO users (id, username, email, password_hash)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id
-        """, (str(user_uuid), username, email, password_hash))
-        result = cursor.fetchone()
-        self.conn.commit()
-        return str(result['id'])  # Return UUID as string
+        cursor = None
+        conn = None
+        try:
+            cursor, conn = self._get_cursor()
+            user_uuid = uuid.uuid4()
+            cursor.execute("""
+                INSERT INTO users (id, username, email, password_hash)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+            """, (str(user_uuid), username, email, password_hash))
+            result = cursor.fetchone()
+            return str(result['id'])  # Return UUID as string
+        finally:
+            if cursor:
+                try:
+                    cursor.close()
+                except:
+                    pass
+            if conn:
+                self._return_connection(conn, commit=True, error=False)
 
     def get_user_by_username(self, username: str) -> Optional[Dict]:
         """Get user by username with retry logic"""
@@ -1953,13 +1963,23 @@ class Database:
 
     def update_notification_email(self, user_id: int, notification_email: str):
         """Update user's notification email"""
-        cursor = self._get_cursor()
-        cursor.execute("""
-            UPDATE users
-            SET notification_email = %s
-            WHERE id = %s
-        """, (notification_email, user_id))
-        self.conn.commit()
+        cursor = None
+        conn = None
+        try:
+            cursor, conn = self._get_cursor()
+            cursor.execute("""
+                UPDATE users
+                SET notification_email = %s
+                WHERE id = %s
+            """, (notification_email, user_id))
+        finally:
+            if cursor:
+                try:
+                    cursor.close()
+                except:
+                    pass
+            if conn:
+                self._return_connection(conn, commit=True, error=False)
 
     # OAuth-specific methods
     def get_user_by_supabase_uid(self, supabase_uid: str) -> Optional[Dict]:
@@ -2091,25 +2111,47 @@ class Database:
 
     def get_marketplace_credentials(self, user_id: str, platform: str) -> Optional[Dict]:
         """Get marketplace credentials for a specific platform - user_id is UUID"""
-        cursor = self._get_cursor()
-        user_id_str = str(user_id)
-        cursor.execute("""
-            SELECT * FROM marketplace_credentials
-            WHERE user_id::text = %s AND platform = %s
-        """, (user_id_str, platform))
-        row = cursor.fetchone()
-        return dict(row) if row else None
+        cursor = None
+        conn = None
+        try:
+            cursor, conn = self._get_cursor()
+            user_id_str = str(user_id)
+            cursor.execute("""
+                SELECT * FROM marketplace_credentials
+                WHERE user_id::text = %s AND platform = %s
+            """, (user_id_str, platform))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            if cursor:
+                try:
+                    cursor.close()
+                except:
+                    pass
+            if conn:
+                self._return_connection(conn, commit=False, error=False)
 
     def get_all_marketplace_credentials(self, user_id: str) -> List[Dict]:
         """Get all marketplace credentials for a user - user_id is UUID"""
-        cursor = self._get_cursor()
-        user_id_str = str(user_id)
-        cursor.execute("""
-            SELECT * FROM marketplace_credentials
-            WHERE user_id::text = %s
-            ORDER BY platform
-        """, (user_id_str,))
-        return [dict(row) for row in cursor.fetchall()]
+        cursor = None
+        conn = None
+        try:
+            cursor, conn = self._get_cursor()
+            user_id_str = str(user_id)
+            cursor.execute("""
+                SELECT * FROM marketplace_credentials
+                WHERE user_id::text = %s
+                ORDER BY platform
+            """, (user_id_str,))
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            if cursor:
+                try:
+                    cursor.close()
+                except:
+                    pass
+            if conn:
+                self._return_connection(conn, commit=False, error=False)
 
     def delete_marketplace_credentials(self, user_id: str, platform: str):
         """Delete marketplace credentials for a platform - user_id is UUID"""

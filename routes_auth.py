@@ -507,6 +507,7 @@ def auth_callback():
         if flow_id:
             print(f"🔍 [CALLBACK] flow_id present: {flow_id[:10]}...", flush=True)
             try:
+                print(f"🔍 [CALLBACK] Attempting database query...", flush=True)
                 cursor = db._get_cursor()
                 try:
                     cursor.execute("""
@@ -527,7 +528,9 @@ def auth_callback():
                 finally:
                     cursor.close()
             except Exception as e:
-                print(f"⚠️  [CALLBACK] Failed to retrieve from database: {e}", flush=True)
+                print(f"⚠️  [CALLBACK] Database query failed: {e}", flush=True)
+                import traceback
+                traceback.print_exc()
 
         # Fallback 1: Try filesystem (for local development)
         if not code_verifier and flow_id:

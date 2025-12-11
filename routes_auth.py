@@ -503,9 +503,21 @@ def auth_callback():
         code_verifier = None
         verifier_source = None
 
-        # Primary: Load from DATABASE using flow_id (works on Render/cloud platforms)
-        if flow_id:
-            print(f"🔍 [CALLBACK] flow_id present: {flow_id[:10]}...", flush=True)
+        # PRIMARY: Check SESSION FIRST (fastest, most reliable, works everywhere)
+        print(f"🔍 [CALLBACK] Checking session storage...", flush=True)
+        print(f"🔍 [CALLBACK] Current session data: {dict(session)}", flush=True)
+        code_verifier = session.get('oauth_code_verifier')
+        if code_verifier:
+            verifier_source = 'session'
+            print(f"✅ [CALLBACK] Retrieved code verifier from session: {code_verifier[:10]}...", flush=True)
+            session.pop('oauth_code_verifier', None)
+            session.pop('oauth_flow_id', None)
+        else:
+            print(f"⚠️  [CALLBACK] No code verifier in session", flush=True)
+
+        # Fallback 1: Try DATABASE using flow_id (for multi-worker deployments)
+        if not code_verifier and flow_id:
+            print(f"🔍 [CALLBACK] flow_id present: {flow_id[:10]}, trying database...", flush=True)
             try:
                 print(f"🔍 [CALLBACK] Attempting database query...", flush=True)
                 cursor = db._get_cursor()
@@ -532,8 +544,9 @@ def auth_callback():
                 import traceback
                 traceback.print_exc()
 
-        # Fallback 1: Try filesystem (for local development)
+        # Fallback 2: Try filesystem (for local development)
         if not code_verifier and flow_id:
+            print(f"🔍 [CALLBACK] Trying filesystem...", flush=True)
             from pathlib import Path
             state_file = Path('./data/oauth_state') / f"{flow_id}.txt"
             if state_file.exists():
@@ -551,19 +564,10 @@ def auth_callback():
         if not flow_id:
             print(f"⚠️  [CALLBACK] No flow_id parameter in callback", flush=True)
 
-        # Fallback 2: Check session (single-worker deployments)
+        # Final check
         if not code_verifier:
-            print(f"🔍 [CALLBACK] Checking session fallback...", flush=True)
-            print(f"🔍 [CALLBACK] Current session data: {dict(session)}", flush=True)
-            code_verifier = session.get('oauth_code_verifier')
-            if code_verifier:
-                verifier_source = 'session'
-                print(f"✅ [CALLBACK] Retrieved code verifier from session: {code_verifier[:10]}...", flush=True)
-                session.pop('oauth_code_verifier', None)
-                session.pop('oauth_flow_id', None)
-            else:
-                print(f"❌ [CALLBACK ERROR] No code verifier found in database, filesystem, or session!", flush=True)
-                print(f"❌ [CALLBACK ERROR] flow_id: {flow_id}, Session keys: {list(session.keys())}", flush=True)
+            print(f"❌ [CALLBACK ERROR] No code verifier found in session, database, or filesystem!", flush=True)
+            print(f"❌ [CALLBACK ERROR] flow_id: {flow_id}, Session keys: {list(session.keys())}", flush=True)
 
         if code_verifier:
             print(f"✅ [CALLBACK] Using code verifier from {verifier_source}: {code_verifier[:10]}...", flush=True)

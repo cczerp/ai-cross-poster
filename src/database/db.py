@@ -32,14 +32,14 @@ def _get_connection_pool():
         # Parse connection string for pool
         connection_params = database_url
         
-        # Ensure SSL mode is set - use 'prefer' instead of 'require'
-        # 'prefer' tries SSL but falls back to non-SSL if SSL connection fails
-        # This prevents "SSL connection has been closed unexpectedly" timeouts
+        # DISABLE SSL completely to debug connection timeouts
+        # Supabase connection pooler (port 6543) may have SSL issues
+        # Try disabling SSL entirely to see if queries work
         if '?' not in connection_params:
-            connection_params += '?sslmode=prefer&connect_timeout=10'
+            connection_params += '?sslmode=disable&connect_timeout=10'
         else:
             if 'sslmode=' not in connection_params:
-                connection_params += '&sslmode=prefer'
+                connection_params += '&sslmode=disable'
             if 'connect_timeout=' not in connection_params:
                 connection_params += '&connect_timeout=10'
         

@@ -32,28 +32,36 @@ def _get_connection_pool():
         # Parse connection string for pool
         connection_params = database_url
         
-        # Configure SSL and connection timeouts for production databases (Supabase, Render, etc.)
-        # Use sslmode=require for secure connections to cloud PostgreSQL
+        # Supabase pooler REQUIRES SSL - cannot use sslmode=disable
+        # Add aggressive timeouts to prevent hanging queries
+        # URL-encode the options parameter since it contains = signs
+        from urllib.parse import quote
+
         if '?' not in connection_params:
-            connection_params += '?sslmode=require&connect_timeout=10'
+            # URL-encode: -c statement_timeout=10000
+            options_encoded = quote('-c statement_timeout=10000')
+            connection_params += f'?sslmode=require&connect_timeout=5&options={options_encoded}'
         else:
             if 'sslmode=' not in connection_params:
                 connection_params += '&sslmode=require'
             if 'connect_timeout=' not in connection_params:
-                connection_params += '&connect_timeout=10'
+                connection_params += '&connect_timeout=5'
+            if 'statement_timeout' not in connection_params:
+                options_encoded = quote('-c statement_timeout=10000')
+                connection_params += f'&options={options_encoded}'
         
-        # Create connection pool with resilient settings
-        # Keepalives prevent Render from closing idle SSL connections
+        # Create connection pool with conservative settings
+        # Small pool size to avoid overwhelming Supabase pooler
         print("🔌 Creating PostgreSQL connection pool...", flush=True)
         _connection_pool = psycopg2.pool.ThreadedConnectionPool(
             minconn=1,  # Minimum connections in pool
-            maxconn=20,  # Maximum connections (increased for resilience)
+            maxconn=5,  # Maximum connections (reduced - pooler has limits)
             dsn=connection_params,
-            connect_timeout=10,
+            connect_timeout=5,
             keepalives=1,
-            keepalives_idle=30,
-            keepalives_interval=10,
-            keepalives_count=5
+            keepalives_idle=10,
+            keepalives_interval=5,
+            keepalives_count=3
         )
         print("✅ Connection pool created", flush=True)
     

@@ -164,10 +164,10 @@
 
         <form method="POST" action="{{ url_for('auth.login') }}" id="loginForm">
             <div class="mb-3">
-                <label for="username" class="form-label">Username</label>
+                <label for="email" class="form-label">Email</label>
                 <div class="input-group">
-                    <span class="input-group-text"><i class="fas fa-user"></i></span>
-                    <input type="text" class="form-control" id="username" name="username" required autofocus>
+                    <span class="input-group-text"><i class="fas fa-envelope"></i></span>
+                    <input type="email" class="form-control" id="email" name="email" required autofocus placeholder="your@email.com">
                 </div>
             </div>
 

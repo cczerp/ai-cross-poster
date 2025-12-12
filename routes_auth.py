@@ -27,95 +27,102 @@ def init_routes(database, user_class):
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
-    """Handle user login."""
+    """Handle user login - using Supabase email/password auth."""
     if request.method == 'GET':
         return render_template('login.html')
 
     try:
-        # POST — authenticate user
+        # POST — authenticate user with Supabase
         data = request.form
-        username = data.get('username')
+        email = data.get('email')
         password = data.get('password')
 
-        print(f"[LOGIN] Attempting login for username: {username}", flush=True)
-        import time
-        start_time = time.time()
+        print(f"[LOGIN] Attempting Supabase login for email: {email}", flush=True)
 
-        if not username or not password:
-            flash("Username and password required.", "error")
+        if not email or not password:
+            flash("Email and password required.", "error")
             return render_template('login.html')
 
-        # Check database connection first
-        if db is None:
-            print("[LOGIN ERROR] Database not initialized!")
-            flash("Database connection error. Please try again.", "error")
+        # Use Supabase client to sign in
+        from src.auth_utils import get_supabase_client
+        supabase = get_supabase_client()
+
+        if not supabase:
+            print("[LOGIN ERROR] Supabase client not configured!")
+            flash("Authentication service unavailable. Please try again.", "error")
             return render_template('login.html')
 
-        user_data = db.get_user_by_username(username)
+        # Attempt to sign in with Supabase
+        response = supabase.auth.sign_in_with_password({
+            "email": email,
+            "password": password
+        })
 
-        if user_data is None:
-            print(f"[LOGIN] User not found or database error for username: {username}")
-            flash("User not found.", "error")
+        if not response or not response.user:
+            print(f"[LOGIN] Supabase sign-in failed for email: {email}")
+            flash("Invalid email or password.", "error")
             return render_template('login.html')
 
-        print(f"[LOGIN] User found: {username}, has password_hash: {bool(user_data.get('password_hash'))}")
+        print(f"[LOGIN] Supabase sign-in successful for email: {email}")
+        print(f"[LOGIN] User ID: {response.user.id}")
 
-        # Check if user has a password (OAuth users may not have password_hash)
-        password_hash = user_data.get('password_hash')
-        if not password_hash:
-            flash("This account uses Google sign-in. Please use the 'Sign in with Google' button.", "error")
-            return render_template('login.html')
+        # Get or create user in our database
+        user_id = str(response.user.id)
+        user_email = response.user.email
 
-        if not check_password_hash(password_hash, password):
-            print(f"[LOGIN] Password verification failed for username: {username}")
-            flash("Incorrect password.", "error")
-            return render_template('login.html')
+        # Check if user exists in our database
+        user_data = db.get_user_by_email(user_email) if db else None
 
-        print(f"[LOGIN] Password verified for username: {username}")
+        if not user_data:
+            # Create new user record in our database
+            print(f"[LOGIN] Creating new user record for email: {user_email}")
+            username = user_email.split('@')[0]  # Generate username from email
 
-        # Create User object for Flask-Login - ensure id is UUID string
-        user_id_str = str(user_data['id']) if user_data.get('id') else None
-        if not user_id_str:
-            print(f"[LOGIN ERROR] Invalid user ID for username: {username}")
-            flash("Invalid user data. Please try again.", "error")
-            return render_template('login.html')
+            if db:
+                try:
+                    db.create_user(
+                        username=username,
+                        email=user_email,
+                        password_hash=None,  # Supabase manages password
+                        user_id=user_id  # Use Supabase user ID
+                    )
+                    user_data = db.get_user_by_email(user_email)
+                except Exception as e:
+                    print(f"[LOGIN WARNING] Failed to create user record: {e}")
+                    # Continue anyway - we can still log them in
 
-        user = User(
-            user_id_str,
-            user_data['username'],
-            user_data['email'],
-            user_data.get('is_admin', False),
-            user_data.get('is_active', True),
-            user_data.get('tier', 'FREE')
-        )
-
-        print(f"[LOGIN] Logging in user: {username} (ID: {user_id_str})")
-        login_user(user)
-        print(f"[LOGIN] Flask-Login completed for username: {username}")
-
-        # Log activity (with error handling)
-        try:
-            db.log_activity(
-                action="login",
-                user_id=user_id_str,
-                resource_type="user",
-                resource_id=None,  # Don't use user.id as resource_id since it's UUID
-                ip_address=request.remote_addr,
-                user_agent=request.headers.get("User-Agent")
+        # Create User object for Flask-Login
+        if user_data:
+            user = User(
+                str(user_data['id']),
+                user_data['username'],
+                user_data['email'],
+                user_data.get('is_admin', False),
+                user_data.get('is_active', True),
+                user_data.get('tier', 'FREE')
             )
-            print(f"[LOGIN] Activity logged for username: {username}")
-        except Exception as e:
-            print(f"[LOGIN WARNING] Failed to log activity: {e}")
+        else:
+            # Fallback if database record doesn't exist
+            user = User(
+                user_id,
+                user_email.split('@')[0],
+                user_email,
+                False,  # is_admin
+                True,   # is_active
+                'FREE'  # tier
+            )
 
-        elapsed = time.time() - start_time
-        print(f"[LOGIN] ✅ Login successful for {username} (took {elapsed:.2f}s)", flush=True)
+        print(f"[LOGIN] Logging in user: {user.email} (ID: {user.id})")
+        login_user(user)
+        print(f"[LOGIN] ✅ Login successful for {user.email}", flush=True)
+
         return redirect(url_for('index'))
-    
+
     except Exception as e:
-        print(f"Login error: {e}")
+        print(f"[LOGIN ERROR] {e}")
         import traceback
         traceback.print_exc()
-        flash("An error occurred during login. Please try again.", "error")
+        flash("Invalid email or password.", "error")
         return render_template('login.html')
 
 

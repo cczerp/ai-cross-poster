@@ -114,7 +114,7 @@ class Database:
 
                 # Add supabase_uid column if it doesn't exist
                 cursor.execute("""
-                    ALTER TABLE users ADD COLUMN IF NOT EXISTS supabase_uuid TEXT;
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS supabase_uid TEXT;
                 """)
 
                 # Add oauth_provider column if it doesn't exist

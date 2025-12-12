@@ -194,10 +194,10 @@ def exchange_code_for_session(auth_code: str, code_verifier: str = None) -> Opti
             "apikey": supabase_key,
             "Content-Type": "application/json"
         }
-        # PKCE token exchange requires grant_type in body, not query params
-        # Supabase expects: grant_type, code (not auth_code), code_verifier
+        # PKCE token exchange: grant_type must be "authorization_code" with code_verifier present
+        # Standard OAuth 2.0 PKCE extension uses authorization_code grant type
         payload = {
-            "grant_type": "pkce",
+            "grant_type": "authorization_code",
             "code": auth_code,
             "code_verifier": code_verifier
         }

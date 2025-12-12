@@ -239,45 +239,36 @@ class Database:
             pass
 
     def _get_cursor(self, retries=3, timeout=10):
-        """Get PostgreSQL cursor from pool - returns (cursor, conn) tuple"""
+        """Get PostgreSQL cursor using instance connection (self.conn)
+        
+        Returns just a cursor object. Uses self.conn for the connection.
+        Call self.conn.commit() or self.conn.rollback() when done.
+        """
         import socket
         for attempt in range(retries):
-            conn = None
             try:
-                # Get a fresh connection from the pool for this operation
-                conn = self.pool.getconn()
+                # Ensure we have a valid connection in self.conn
+                if self.conn is None or self.conn.closed:
+                    self._get_connection_from_pool()
                 
-                # Set socket timeout on connection
-                if conn:
-                    try:
-                        # Set non-blocking timeout via socket
-                        if hasattr(conn, 'set_session'):
-                            conn.set_session(autocommit=False)
-                    except:
-                        pass
-                
-                if conn.closed:
-                    # Connection is closed, return it to pool and get a new one
-                    self.pool.putconn(conn, close=True)
-                    conn = self.pool.getconn()
-
                 # Test connection with simple query
-                test_cursor = conn.cursor()
+                test_cursor = self.conn.cursor()
                 test_cursor.execute("SELECT 1")
                 test_cursor.close()
                 
-                # Connection is good, return cursor and connection tuple
-                cursor = conn.cursor(cursor_factory=self.cursor_factory)
-                return cursor, conn
+                # Connection is good, return cursor
+                cursor = self.conn.cursor(cursor_factory=self.cursor_factory)
+                return cursor
                 
             except (psycopg2.OperationalError, psycopg2.InterfaceError, socket.timeout) as e:
                 print(f"⚠️  Database connection error (attempt {attempt + 1}/{retries}): {e}")
-                # Connection error - return bad connection to pool (will be closed)
-                if conn:
-                    try:
-                        self.pool.putconn(conn, close=True)
-                    except:
-                        pass
+                # Connection error - get a fresh connection
+                try:
+                    self._get_connection_from_pool()
+                except Exception as reconnect_error:
+                    if attempt >= retries - 1:
+                        print(f"❌ Failed to reconnect after {retries} attempts")
+                        raise
 
                 if attempt < retries - 1:
                     # Wait before retrying (exponential backoff)
@@ -291,11 +282,6 @@ class Database:
                 print(f"❌ Unexpected error in _get_cursor: {e}")
                 import traceback
                 traceback.print_exc()
-                if conn:
-                    try:
-                        self.pool.putconn(conn, close=True)
-                    except:
-                        pass
                 raise
     
     def _return_connection(self, conn, commit=True, error=False):
@@ -1827,9 +1813,8 @@ class Database:
         """Create a new user - returns UUID"""
         import uuid
         cursor = None
-        conn = None
         try:
-            cursor, conn = self._get_cursor()
+            cursor = self._get_cursor()
             user_uuid = uuid.uuid4()
             cursor.execute("""
                 INSERT INTO users (id, username, email, password_hash)
@@ -1837,15 +1822,21 @@ class Database:
                 RETURNING id
             """, (str(user_uuid), username, email, password_hash))
             result = cursor.fetchone()
+            self.conn.commit()  # Commit the transaction
             return str(result['id'])  # Return UUID as string
+        except Exception as e:
+            if self.conn:
+                try:
+                    self.conn.rollback()
+                except:
+                    pass
+            raise
         finally:
             if cursor:
                 try:
                     cursor.close()
                 except:
                     pass
-            if conn:
-                self._return_connection(conn, commit=True, error=False)
 
     def get_user_by_username(self, username: str) -> Optional[Dict]:
         """Get user by username with retry logic"""
@@ -1972,7 +1963,6 @@ class Database:
     def update_last_login(self, user_id):
         """Update user's last login timestamp - user_id is UUID"""
         cursor = None
-        conn = None
         try:
             cursor = self._get_cursor()
             user_id_str = str(user_id)
@@ -1981,34 +1971,45 @@ class Database:
                 SET last_login = CURRENT_TIMESTAMP
                 WHERE id::text = %s
             """, (user_id_str,))
+            self.conn.commit()  # Commit the transaction
+        except Exception as e:
+            if self.conn:
+                try:
+                    self.conn.rollback()
+                except:
+                    pass
+            raise
         finally:
             if cursor:
                 try:
                     cursor.close()
                 except:
                     pass
-            if conn:
-                self._return_connection(conn, commit=True, error=False)
 
     def update_notification_email(self, user_id: int, notification_email: str):
         """Update user's notification email"""
         cursor = None
-        conn = None
         try:
-            cursor, conn = self._get_cursor()
+            cursor = self._get_cursor()
             cursor.execute("""
                 UPDATE users
                 SET notification_email = %s
                 WHERE id = %s
             """, (notification_email, user_id))
+            self.conn.commit()  # Commit the transaction
+        except Exception as e:
+            if self.conn:
+                try:
+                    self.conn.rollback()
+                except:
+                    pass
+            raise
         finally:
             if cursor:
                 try:
                     cursor.close()
                 except:
                     pass
-            if conn:
-                self._return_connection(conn, commit=True, error=False)
 
     # OAuth-specific methods
     def get_user_by_supabase_uid(self, supabase_uid: str) -> Optional[Dict]:
@@ -2016,7 +2017,6 @@ class Database:
         max_retries = 3
         for attempt in range(max_retries):
             cursor = None
-            conn = None
             try:
                 cursor = self._get_cursor()
                 cursor.execute("SELECT * FROM users WHERE supabase_uid = %s", (supabase_uid,))
@@ -2044,8 +2044,6 @@ class Database:
                         cursor.close()
                     except:
                         pass
-                if conn:
-                    self._return_connection(conn, commit=False, error=False)
 
     def create_oauth_user(self, username: str, email: str, supabase_uid: str, oauth_provider: str) -> str:
         """Create a new OAuth user (no password) - returns UUID string - with auto-reconnect"""
@@ -2053,7 +2051,6 @@ class Database:
         max_retries = 3
         for attempt in range(max_retries):
             cursor = None
-            conn = None
             try:
                 cursor = self._get_cursor()
                 user_uuid = uuid.uuid4()
@@ -2090,13 +2087,10 @@ class Database:
                         cursor.close()
                     except:
                         pass
-                if conn:
-                    self._return_connection(conn, commit=True, error=False)
 
     def link_supabase_account(self, user_id: str, supabase_uid: str, oauth_provider: str):
         """Link an existing user account to Supabase OAuth - user_id is UUID"""
         cursor = None
-        conn = None
         try:
             cursor = self._get_cursor()
             user_id_str = str(user_id)
@@ -2108,14 +2102,19 @@ class Database:
                 WHERE id::text = %s
             """, (supabase_uid, oauth_provider, user_id_str))
             self.conn.commit()  # Commit the transaction
+        except Exception as e:
+            if self.conn:
+                try:
+                    self.conn.rollback()
+                except:
+                    pass
+            raise
         finally:
             if cursor:
                 try:
                     cursor.close()
                 except:
                     pass
-            if conn:
-                self._return_connection(conn, commit=True, error=False)
 
     # ========================================================================
     # MARKETPLACE CREDENTIALS METHODS
@@ -2141,46 +2140,44 @@ class Database:
     def get_marketplace_credentials(self, user_id: str, platform: str) -> Optional[Dict]:
         """Get marketplace credentials for a specific platform - user_id is UUID"""
         cursor = None
-        conn = None
         try:
-            cursor, conn = self._get_cursor()
+            cursor = self._get_cursor()
             user_id_str = str(user_id)
             cursor.execute("""
                 SELECT * FROM marketplace_credentials
                 WHERE user_id::text = %s AND platform = %s
             """, (user_id_str, platform))
             row = cursor.fetchone()
-            return dict(row) if row else None
+            result = dict(row) if row else None
+            self._commit_read()  # Close transaction after read
+            return result
         finally:
             if cursor:
                 try:
                     cursor.close()
                 except:
                     pass
-            if conn:
-                self._return_connection(conn, commit=False, error=False)
 
     def get_all_marketplace_credentials(self, user_id: str) -> List[Dict]:
         """Get all marketplace credentials for a user - user_id is UUID"""
         cursor = None
-        conn = None
         try:
-            cursor, conn = self._get_cursor()
+            cursor = self._get_cursor()
             user_id_str = str(user_id)
             cursor.execute("""
                 SELECT * FROM marketplace_credentials
                 WHERE user_id::text = %s
                 ORDER BY platform
             """, (user_id_str,))
-            return [dict(row) for row in cursor.fetchall()]
+            results = [dict(row) for row in cursor.fetchall()]
+            self._commit_read()  # Close transaction after read
+            return results
         finally:
             if cursor:
                 try:
                     cursor.close()
                 except:
                     pass
-            if conn:
-                self._return_connection(conn, commit=False, error=False)
 
     def delete_marketplace_credentials(self, user_id: str, platform: str):
         """Delete marketplace credentials for a platform - user_id is UUID"""
@@ -2208,7 +2205,6 @@ class Database:
     ):
         """Log a user activity - user_id is UUID string"""
         cursor = None
-        conn = None
         try:
             cursor = self._get_cursor()
             user_id_uuid = None
@@ -2240,8 +2236,6 @@ class Database:
                     cursor.close()
                 except:
                     pass
-            if conn:
-                self._return_connection(conn, commit=True, error=False)
 
     def get_activity_logs(
         self,

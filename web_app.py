@@ -16,7 +16,6 @@ from pathlib import Path
 from functools import wraps
 from flask import Flask, render_template, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_required, current_user
-from flask_session import Session
 from werkzeug.security import generate_password_hash
 from dotenv import load_dotenv
 
@@ -49,106 +48,30 @@ print(f"✅ Flask secret key configured (length: {len(flask_secret)})", flush=Tr
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
 app.config['UPLOAD_FOLDER'] = './data/uploads'
 
-# Session configuration for Flask-Login and OAuth
-# NOTE: Using filesystem-based sessions with Flask-Session for multi-worker support
-# Detect production environment by checking for RENDER_EXTERNAL_URL or explicit FLASK_ENV
+# ============================================================================
+# SESSION CONFIGURATION (Built-in Flask cookie sessions)
+# ============================================================================
+# Using Flask's built-in encrypted cookie sessions - perfect for OAuth!
+# - Sessions stored in browser (encrypted with SECRET_KEY)
+# - Survives worker restarts and ephemeral filesystems
+# - No database/Redis/filesystem needed
+# - Perfect for PKCE OAuth flow
+
+# Detect production environment
 is_production = os.getenv('FLASK_ENV') == 'production' or bool(os.getenv('RENDER_EXTERNAL_URL'))
 
-app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent XSS attacks
-# IMPORTANT: Set to 'None' for OAuth flows to allow cross-site cookie sending
-# Lax would block cookies during the OAuth redirect from external provider
-app.config['SESSION_COOKIE_SAMESITE'] = 'None' if is_production else 'Lax'
-# Secure must be True when SameSite=None (required by browsers)
+# Required for OAuth PKCE + SameSite=None cookies
 app.config['SESSION_COOKIE_SECURE'] = True if is_production else False
+app.config['SESSION_COOKIE_SAMESITE'] = 'None' if is_production else 'Lax'
+app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent XSS attacks
 app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
 app.config['REMEMBER_COOKIE_DURATION'] = 86400  # 24 hours
 
-print(f"🔧 Session configuration:", flush=True)
+print(f"🔧 Session configuration (built-in Flask cookie sessions):", flush=True)
+print(f"   - Storage: Encrypted browser cookies (no server-side storage)", flush=True)
 print(f"   - Cookie SameSite: {app.config['SESSION_COOKIE_SAMESITE']}", flush=True)
 print(f"   - Cookie Secure: {app.config['SESSION_COOKIE_SECURE']}", flush=True)
 print(f"   - Cookie HTTPOnly: {app.config['SESSION_COOKIE_HTTPONLY']}", flush=True)
-
-# ============================================================================
-# FLASK-SESSION CONFIGURATION (Server-side session storage)
-# ============================================================================
-# CRITICAL: Use PostgreSQL database for session storage to persist across workers/restarts
-# This fixes the "bad_oauth_state" error on Render's ephemeral filesystem
-
-database_url = os.getenv('DATABASE_URL')
-
-if database_url:
-    # Production: Use PostgreSQL database for session storage
-    from flask_sqlalchemy import SQLAlchemy
-
-    print(f"🔧 Configuring database session storage...", flush=True)
-
-    # Ensure SSL is required for Supabase/Render PostgreSQL
-    if '?' not in database_url:
-        database_url += '?sslmode=require'
-    elif 'sslmode=' not in database_url:
-        database_url += '&sslmode=require'
-
-    # Configure SQLAlchemy with proper SSL and connection settings
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'pool_pre_ping': True,
-        'pool_recycle': 300,
-        'pool_size': 5,
-        'max_overflow': 10,
-        'connect_args': {
-            'sslmode': 'require',
-            'connect_timeout': 10,
-            'keepalives': 1,
-            'keepalives_idle': 30,
-            'keepalives_interval': 10,
-            'keepalives_count': 5,
-        }
-    }
-
-    # Configure Flask-Session to use SQLAlchemy
-    app.config['SESSION_TYPE'] = 'sqlalchemy'
-    app.config['SESSION_PERMANENT'] = False  # Session expires when browser closes
-    app.config['SESSION_USE_SIGNER'] = True  # Sign session cookies for security
-    app.config['SESSION_SQLALCHEMY_TABLE'] = 'flask_sessions'
-
-    # Initialize SQLAlchemy
-    db_sessions = SQLAlchemy(app)
-
-    # Set the SQLAlchemy instance for Flask-Session
-    app.config['SESSION_SQLALCHEMY'] = db_sessions
-
-    # Initialize Flask-Session
-    Session(app)
-
-    # Create sessions table if it doesn't exist
-    with app.app_context():
-        db_sessions.create_all()
-
-    print(f"✅ Flask-Session initialized with PostgreSQL:", flush=True)
-    print(f"   - Type: sqlalchemy (PostgreSQL)", flush=True)
-    print(f"   - Table: flask_sessions", flush=True)
-    print(f"   - Permanent: False", flush=True)
-    print(f"   - Use Signer: True", flush=True)
-else:
-    # Development: Fall back to filesystem for local development
-    print(f"⚠️  DATABASE_URL not set - using filesystem sessions (local dev only!)", flush=True)
-
-    session_dir = Path('./data/flask_session')
-    session_dir.mkdir(parents=True, exist_ok=True)
-
-    app.config['SESSION_TYPE'] = 'filesystem'  # Store sessions on disk
-    app.config['SESSION_FILE_DIR'] = str(session_dir)
-    app.config['SESSION_PERMANENT'] = False  # Session expires when browser closes
-    app.config['SESSION_USE_SIGNER'] = True  # Sign session cookies for security
-    app.config['SESSION_FILE_THRESHOLD'] = 500  # Max number of session files
-
-    # Initialize Flask-Session
-    Session(app)
-
-    print(f"✅ Flask-Session initialized with filesystem:", flush=True)
-    print(f"   - Type: filesystem", flush=True)
-    print(f"   - Directory: {session_dir.absolute()}", flush=True)
 
 # Ensure upload folder exists
 Path(app.config['UPLOAD_FOLDER']).mkdir(parents=True, exist_ok=True)

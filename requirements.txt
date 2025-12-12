@@ -32,6 +32,7 @@ psycopg2-binary>=2.9.9  # PostgreSQL adapter
 
 # Authentication (Supabase OAuth)
 supabase>=2.3.0  # Supabase Python client
+gotrue>=2.0.0  # Supabase Auth library (for FlaskSessionStorage)
 httpx>=0.25.0  # HTTP client for OAuth token exchange
 pyjwt>=2.8.0  # JWT token handling
 passlib[bcrypt]>=1.7.4  # Password hashing

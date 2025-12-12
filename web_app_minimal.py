@@ -62,23 +62,48 @@ print(f"   - Cookie HTTPOnly: {app.config['SESSION_COOKIE_HTTPONLY']}", flush=Tr
 # ============================================================================
 # FLASK-SESSION CONFIGURATION (Server-side session storage)
 # ============================================================================
+# CRITICAL: Use Redis for production to persist sessions across workers/restarts
+# This fixes the "bad_oauth_state" error on Render's ephemeral filesystem
 
-# Create session directory in data folder
-session_dir = Path('./data/flask_session')
-session_dir.mkdir(parents=True, exist_ok=True)
+redis_url = os.getenv('REDIS_URL')
 
-app.config['SESSION_TYPE'] = 'filesystem'  # Store sessions on disk
-app.config['SESSION_FILE_DIR'] = str(session_dir)
-app.config['SESSION_PERMANENT'] = False  # Session expires when browser closes
-app.config['SESSION_USE_SIGNER'] = True  # Sign session cookies for security
-app.config['SESSION_FILE_THRESHOLD'] = 500  # Max number of session files
+if redis_url:
+    # Production: Use Redis for session storage (works with ephemeral filesystems)
+    from redis import Redis
 
-# Initialize Flask-Session
-Session(app)
+    print(f"🔧 Configuring Redis session storage...", flush=True)
+    app.config['SESSION_TYPE'] = 'redis'
+    app.config['SESSION_REDIS'] = Redis.from_url(redis_url)
+    app.config['SESSION_PERMANENT'] = False  # Session expires when browser closes
+    app.config['SESSION_USE_SIGNER'] = True  # Sign session cookies for security
 
-print(f"✅ Flask-Session initialized:", flush=True)
-print(f"   - Type: filesystem", flush=True)
-print(f"   - Directory: {session_dir.absolute()}", flush=True)
+    # Initialize Flask-Session
+    Session(app)
+
+    print(f"✅ Flask-Session initialized with Redis:", flush=True)
+    print(f"   - Type: redis", flush=True)
+    print(f"   - URL: {redis_url[:20]}...", flush=True)
+    print(f"   - Permanent: False", flush=True)
+    print(f"   - Use Signer: True", flush=True)
+else:
+    # Development: Fall back to filesystem for local development
+    print(f"⚠️  REDIS_URL not set - using filesystem sessions (NOT for production!)", flush=True)
+
+    session_dir = Path('./data/flask_session')
+    session_dir.mkdir(parents=True, exist_ok=True)
+
+    app.config['SESSION_TYPE'] = 'filesystem'  # Store sessions on disk
+    app.config['SESSION_FILE_DIR'] = str(session_dir)
+    app.config['SESSION_PERMANENT'] = False  # Session expires when browser closes
+    app.config['SESSION_USE_SIGNER'] = True  # Sign session cookies for security
+    app.config['SESSION_FILE_THRESHOLD'] = 500  # Max number of session files
+
+    # Initialize Flask-Session
+    Session(app)
+
+    print(f"✅ Flask-Session initialized with filesystem:", flush=True)
+    print(f"   - Type: filesystem", flush=True)
+    print(f"   - Directory: {session_dir.absolute()}", flush=True)
 
 # Ensure oauth_state folder exists
 Path('./data/oauth_state').mkdir(parents=True, exist_ok=True)

@@ -194,16 +194,18 @@ def exchange_code_for_session(auth_code: str, code_verifier: str = None) -> Opti
             "apikey": supabase_key,
             "Content-Type": "application/json"
         }
-        # PKCE token exchange: grant_type must be "authorization_code" with code_verifier present
-        # Standard OAuth 2.0 PKCE extension uses authorization_code grant type
+        # Supabase PKCE uses custom grant_type and field names:
+        # - grant_type: "pkce" (Supabase-specific, not standard OAuth)
+        # - auth_code: not "code" (Supabase-specific field name)
+        # - code_verifier: standard PKCE parameter
         payload = {
-            "grant_type": "authorization_code",
-            "code": auth_code,
+            "grant_type": "pkce",
+            "auth_code": auth_code,
             "code_verifier": code_verifier
         }
 
         print(f"Making direct request to: {url}")
-        print(f"Payload (PKCE): {payload}")
+        print(f"Payload (Supabase PKCE): {payload}")
 
         response = httpx.post(url, headers=headers, json=payload, timeout=30.0)
 

@@ -284,10 +284,8 @@ def debug_config():
 @app.route('/')
 def index():
     """Landing page / dashboard"""
-    if current_user.is_authenticated:
-        return render_template('index.html')
-    else:
-        return render_template('index.html')
+    is_guest = not current_user.is_authenticated
+    return render_template('index.html', is_guest=is_guest)
 
 @app.route('/data/<path:filename>')
 def serve_data_files(filename):

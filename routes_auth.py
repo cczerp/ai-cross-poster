@@ -66,26 +66,53 @@ def login():
         print(f"[LOGIN] Supabase sign-in successful for email: {email}")
         print(f"[LOGIN] User ID: {response.user.id}")
 
-        # Use Supabase user data directly (skip PostgreSQL to avoid hangs)
+        # Get user data from Supabase
         user_id = str(response.user.id)
         user_email = response.user.email
         username = user_email.split('@')[0]  # Generate username from email
 
-        print(f"[LOGIN] Creating Flask-Login user from Supabase data (skipping PostgreSQL)", flush=True)
+        # CRITICAL: Ensure user exists in PostgreSQL for session persistence
+        # Otherwise user_loader will fail on next request and session will break
+        print(f"[LOGIN] Checking if user exists in PostgreSQL...", flush=True)
+        user_data = db.get_user_by_id(user_id)
 
-        # Create User object directly from Supabase data
-        # We skip PostgreSQL database queries entirely to avoid connection hangs
-        user = User(
-            user_id,           # Supabase user ID
-            username,          # Username from email
-            user_email,        # Email from Supabase
-            False,             # is_admin (default)
-            True,              # is_active (default)
-            'FREE'             # tier (default)
-        )
+        if not user_data:
+            print(f"[LOGIN] User not found in PostgreSQL, creating user record...", flush=True)
+            try:
+                # Create user in PostgreSQL with Supabase ID
+                # Note: We don't store password hash since Supabase handles auth
+                db.create_user_with_id(user_id, username, user_email, password_hash=None)
+                print(f"[LOGIN] User created in PostgreSQL", flush=True)
+                user_data = db.get_user_by_id(user_id)
+            except Exception as create_error:
+                print(f"[LOGIN ERROR] Failed to create user in PostgreSQL: {create_error}")
+                # Fall back to Supabase-only user (may cause session issues)
+                user_data = None
+
+        # Create User object for Flask-Login
+        if user_data:
+            print(f"[LOGIN] Loading user from PostgreSQL", flush=True)
+            user = User(
+                user_data['id'],
+                user_data['username'],
+                user_data['email'],
+                user_data.get('is_admin', False),
+                user_data.get('is_active', True),
+                user_data.get('tier', 'FREE')
+            )
+        else:
+            print(f"[LOGIN WARNING] Using Supabase-only user (session may not persist)", flush=True)
+            user = User(
+                user_id,           # Supabase user ID
+                username,          # Username from email
+                user_email,        # Email from Supabase
+                False,             # is_admin (default)
+                True,              # is_active (default)
+                'FREE'             # tier (default)
+            )
 
         print(f"[LOGIN] Logging in user: {user.email} (ID: {user.id})")
-        login_user(user)
+        login_user(user, remember=True)
         print(f"[LOGIN] ✅ Login successful for {user.email}", flush=True)
 
         return redirect(url_for('index'))

@@ -1838,6 +1838,37 @@ class Database:
                 except:
                     pass
 
+    def create_user_with_id(self, user_id: str, username: str, email: str, password_hash: str = None):
+        """Create a new user with a specific ID (for Supabase OAuth users) - returns UUID"""
+        cursor = None
+        try:
+            cursor = self._get_cursor()
+            cursor.execute("""
+                INSERT INTO users (id, username, email, password_hash)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE
+                SET username = EXCLUDED.username,
+                    email = EXCLUDED.email,
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING id
+            """, (str(user_id), username, email, password_hash))
+            result = cursor.fetchone()
+            self.conn.commit()  # Commit the transaction
+            return str(result['id'])  # Return UUID as string
+        except Exception as e:
+            if self.conn:
+                try:
+                    self.conn.rollback()
+                except:
+                    pass
+            raise
+        finally:
+            if cursor:
+                try:
+                    cursor.close()
+                except:
+                    pass
+
     def get_user_by_username(self, username: str) -> Optional[Dict]:
         """Get user by username with retry logic"""
         max_retries = 3

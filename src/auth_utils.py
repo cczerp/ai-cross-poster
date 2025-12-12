@@ -189,17 +189,16 @@ def exchange_code_for_session(auth_code: str, code_verifier: str = None) -> Opti
         # Make direct HTTP request to Supabase Auth API
         import httpx
 
-        url = f"{supabase_url}/auth/v1/token"
+        # Supabase PKCE requires grant_type in QUERY STRING (not body)
+        # This is the EXACT format from working commit d7afe24
+        url = f"{supabase_url}/auth/v1/token?grant_type=pkce"
         headers = {
             "apikey": supabase_key,
             "Content-Type": "application/json"
         }
-        # Supabase PKCE uses custom grant_type and field names:
-        # - grant_type: "pkce" (Supabase-specific, not standard OAuth)
-        # - auth_code: not "code" (Supabase-specific field name)
-        # - code_verifier: standard PKCE parameter
+        # Supabase uses custom field name "auth_code" (not standard "code")
+        # Do NOT include grant_type in payload - it's in the query string
         payload = {
-            "grant_type": "pkce",
             "auth_code": auth_code,
             "code_verifier": code_verifier
         }

@@ -50,9 +50,9 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
 app.config['UPLOAD_FOLDER'] = './data/uploads'
 
 # Session configuration for Flask-Login and OAuth
-# NOTE: Using client-side sessions (default) which should work across workers
-# since session data is stored in signed cookies, not server memory
-is_production = os.getenv('FLASK_ENV') == 'production'
+# NOTE: Using filesystem-based sessions with Flask-Session for multi-worker support
+# Detect production environment by checking for RENDER_EXTERNAL_URL or explicit FLASK_ENV
+is_production = os.getenv('FLASK_ENV') == 'production' or bool(os.getenv('RENDER_EXTERNAL_URL'))
 
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent XSS attacks
 # IMPORTANT: Set to 'None' for OAuth flows to allow cross-site cookie sending

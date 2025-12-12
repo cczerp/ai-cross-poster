@@ -32,14 +32,13 @@ def _get_connection_pool():
         # Parse connection string for pool
         connection_params = database_url
         
-        # DISABLE SSL completely to debug connection timeouts
-        # Supabase connection pooler (port 6543) may have SSL issues
-        # Try disabling SSL entirely to see if queries work
+        # Configure SSL and connection timeouts for production databases (Supabase, Render, etc.)
+        # Use sslmode=require for secure connections to cloud PostgreSQL
         if '?' not in connection_params:
-            connection_params += '?sslmode=disable&connect_timeout=10'
+            connection_params += '?sslmode=require&connect_timeout=10'
         else:
             if 'sslmode=' not in connection_params:
-                connection_params += '&sslmode=disable'
+                connection_params += '&sslmode=require'
             if 'connect_timeout=' not in connection_params:
                 connection_params += '&connect_timeout=10'
         

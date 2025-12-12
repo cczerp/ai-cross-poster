@@ -45,7 +45,8 @@ print(f"✅ Flask secret key configured (length: {len(flask_secret)})", flush=Tr
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
 
 # Session configuration for Flask-Login and OAuth
-is_production = os.getenv('FLASK_ENV') == 'production'
+# Detect production environment by checking for RENDER_EXTERNAL_URL or explicit FLASK_ENV
+is_production = os.getenv('FLASK_ENV') == 'production' or bool(os.getenv('RENDER_EXTERNAL_URL'))
 
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent XSS attacks
 app.config['SESSION_COOKIE_SAMESITE'] = 'None' if is_production else 'Lax'

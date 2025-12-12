@@ -468,27 +468,9 @@ def auth_callback():
         print(f"🔍 [CALLBACK] Query params received: {dict(request.args)}", flush=True)
         print(f"🔍 [CALLBACK] All query param keys: {list(request.args.keys())}", flush=True)
 
-        # Reconstruct redirect URL EXACTLY as used during OAuth initiation
-        # CRITICAL: Must include flow_id parameter to match what was sent to Google
-        redirect_url_base = os.getenv("SUPABASE_REDIRECT_URL", "").strip()
-        if not redirect_url_base:
-            render_url = os.getenv("RENDER_EXTERNAL_URL", "").strip()
-            if render_url:
-                redirect_url_base = f"{render_url}/auth/callback"
-            else:
-                base_url = f"{request.scheme}://{request.host}"
-                redirect_url_base = f"{base_url}/auth/callback"
-
-        # Get flow_id from query params
+        # Get flow_id from query params (used to retrieve code_verifier)
         flow_id = request.args.get('flow_id')
-
-        # Reconstruct FULL redirect URL with flow_id (must match what was sent to OAuth provider)
-        if flow_id:
-            redirect_url = f"{redirect_url_base}?flow_id={flow_id}"
-        else:
-            redirect_url = redirect_url_base
-
-        print(f"🔍 [CALLBACK] Using redirect URL for token exchange: {redirect_url}", flush=True)
+        print(f"🔍 [CALLBACK] flow_id from query: {flow_id[:10] if flow_id else 'None'}...", flush=True)
 
         # Get authorization code from query params
         code = request.args.get("code")
@@ -588,13 +570,19 @@ def auth_callback():
             return redirect(url_for('auth.login'))
 
         # Exchange code for session
-        session_data = exchange_code_for_session(code, code_verifier, redirect_url)
+        print(f"🔄 [CALLBACK] Calling exchange_code_for_session...", flush=True)
+        session_data = exchange_code_for_session(code, code_verifier)
+        print(f"✅ [CALLBACK] exchange_code_for_session returned", flush=True)
+        print(f"🔍 [CALLBACK] session_data type: {type(session_data)}", flush=True)
+        print(f"🔍 [CALLBACK] session_data keys: {list(session_data.keys()) if isinstance(session_data, dict) else 'N/A'}", flush=True)
 
         if not session_data or session_data.get("error"):
             error_msg = session_data.get("error") if session_data else "Unknown error"
-            print(f"OAuth exchange failed: {error_msg}")
+            print(f"❌ [CALLBACK] OAuth exchange failed: {error_msg}", flush=True)
             flash(f"OAuth authentication failed: {error_msg}", "error")
             return redirect(url_for('auth.login'))
+
+        print(f"✅ [CALLBACK] Token exchange successful, extracting user data...", flush=True)
 
         # Extract user data from session
         try:
@@ -620,8 +608,13 @@ def auth_callback():
                 metadata = getattr(user_data, 'user_metadata', {})
                 full_name = getattr(metadata, 'full_name', '') if hasattr(metadata, 'full_name') else ''
 
+            print(f"🔍 [CALLBACK] Extracted user data:", flush=True)
+            print(f"   - supabase_uid: {supabase_uid}", flush=True)
+            print(f"   - email: {email}", flush=True)
+            print(f"   - full_name: {full_name}", flush=True)
+
             if not supabase_uid or not email:
-                print(f"Invalid user data: supabase_uid={supabase_uid}, email={email}")
+                print(f"❌ [CALLBACK] Invalid user data: supabase_uid={supabase_uid}, email={email}", flush=True)
                 flash("OAuth authentication failed: Invalid user data", "error")
                 return redirect(url_for('auth.login'))
 
@@ -634,19 +627,26 @@ def auth_callback():
 
         # Find or create user in local database
         try:
+            print(f"🔍 [CALLBACK] Looking up user by supabase_uid: {supabase_uid}", flush=True)
             local_user = db.get_user_by_supabase_uid(supabase_uid)
 
             if not local_user:
+                print(f"⚠️  [CALLBACK] User not found by supabase_uid, checking email: {email}", flush=True)
                 # Check if email already exists (user may have registered with password)
                 local_user = db.get_user_by_email(email)
 
                 if local_user:
+                    print(f"✅ [CALLBACK] Found existing user by email, linking to Supabase", flush=True)
                     # Link existing account to Supabase
                     try:
                         db.link_supabase_account(local_user['id'], supabase_uid, 'google')
+                        print(f"✅ [CALLBACK] Successfully linked account", flush=True)
                     except Exception as e:
-                        print(f"Error linking Supabase account: {e}")
+                        print(f"❌ [CALLBACK] Error linking Supabase account: {e}", flush=True)
+                        import traceback
+                        traceback.print_exc()
                 else:
+                    print(f"⚠️  [CALLBACK] No existing user found, creating new OAuth user", flush=True)
                     # Create new user
                     username = email.split('@')[0]  # Use email prefix as username
                     # Ensure username is unique
@@ -656,6 +656,7 @@ def auth_callback():
                         username = f"{base_username}{counter}"
                         counter += 1
 
+                    print(f"🔍 [CALLBACK] Creating OAuth user with username: {username}", flush=True)
                     try:
                         user_id = db.create_oauth_user(
                             username=username,
@@ -663,24 +664,30 @@ def auth_callback():
                             supabase_uid=supabase_uid,
                             oauth_provider='google'
                         )
+                        print(f"✅ [CALLBACK] Created OAuth user with ID: {user_id}", flush=True)
                         local_user = db.get_user_by_id(user_id)
+                        print(f"✅ [CALLBACK] Retrieved created user from database", flush=True)
                     except Exception as e:
-                        print(f"Error creating OAuth user: {e}")
+                        print(f"❌ [CALLBACK] Error creating OAuth user: {e}", flush=True)
                         import traceback
                         traceback.print_exc()
                         flash("Failed to create user account. Please try again.", "error")
                         return redirect(url_for('auth.login'))
+            else:
+                print(f"✅ [CALLBACK] Found existing user by supabase_uid: {local_user.get('username')}", flush=True)
 
             if not local_user:
                 flash("Failed to retrieve user account. Please try again.", "error")
                 return redirect(url_for('auth.login'))
 
             # Create Flask-Login User object - ensure id is UUID string
+            print(f"🔍 [CALLBACK] Creating Flask-Login User object", flush=True)
             user_id_str = str(local_user['id']) if local_user.get('id') else None
             if not user_id_str:
+                print(f"❌ [CALLBACK] Invalid user ID", flush=True)
                 flash("Invalid user data. Please try again.", "error")
                 return redirect(url_for('auth.login'))
-            
+
             user = User(
                 user_id_str,
                 local_user['username'],
@@ -689,12 +696,16 @@ def auth_callback():
                 local_user.get('is_active', True),
                 local_user.get('tier', 'FREE')
             )
+            print(f"✅ [CALLBACK] User object created for: {local_user['username']}", flush=True)
 
             # Log user in
+            print(f"🔐 [CALLBACK] Calling login_user()...", flush=True)
             login_user(user, remember=True)
+            print(f"✅ [CALLBACK] login_user() completed successfully", flush=True)
 
             # Log activity (with error handling)
             try:
+                print(f"📝 [CALLBACK] Logging activity...", flush=True)
                 db.log_activity(
                     action="google_login",
                     user_id=user_id_str,
@@ -703,9 +714,13 @@ def auth_callback():
                     ip_address=request.remote_addr,
                     user_agent=request.headers.get("User-Agent")
                 )
+                print(f"✅ [CALLBACK] Activity logged", flush=True)
             except Exception as e:
-                print(f"Failed to log activity: {e}")
+                print(f"⚠️  [CALLBACK] Failed to log activity (non-critical): {e}", flush=True)
 
+            print(f"=" * 80, flush=True)
+            print(f"🎉 [CALLBACK] OAuth login successful for {local_user['username']}!", flush=True)
+            print(f"=" * 80, flush=True)
             flash(f"Welcome{', ' + full_name if full_name else ''}! You're now logged in with Google.", "success")
             return redirect(url_for('index'))
         

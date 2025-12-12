@@ -157,7 +157,7 @@ def get_google_oauth_url(session_storage: dict = None, redirect_override: Option
         return None
 
 
-def exchange_code_for_session(auth_code: str, code_verifier: str = None, redirect_uri: str = None) -> Optional[Dict]: 
+def exchange_code_for_session(auth_code: str, code_verifier: str = None) -> Optional[Dict]:
     """
     Exchange OAuth code for user session using PKCE.
 
@@ -167,6 +167,10 @@ def exchange_code_for_session(auth_code: str, code_verifier: str = None, redirec
 
     Returns:
         Dict with user data and session, or None if failed
+
+    Note:
+        PKCE token exchange only requires 'code' and 'code_verifier' parameters.
+        The redirect_uri is NOT needed for PKCE flows (unlike standard OAuth 2.0).
     """
     supabase_url = os.getenv("SUPABASE_URL", "").strip()
     supabase_key = os.getenv("SUPABASE_ANON_KEY", "").strip()

@@ -503,7 +503,7 @@ def login_google():
             flash("Failed to generate Google OAuth URL. Please check Supabase configuration.", "error")
             return redirect(url_for('auth.login'))
 
-        oauth_url, flow_id, state = oauth_result
+        oauth_url, flow_id = oauth_result
 
         # CRITICAL: Mark session as modified to ensure it's saved
         # This is important for multi-worker environments

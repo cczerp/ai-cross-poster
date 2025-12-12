@@ -19,6 +19,7 @@ from flask_login import LoginManager, UserMixin, login_required, current_user
 from werkzeug.security import generate_password_hash
 from dotenv import load_dotenv
 
+# Force fresh deployment - using Flask built-in cookie sessions
 print("🚀 Starting AI Cross-Poster web app...", flush=True)
 
 from src.database import get_db

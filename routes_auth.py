@@ -162,15 +162,26 @@ def register():
         flash("Invalid user data. Please try again.", "error")
         return render_template('register.html')
     
-    user = User(
-        user_id_str,
-        user_data['username'],
-        user_data['email'],
-        user_data.get('is_admin', False),
-        user_data.get('is_active', True),
-        user_data.get('tier', 'FREE')
-    )
-    login_user(user)
+    # Generate verification token
+    from src.email_utils import generate_verification_token, send_verification_email_async
+    from flask import current_app
+    
+    verification_token = generate_verification_token()
+    # Note: user_id_str is UUID string, database method accepts it
+    db.set_verification_token(user_id_str, verification_token)
+    
+    # Send verification email
+    try:
+        # Get mail instance from app (set in web_app.py)
+        mail = current_app.mail
+        send_verification_email_async(mail, email, username, verification_token, current_app)
+        print(f"✅ Verification email queued for {email}")
+    except Exception as e:
+        print(f"⚠️  Failed to send verification email: {e}")
+        import traceback
+        traceback.print_exc()
+        # Continue anyway - user can request resend later
+        flash("Account created, but verification email could not be sent. Please contact support.", "warning")
 
     db.log_activity(
         action="register",
@@ -181,7 +192,8 @@ def register():
         user_agent=request.headers.get("User-Agent")
     )
 
-    return redirect(url_for('index'))
+    # Redirect to email confirmation page instead of auto-login
+    return redirect(url_for('auth.email_sent', email=email))
 
 
 # =============================================================================
@@ -355,6 +367,80 @@ def reset_password(token):
 
 
 # =============================================================================
+# EMAIL VERIFICATION
+# =============================================================================
+
+@auth_bp.route('/email-sent')
+def email_sent():
+    """Show email sent confirmation page."""
+    email = request.args.get('email', '')
+    return render_template('email_sent.html', email=email)
+
+
+@auth_bp.route('/verify-email/<token>')
+def verify_email(token):
+    """Verify user email with token."""
+    if not token:
+        flash("Invalid verification link.", "error")
+        return redirect(url_for('auth.login'))
+    
+    # Verify email using token
+    success = db.verify_email(token)
+    
+    if success:
+        flash("Email verified successfully! You can now log in.", "success")
+        return redirect(url_for('auth.login'))
+    else:
+        flash("Invalid or expired verification link. Please request a new one.", "error")
+        return redirect(url_for('auth.login'))
+
+
+@auth_bp.route('/resend-verification', methods=['GET', 'POST'])
+def resend_verification():
+    """Resend verification email."""
+    if request.method == 'GET':
+        return render_template('resend_verification.html')
+    
+    email = request.form.get('email')
+    if not email:
+        flash("Email is required", "error")
+        return render_template('resend_verification.html')
+    
+    user_data = db.get_user_by_email(email)
+    if not user_data:
+        # Don't reveal if email exists or not (security)
+        flash("If an account exists with that email, a verification link has been sent.", "info")
+        return render_template('resend_verification.html')
+    
+    # Check if already verified
+    if user_data.get('email_verified'):
+        flash("This email is already verified. You can log in.", "info")
+        return redirect(url_for('auth.login'))
+    
+    # Generate new token and send email
+    from src.email_utils import generate_verification_token, send_verification_email_async
+    from flask import current_app
+    
+    verification_token = generate_verification_token()
+    user_id_str = str(user_data['id'])
+    # Note: user_id_str is UUID string, database method accepts it
+    db.set_verification_token(user_id_str, verification_token)
+    
+    try:
+        # Get mail instance from app (set in web_app.py)
+        mail = current_app.mail
+        send_verification_email_async(mail, email, user_data['username'], verification_token, current_app)
+        flash("Verification email sent! Please check your inbox.", "success")
+    except Exception as e:
+        print(f"⚠️  Failed to send verification email: {e}")
+        import traceback
+        traceback.print_exc()
+        flash("Failed to send verification email. Please try again later.", "error")
+    
+    return redirect(url_for('auth.email_sent', email=email))
+
+
+# =============================================================================
 # GOOGLE OAUTH WITH SUPABASE
 # =============================================================================
 
@@ -417,7 +503,7 @@ def login_google():
             flash("Failed to generate Google OAuth URL. Please check Supabase configuration.", "error")
             return redirect(url_for('auth.login'))
 
-        oauth_url, flow_id = oauth_result
+        oauth_url, flow_id, state = oauth_result
 
         # CRITICAL: Mark session as modified to ensure it's saved
         # This is important for multi-worker environments
@@ -472,11 +558,27 @@ def auth_callback():
         flow_id = request.args.get('flow_id')
         print(f"🔍 [CALLBACK] flow_id from query: {flow_id[:10] if flow_id else 'None'}...", flush=True)
 
+        # Get state parameter for CSRF validation (OAuth 2.1 requirement)
+        received_state = request.args.get('state')
+        stored_state = session.get('oauth_state')
+        print(f"🔍 [CALLBACK] State validation - received: {bool(received_state)}, stored: {bool(stored_state)}", flush=True)
+        
+        # Validate state parameter (OAuth 2.1 CSRF protection)
+        if received_state and stored_state:
+            if received_state != stored_state:
+                print(f"❌ [CALLBACK] State mismatch - possible CSRF attack!", flush=True)
+                flash("OAuth authentication failed: Security validation error", "error")
+                return redirect(url_for('auth.login'))
+            print(f"✅ [CALLBACK] State parameter validated successfully", flush=True)
+        elif received_state or stored_state:
+            # One is missing - log warning but don't block (for backward compatibility)
+            print(f"⚠️  [CALLBACK] State parameter missing on one side (received: {bool(received_state)}, stored: {bool(stored_state)})", flush=True)
+
         # Get authorization code from query params
         code = request.args.get("code")
         print(f"🔍 [CALLBACK] Authorization code present: {bool(code)}", flush=True)
         if not code:
-            # Check if there's an error parameter
+            # Check if there's an error parameter (OAuth 2.1 error response)
             error = request.args.get("error")
             error_description = request.args.get("error_description")
             if error:
@@ -503,7 +605,9 @@ def auth_callback():
         if code_verifier:
             verifier_source = 'session'
             print(f"✅ [CALLBACK] Retrieved code verifier from session: {code_verifier[:10]}...", flush=True)
+            # Clean up session (OAuth 2.1 security best practice)
             session.pop('oauth_code_verifier', None)
+            session.pop('oauth_state', None)
             session.pop('oauth_flow_id', None)
         else:
             print(f"⚠️  [CALLBACK] No code verifier in session", flush=True)
@@ -545,11 +649,35 @@ def auth_callback():
             state_file = Path('./data/oauth_state') / f"{flow_id}.txt"
             if state_file.exists():
                 try:
-                    code_verifier = state_file.read_text()
-                    verifier_source = 'filesystem'
-                    print(f"✅ [CALLBACK] Retrieved code verifier from filesystem: {code_verifier[:10]}...", flush=True)
-                    state_file.unlink()
-                    print(f"🧹 [CALLBACK] Deleted state file: {state_file}", flush=True)
+                    # File may contain code_verifier only, or code_verifier\nstate
+                    file_content = state_file.read_text()
+                    lines = file_content.strip().split('\n')
+                    if len(lines) > 0:
+                        temp_code_verifier = lines[0]
+                        state_validation_passed = True
+                        
+                        # Validate state if file contains state and we received state
+                        if len(lines) > 1:
+                            stored_state_from_file = lines[1]
+                            # Only validate if we have both received_state and stored_state_from_file
+                            if received_state and stored_state_from_file:
+                                if received_state != stored_state_from_file:
+                                    print(f"❌ [CALLBACK] State mismatch from file - possible CSRF attack!", flush=True)
+                                    state_validation_passed = False
+                                else:
+                                    print(f"✅ [CALLBACK] State validation passed from file", flush=True)
+                        
+                        # Only set code_verifier if state validation passed
+                        if state_validation_passed:
+                            code_verifier = temp_code_verifier
+                            verifier_source = 'filesystem'
+                            print(f"✅ [CALLBACK] Retrieved code verifier from filesystem: {code_verifier[:10]}...", flush=True)
+                            state_file.unlink()
+                            print(f"🧹 [CALLBACK] Deleted state file: {state_file}", flush=True)
+                        else:
+                            print(f"❌ [CALLBACK] State validation failed, not using code verifier from file", flush=True)
+                    else:
+                        print(f"⚠️  [CALLBACK] State file is empty", flush=True)
                 except Exception as e:
                     print(f"⚠️  [CALLBACK] Failed to read state file: {e}", flush=True)
             else:
@@ -570,9 +698,11 @@ def auth_callback():
             flash("OAuth session expired or lost. Please try signing in again.", "error")
             return redirect(url_for('auth.login'))
 
-        # Exchange code for session
-        print(f"🔄 [CALLBACK] Calling exchange_code_for_session...", flush=True)
-        session_data = exchange_code_for_session(code, code_verifier)
+        # Exchange code for session (OAuth 2.1 Step 5: Token Exchange)
+        print(f"🔄 [CALLBACK] Calling exchange_code_for_session (OAuth 2.1 token exchange)...", flush=True)
+        # Get redirect_uri for validation
+        redirect_uri = request.url.split('?')[0]  # Base URL without query params
+        session_data = exchange_code_for_session(code, code_verifier, redirect_uri=redirect_uri, state=received_state)
         print(f"✅ [CALLBACK] exchange_code_for_session returned", flush=True)
         print(f"🔍 [CALLBACK] session_data type: {type(session_data)}", flush=True)
         print(f"🔍 [CALLBACK] session_data keys: {list(session_data.keys()) if isinstance(session_data, dict) else 'N/A'}", flush=True)

@@ -118,6 +118,34 @@ except Exception:
     pass
 
 # ============================================================================
+# FLASK-MAIL CONFIGURATION
+# ============================================================================
+
+from flask_mail import Mail
+
+# Configure Flask-Mail
+app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
+app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True').lower() == 'true'
+app.config['MAIL_USE_SSL'] = os.getenv('MAIL_USE_SSL', 'False').lower() == 'true'
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', app.config.get('MAIL_USERNAME'))
+
+# Initialize Flask-Mail
+mail = Mail(app)
+
+# Export mail instance for use in routes
+app.mail = mail
+
+# Check if email is configured
+if app.config['MAIL_USERNAME'] and app.config['MAIL_PASSWORD']:
+    print("✅ Flask-Mail configured for email verification")
+else:
+    print("⚠️  Flask-Mail not fully configured (MAIL_USERNAME/MAIL_PASSWORD missing)")
+    print("   Email verification will not work until configured")
+
+# ============================================================================
 # USER MODEL FOR FLASK-LOGIN
 # ============================================================================
 

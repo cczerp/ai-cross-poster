@@ -1,0 +1,164 @@
+[
+  {
+    "name": "__cf_bm",
+    "value": "HQjSbdQ6Qu4Hy40VNFknr_WH459wEcVbeGo0e.tZzQg-1763343071-1.0.1.1-42VcUQkC.N9I3wqp36_5KL2voZlQDMnPBnMvMFOoHgg04WgrR111GFEGF8dGLX2.mvk0gRFihPd3PdpSaOFxHSmYfB1cpLl1MzPe035.asE",
+    "domain": ".www.mercari.com",
+    "path": "/",
+    "expires": 1763344872.2021,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "_cfuvid",
+    "value": "wsFy7NCoUW2qpmpEk7YNiq.k.F.E8sJA59shuKNB8Uw-1763343071852-0.0.1.1-604800000",
+    "domain": ".www.mercari.com",
+    "path": "/",
+    "expires": -1,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "__cf_bm",
+    "value": "4nzdEjoTA_n1F7cnizUsMfvHGe1DN7BGjSFzAPyr5LY-1763343072-1.0.1.1-Ovrhx1GCFnfelXh60dboG0LExALHZpSG_n7P2l4TZB9t4l77JQ3nAZFYkZy8IosgttVVpe8T0vsiKgA0xMX5d3YS.WgzcobE3PsA0c_wGhE",
+    "domain": ".u-web-assets.mercdn.net",
+    "path": "/",
+    "expires": 1763344873.018368,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "_gcl_au",
+    "value": "1.1.1372666577.1763343074",
+    "domain": ".mercari.com",
+    "path": "/",
+    "expires": 1771119073,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "TAsessionID",
+    "value": "c1bf90b7-789c-4717-9c37-67330ca3a6d2|NEW",
+    "domain": ".mercari.com",
+    "path": "/",
+    "expires": 1763344873,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "notice_behavior",
+    "value": "implied,us",
+    "domain": ".mercari.com",
+    "path": "/",
+    "expires": -1,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "usprivacy",
+    "value": "1---",
+    "domain": ".mercari.com",
+    "path": "/",
+    "expires": 1778891475,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "ab.storage.userId.10e16a16-356e-4541-bbc2-4440b8ba6c7a",
+    "value": "g%3Aundefined%7Ce%3Aundefined%7Cc%3A1763343075655%7Cl%3A1763343075658",
+    "domain": ".mercari.com",
+    "path": "/",
+    "expires": 1797903075,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "ab.storage.deviceId.10e16a16-356e-4541-bbc2-4440b8ba6c7a",
+    "value": "g%3A8bd8c962-6b5a-cf31-0b2b-b9d7f2de5d25%7Ce%3Aundefined%7Cc%3A1763343075659%7Cl%3A1763343075659",
+    "domain": ".mercari.com",
+    "path": "/",
+    "expires": 1797903075,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "ab.storage.sessionId.10e16a16-356e-4541-bbc2-4440b8ba6c7a",
+    "value": "g%3A782ea8ad-fdf5-0e11-42e4-3f8e78002b8e%7Ce%3A1763344875662%7Cc%3A1763343075656%7Cl%3A1763343075662",
+    "domain": ".mercari.com",
+    "path": "/",
+    "expires": 1797903075,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "cf_clearance",
+    "value": "SHgy7CzeOEi2X3GW4rqQCJ3B7pRGWQLw543xrsXlTw0-1763343075-1.2.1.1-Ikvny.LZCnrE23mYCUAbVevrer202xUF972Ic3CctuEB1wx6YT70eZX2hVynEWIIojU35L557X7ThhflSHtHQ207Bx7iQmWdQVWGOaqELnAxfcS7PQZb4PF6Z3Vtf91TS92DASloud_W0X4H.mHYVNBXkCxQenr2E7SJeTR59xLQ_cOy_79EC60u9eHTU9CTPiu5bW9CWCVupJhHYrEk5y5QcdxN_LMqoGTmqUh5Whg",
+    "domain": ".www.mercari.com",
+    "path": "/",
+    "expires": 1794879075.937563,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "None",
+    "partitionKey": "https://mercari.com",
+    "_crHasCrossSiteAncestor": false
+  },
+  {
+    "name": "soc_gdid",
+    "value": "eyJraWQiOiJmMzRiN2YiLCJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJjaWQiOiJjYmZkZmJiMi0yNGM4LTQzODQtYTZjNy1iODMyN2RjZWNjNWIifQ.zRSOvhIPrGlaKj4dQipI374K4OwXMUohZluptNzBwZMbaaP7lqztDJI1JBIc3h_hmxBumaL9QBqicnIytnkS_g",
+    "domain": "ingestion.dv.socure.io",
+    "path": "/",
+    "expires": 1797903077.251977,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "_s_did",
+    "value": "eyJraWQiOiJmMzRiN2YiLCJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJkaWQiOiIwNTFlYWFlYS0xOTFjLTQxY2UtYjlhZS01ODVhNmE5M2I3OWEifQ.kdjJ_wgbK8X4gRj0s_RmBPmcCX54SrxwS0-x9UUHaWA97Z0_wR01c1gUSBnWHruFrsPRy9egoe8VdU6cau8h9Q",
+    "domain": ".mercari.com",
+    "path": "/",
+    "expires": 1797903077.254748,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "_mwus",
+    "value": "eyJhY2Nlc3NUb2tlbiI6ImV5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppSWpvaVpHTTJZVFUxTkdZek9XVTBZalE0TWpFMFpEZ3pORFF4TVRVNVpXSTVObUpoTmpVd05ESmtORGd4TkdJd01qQTFNbU0xT1dKbU0yTXhZMlF5TXpReFl6WmhOV00xTkRZMk5UUTRaR0l6Wm1KallqUTVZekJpTnpZNU1HWmhaV016T0RGaVpUY3lNVGd6WWprM05XSm1PRFV4WmpCak1tUXdZalU1TnpBMlltRXpZekUwTmpNeU1EZ3pNelE0TURCallUQTFaak0yTUdVME9UWTJZMkl5TmpGbE1XWTNZVE16Wm1ZMFpXTTBaREppTVRFNFpXRmxNVE0xWW1Jek16WXhJaXdpWkdGMFlTSTZleUoxZFdsa0lqb2laMmc2ZHpvelltTXdaVGc0Wmkwek0yWTFMVFJtTlRJdE9EZ3dNQzFtTmpkbE5UWXlNRFJrTlRZaUxDSmhZMk5sYzNOVWIydGxiaUk2SWpJNllqWXdaV0l5TVRWa1ptWXhZbVptTW1Oa1l6UTVaRFZqT1RFM00yVTNPVGN3WmpOaVpXVmhOMlJqTjJRNE5qTTVZMlZpT1RRM01EWTNaamRoTVdVNU5DSjlMQ0psZUhBaU9qRTNOalU1TXpReE1Ea3NJbWxoZENJNk1UYzJNek0wTXpFd09YMC5PeU9uUG9EQnV6NEhpRnlUeWg0cVJqM3N4cUIwMkt2Z09XdU1ZWnFMbmFNIiwicmVmcmVzaFRva2VuIjoiZXlKaGJHY2lPaUpJVXpJMU5pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SmlJam9pWkdNMllUVTFOR1l6T1dVMFlqUTRNakUwWkRnek5EUXhNVFU1WldJNU5tSmhOalV3TkRKa05EZ3hOR0l3TWpBMU1tTTFPV0ptTTJNeFkyUXlNelF4WXpaaE5XTTFORFkyTlRRNFpHSXpabUpqWWpRNVl6QmlOelk1TUdaaFpXTXpPREZpWlRjeU1UZ3pZamszTldKbU9EVXhaakJqTW1Rd1lqVTVOekEyWW1Fell6RTBOak15TURnek16UTRNREJqWVRBMVpqTTJNR1UwT1RZMlkySXlOakZsTVdZM1lUTXpabVkwWldNMFpESmlNVEU0WldGbE1UTTFZbUl6TXpZeElpd2laR0YwWVNJNmV5SjFkV2xrSWpvaVoyZzZkem96WW1Nd1pUZzRaaTB6TTJZMUxUUm1OVEl0T0Rnd01DMW1OamRsTlRZeU1EUmtOVFlpZlN3aWFXRjBJam94TnpZek16UXpNVEE1ZlEuX2ZMLW5VdzlWd21hUG03VjJpOGtzdW95a0piY2pLUGh1NkRCV0JMalhVYyIsImNzcmZTZWNyZXQiOiJURkVBRDFPdHJhanBvNnlaS05hUjByWUEifQ==",
+    "domain": "www.mercari.com",
+    "path": "/",
+    "expires": 1797903109.536402,
+    "httpOnly": true,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "_mwus.sig",
+    "value": "gP37VZm6ik6kobl63MDjeklapvw",
+    "domain": "www.mercari.com",
+    "path": "/",
+    "expires": 1797903109.536522,
+    "httpOnly": true,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "g_state",
+    "value": "{\"i_l\":0,\"i_ll\":1763343125281,\"i_b\":\"wRIAgXfKLK4c4lyx+E+knCJFbr7iYaoxdpK8onb13eY\"}",
+    "domain": "www.mercari.com",
+    "path": "/",
+    "expires": 1778895125,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  }
+]

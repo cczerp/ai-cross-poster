@@ -23,6 +23,7 @@ customtkinter>=5.2.0
 flask>=3.0.0
 flask-login>=0.6.3
 flask-session>=0.6.0  # Server-side session storage for multi-worker support
+flask-mail>=0.10.0  # Email sending for account verification
 cachelib>=0.10.0  # Required by flask-session
 werkzeug>=3.0.0
 gunicorn>=21.2.0  # Production WSGI server for Render deployment

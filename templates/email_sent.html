@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Check Your Email - Resell Rebel</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            --primary: #4CAF50;
+            --secondary: #2196F3;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px 0;
+        }
+
+        .email-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 40px;
+            max-width: 500px;
+            width: 90%;
+            margin: 20px auto;
+            text-align: center;
+        }
+
+        .email-icon {
+            font-size: 80px;
+            color: var(--primary);
+            margin-bottom: 20px;
+        }
+
+        .email-card h1 {
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .email-card p {
+            color: #666;
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .email-highlight {
+            background: #f0f8ff;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-weight: bold;
+            color: var(--secondary);
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            border-color: var(--primary);
+            padding: 12px 30px;
+            font-size: 16px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        .btn-primary:hover {
+            background: #45a049;
+            border-color: #45a049;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            border-color: #6c757d;
+            padding: 12px 30px;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+            border-color: #5a6268;
+        }
+
+        .login-link {
+            margin-top: 30px;
+            color: #666;
+        }
+
+        .login-link a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .login-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-card">
+        <i class="fas fa-envelope-open-text email-icon"></i>
+        <h1>Check Your Email</h1>
+        <p>We've sent a verification link to:</p>
+        <div class="email-highlight">{{ email }}</div>
+        <p>Please click the link in the email to verify your account and complete registration.</p>
+        <p><small class="text-muted">Didn't receive the email? Check your spam folder or click below to resend.</small></p>
+        
+        <div class="d-grid gap-2">
+            <a href="{{ url_for('auth.resend_verification') }}" class="btn btn-primary">
+                <i class="fas fa-redo"></i> Resend Verification Email
+            </a>
+            <a href="{{ url_for('auth.login') }}" class="btn btn-secondary">
+                <i class="fas fa-sign-in-alt"></i> Back to Login
+            </a>
+        </div>
+
+        <div class="login-link">
+            Already verified? <a href="{{ url_for('auth.login') }}">Login here</a>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

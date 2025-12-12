@@ -82,12 +82,28 @@ if database_url:
 
     print(f"🔧 Configuring database session storage...", flush=True)
 
-    # Configure SQLAlchemy
+    # Ensure SSL is required for Supabase/Render PostgreSQL
+    if '?' not in database_url:
+        database_url += '?sslmode=require'
+    elif 'sslmode=' not in database_url:
+        database_url += '&sslmode=require'
+
+    # Configure SQLAlchemy with proper SSL and connection settings
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         'pool_pre_ping': True,
         'pool_recycle': 300,
+        'pool_size': 5,
+        'max_overflow': 10,
+        'connect_args': {
+            'sslmode': 'require',
+            'connect_timeout': 10,
+            'keepalives': 1,
+            'keepalives_idle': 30,
+            'keepalives_interval': 10,
+            'keepalives_count': 5,
+        }
     }
 
     # Configure Flask-Session to use SQLAlchemy

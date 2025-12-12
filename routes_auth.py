@@ -468,15 +468,26 @@ def auth_callback():
         print(f"🔍 [CALLBACK] Query params received: {dict(request.args)}", flush=True)
         print(f"🔍 [CALLBACK] All query param keys: {list(request.args.keys())}", flush=True)
 
-        # Reconstruct redirect URL exactly as used during OAuth initiation
-        redirect_url = os.getenv("SUPABASE_REDIRECT_URL", "").strip()
-        if not redirect_url:
+        # Reconstruct redirect URL EXACTLY as used during OAuth initiation
+        # CRITICAL: Must include flow_id parameter to match what was sent to Google
+        redirect_url_base = os.getenv("SUPABASE_REDIRECT_URL", "").strip()
+        if not redirect_url_base:
             render_url = os.getenv("RENDER_EXTERNAL_URL", "").strip()
             if render_url:
-                redirect_url = f"{render_url}/auth/callback"
+                redirect_url_base = f"{render_url}/auth/callback"
             else:
                 base_url = f"{request.scheme}://{request.host}"
-                redirect_url = f"{base_url}/auth/callback"
+                redirect_url_base = f"{base_url}/auth/callback"
+
+        # Get flow_id from query params
+        flow_id = request.args.get('flow_id')
+
+        # Reconstruct FULL redirect URL with flow_id (must match what was sent to OAuth provider)
+        if flow_id:
+            redirect_url = f"{redirect_url_base}?flow_id={flow_id}"
+        else:
+            redirect_url = redirect_url_base
+
         print(f"🔍 [CALLBACK] Using redirect URL for token exchange: {redirect_url}", flush=True)
 
         # Get authorization code from query params
@@ -498,8 +509,8 @@ def auth_callback():
 
         # Retrieve code verifier using flow_id parameter (for PKCE)
         print(f"🔍 [CALLBACK] Attempting to retrieve code_verifier...", flush=True)
+        # Note: flow_id already retrieved above for redirect_url reconstruction
 
-        flow_id = request.args.get('flow_id')
         code_verifier = None
         verifier_source = None
 

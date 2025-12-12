@@ -66,51 +66,23 @@ def login():
         print(f"[LOGIN] Supabase sign-in successful for email: {email}")
         print(f"[LOGIN] User ID: {response.user.id}")
 
-        # Get or create user in our database
+        # Use Supabase user data directly (skip PostgreSQL to avoid hangs)
         user_id = str(response.user.id)
         user_email = response.user.email
+        username = user_email.split('@')[0]  # Generate username from email
 
-        # Check if user exists in our database
-        user_data = db.get_user_by_email(user_email) if db else None
+        print(f"[LOGIN] Creating Flask-Login user from Supabase data (skipping PostgreSQL)", flush=True)
 
-        if not user_data:
-            # Create new user record in our database
-            print(f"[LOGIN] Creating new user record for email: {user_email}")
-            username = user_email.split('@')[0]  # Generate username from email
-
-            if db:
-                try:
-                    db.create_user(
-                        username=username,
-                        email=user_email,
-                        password_hash=None,  # Supabase manages password
-                        user_id=user_id  # Use Supabase user ID
-                    )
-                    user_data = db.get_user_by_email(user_email)
-                except Exception as e:
-                    print(f"[LOGIN WARNING] Failed to create user record: {e}")
-                    # Continue anyway - we can still log them in
-
-        # Create User object for Flask-Login
-        if user_data:
-            user = User(
-                str(user_data['id']),
-                user_data['username'],
-                user_data['email'],
-                user_data.get('is_admin', False),
-                user_data.get('is_active', True),
-                user_data.get('tier', 'FREE')
-            )
-        else:
-            # Fallback if database record doesn't exist
-            user = User(
-                user_id,
-                user_email.split('@')[0],
-                user_email,
-                False,  # is_admin
-                True,   # is_active
-                'FREE'  # tier
-            )
+        # Create User object directly from Supabase data
+        # We skip PostgreSQL database queries entirely to avoid connection hangs
+        user = User(
+            user_id,           # Supabase user ID
+            username,          # Username from email
+            user_email,        # Email from Supabase
+            False,             # is_admin (default)
+            True,              # is_active (default)
+            'FREE'             # tier (default)
+        )
 
         print(f"[LOGIN] Logging in user: {user.email} (ID: {user.id})")
         login_user(user)
@@ -657,118 +629,16 @@ def auth_callback():
 
         print(f"✅ [CALLBACK] Authorization code received (length: {len(code)})", flush=True)
 
-        # Retrieve code verifier using flow_id parameter (for PKCE)
-        print(f"🔍 [CALLBACK] Attempting to retrieve code_verifier...", flush=True)
-        # Note: flow_id already retrieved above for redirect_url reconstruction
-
-        code_verifier = None
-        verifier_source = None
-
-        # PRIMARY: Check SESSION FIRST (fastest, most reliable, works everywhere)
-        print(f"🔍 [CALLBACK] Checking session storage...", flush=True)
+        # Log session state for debugging
         print(f"🔍 [CALLBACK] Current session data: {dict(session)}", flush=True)
-        code_verifier = session.get('oauth_code_verifier')
-        if code_verifier:
-            verifier_source = 'session'
-            print(f"✅ [CALLBACK] Retrieved code verifier from session: {code_verifier[:10]}...", flush=True)
-            # Clean up session (OAuth 2.1 security best practice)
-            session.pop('oauth_code_verifier', None)
-            session.pop('oauth_state', None)
-            session.pop('oauth_flow_id', None)
-        else:
-            print(f"⚠️  [CALLBACK] No code verifier in session", flush=True)
 
-        # Fallback 1: Try DATABASE using flow_id (for multi-worker deployments)
-        # DISABLED: Database queries cause hangs/timeouts. Session storage is sufficient.
-        # if not code_verifier and flow_id:
-        #     print(f"🔍 [CALLBACK] flow_id present: {flow_id[:10]}, trying database...", flush=True)
-        #     try:
-        #         print(f"🔍 [CALLBACK] Attempting database query...", flush=True)
-        #         cursor = db._get_cursor()
-        #         try:
-        #             cursor.execute("""
-        #                 SELECT code_verifier FROM oauth_state
-        #                 WHERE flow_id = %s
-        #             """, (flow_id,))
-        #             row = cursor.fetchone()
-        #             if row:
-        #                 code_verifier = row['code_verifier']
-        #                 verifier_source = 'database'
-        #                 print(f"✅ [CALLBACK] Retrieved code verifier from database: {code_verifier[:10]}...", flush=True)
-        #                 # Clean up database entry
-        #                 cursor.execute("DELETE FROM oauth_state WHERE flow_id = %s", (flow_id,))
-        #                 db.conn.commit()
-        #                 print(f"🧹 [CALLBACK] Deleted oauth_state from database", flush=True)
-        #             else:
-        #                 print(f"⚠️  [CALLBACK] No oauth_state found in database for flow_id: {flow_id[:10]}...", flush=True)
-        #         finally:
-        #             cursor.close()
-        #     except Exception as e:
-        #         print(f"⚠️  [CALLBACK] Database query failed: {e}", flush=True)
-        #         import traceback
-        #         traceback.print_exc()
+        # Supabase client with FlaskSessionStorage automatically handles PKCE:
+        # - Code verifier is stored as 'supabase.auth.token-code-verifier'
+        # - exchange_code_for_session() retrieves it automatically
+        # - No manual retrieval needed!
 
-        # Fallback 2: Try filesystem (for local development)
-        if not code_verifier and flow_id:
-            print(f"🔍 [CALLBACK] Trying filesystem...", flush=True)
-            from pathlib import Path
-            state_file = Path('./data/oauth_state') / f"{flow_id}.txt"
-            if state_file.exists():
-                try:
-                    # File may contain code_verifier only, or code_verifier\nstate
-                    file_content = state_file.read_text()
-                    lines = file_content.strip().split('\n')
-                    if len(lines) > 0:
-                        temp_code_verifier = lines[0]
-                        state_validation_passed = True
-                        
-                        # Validate state if file contains state and we received state
-                        if len(lines) > 1:
-                            stored_state_from_file = lines[1]
-                            # Only validate if we have both received_state and stored_state_from_file
-                            if received_state and stored_state_from_file:
-                                if received_state != stored_state_from_file:
-                                    print(f"❌ [CALLBACK] State mismatch from file - possible CSRF attack!", flush=True)
-                                    state_validation_passed = False
-                                else:
-                                    print(f"✅ [CALLBACK] State validation passed from file", flush=True)
-                        
-                        # Only set code_verifier if state validation passed
-                        if state_validation_passed:
-                            code_verifier = temp_code_verifier
-                            verifier_source = 'filesystem'
-                            print(f"✅ [CALLBACK] Retrieved code verifier from filesystem: {code_verifier[:10]}...", flush=True)
-                            state_file.unlink()
-                            print(f"🧹 [CALLBACK] Deleted state file: {state_file}", flush=True)
-                        else:
-                            print(f"❌ [CALLBACK] State validation failed, not using code verifier from file", flush=True)
-                    else:
-                        print(f"⚠️  [CALLBACK] State file is empty", flush=True)
-                except Exception as e:
-                    print(f"⚠️  [CALLBACK] Failed to read state file: {e}", flush=True)
-            else:
-                print(f"⚠️  [CALLBACK] State file not found: {state_file}", flush=True)
-
-        if not flow_id:
-            print(f"⚠️  [CALLBACK] No flow_id parameter in callback", flush=True)
-
-        # Final check
-        if not code_verifier:
-            print(f"❌ [CALLBACK ERROR] No code verifier found in session, database, or filesystem!", flush=True)
-            print(f"❌ [CALLBACK ERROR] flow_id: {flow_id}, Session keys: {list(session.keys())}", flush=True)
-
-        if code_verifier:
-            print(f"✅ [CALLBACK] Using code verifier from {verifier_source}: {code_verifier[:10]}...", flush=True)
-        else:
-            print(f"❌ [CALLBACK FATAL ERROR] Cannot proceed without code_verifier!", flush=True)
-            flash("OAuth session expired or lost. Please try signing in again.", "error")
-            return redirect(url_for('auth.login'))
-
-        # Exchange code for session (OAuth 2.1 Step 5: Token Exchange)
-        print(f"🔄 [CALLBACK] Calling exchange_code_for_session (OAuth 2.1 token exchange)...", flush=True)
-        # Get redirect_uri for validation
-        redirect_uri = request.url.split('?')[0]  # Base URL without query params
-        session_data = exchange_code_for_session(code, code_verifier, redirect_uri=redirect_uri, state=received_state)
+        print(f"🔄 [CALLBACK] Calling exchange_code_for_session (Supabase handles PKCE)...", flush=True)
+        session_data = exchange_code_for_session(code)
         print(f"✅ [CALLBACK] exchange_code_for_session returned", flush=True)
         print(f"🔍 [CALLBACK] session_data type: {type(session_data)}", flush=True)
         print(f"🔍 [CALLBACK] session_data keys: {list(session_data.keys()) if isinstance(session_data, dict) else 'N/A'}", flush=True)

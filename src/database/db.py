@@ -32,29 +32,30 @@ def _get_connection_pool():
         # Parse connection string for pool
         connection_params = database_url
         
-        # DISABLE SSL completely to debug connection timeouts
-        # Supabase connection pooler (port 6543) may have SSL issues
-        # Try disabling SSL entirely to see if queries work
+        # Supabase pooler REQUIRES SSL - cannot use sslmode=disable
+        # Add aggressive timeouts to prevent hanging queries
         if '?' not in connection_params:
-            connection_params += '?sslmode=disable&connect_timeout=10'
+            connection_params += '?sslmode=require&connect_timeout=5&options=-c statement_timeout=10000'
         else:
             if 'sslmode=' not in connection_params:
-                connection_params += '&sslmode=disable'
+                connection_params += '&sslmode=require'
             if 'connect_timeout=' not in connection_params:
-                connection_params += '&connect_timeout=10'
+                connection_params += '&connect_timeout=5'
+            if 'statement_timeout' not in connection_params:
+                connection_params += '&options=-c statement_timeout=10000'
         
-        # Create connection pool with resilient settings
-        # Keepalives prevent Render from closing idle SSL connections
+        # Create connection pool with conservative settings
+        # Small pool size to avoid overwhelming Supabase pooler
         print("🔌 Creating PostgreSQL connection pool...", flush=True)
         _connection_pool = psycopg2.pool.ThreadedConnectionPool(
             minconn=1,  # Minimum connections in pool
-            maxconn=20,  # Maximum connections (increased for resilience)
+            maxconn=5,  # Maximum connections (reduced - pooler has limits)
             dsn=connection_params,
-            connect_timeout=10,
+            connect_timeout=5,
             keepalives=1,
-            keepalives_idle=30,
-            keepalives_interval=10,
-            keepalives_count=5
+            keepalives_idle=10,
+            keepalives_interval=5,
+            keepalives_count=3
         )
         print("✅ Connection pool created", flush=True)
     

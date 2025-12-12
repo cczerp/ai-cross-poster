@@ -66,67 +66,23 @@ def login():
         print(f"[LOGIN] Supabase sign-in successful for email: {email}")
         print(f"[LOGIN] User ID: {response.user.id}")
 
-        # Get or create user in our database
+        # Use Supabase user data directly (skip PostgreSQL to avoid hangs)
         user_id = str(response.user.id)
         user_email = response.user.email
+        username = user_email.split('@')[0]  # Generate username from email
 
-        print(f"[LOGIN] 🔍 About to check database for user...", flush=True)
+        print(f"[LOGIN] Creating Flask-Login user from Supabase data (skipping PostgreSQL)", flush=True)
 
-        # Check if user exists in our database
-        try:
-            print(f"[LOGIN] 🔍 Calling db.get_user_by_email({user_email})...", flush=True)
-            user_data = db.get_user_by_email(user_email) if db else None
-            print(f"[LOGIN] ✅ Database query completed. User found: {bool(user_data)}", flush=True)
-        except Exception as e:
-            print(f"[LOGIN] ❌ Database query FAILED: {e}", flush=True)
-            import traceback
-            traceback.print_exc()
-            user_data = None
-
-        if not user_data:
-            # Create new user record in our database
-            print(f"[LOGIN] Creating new user record for email: {user_email}", flush=True)
-            username = user_email.split('@')[0]  # Generate username from email
-
-            if db:
-                try:
-                    print(f"[LOGIN] 🔍 Calling db.create_user()...", flush=True)
-                    db.create_user(
-                        username=username,
-                        email=user_email,
-                        password_hash=None,  # Supabase manages password
-                        user_id=user_id  # Use Supabase user ID
-                    )
-                    print(f"[LOGIN] ✅ User created in database", flush=True)
-                    print(f"[LOGIN] 🔍 Fetching created user...", flush=True)
-                    user_data = db.get_user_by_email(user_email)
-                    print(f"[LOGIN] ✅ User fetched from database", flush=True)
-                except Exception as e:
-                    print(f"[LOGIN WARNING] Failed to create user record: {e}", flush=True)
-                    import traceback
-                    traceback.print_exc()
-                    # Continue anyway - we can still log them in
-
-        # Create User object for Flask-Login
-        if user_data:
-            user = User(
-                str(user_data['id']),
-                user_data['username'],
-                user_data['email'],
-                user_data.get('is_admin', False),
-                user_data.get('is_active', True),
-                user_data.get('tier', 'FREE')
-            )
-        else:
-            # Fallback if database record doesn't exist
-            user = User(
-                user_id,
-                user_email.split('@')[0],
-                user_email,
-                False,  # is_admin
-                True,   # is_active
-                'FREE'  # tier
-            )
+        # Create User object directly from Supabase data
+        # We skip PostgreSQL database queries entirely to avoid connection hangs
+        user = User(
+            user_id,           # Supabase user ID
+            username,          # Username from email
+            user_email,        # Email from Supabase
+            False,             # is_admin (default)
+            True,              # is_active (default)
+            'FREE'             # tier (default)
+        )
 
         print(f"[LOGIN] Logging in user: {user.email} (ID: {user.id})")
         login_user(user)

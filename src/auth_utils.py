@@ -190,14 +190,14 @@ def exchange_code_for_session(auth_code: str, code_verifier: str = None, redirec
             "apikey": supabase_key,
             "Content-Type": "application/json"
         }
+        # PKCE only requires code and code_verifier, NOT redirect_uri
         payload = {
             "code": auth_code,
-            "code_verifier": code_verifier,
-            "redirect_uri": redirect_uri
+            "code_verifier": code_verifier
         }
 
         print(f"Making direct request to: {url}")
-        print(f"Payload: {payload}")
+        print(f"Payload (PKCE): {payload}")
 
         response = httpx.post(url, headers=headers, json=payload, timeout=30.0)
 

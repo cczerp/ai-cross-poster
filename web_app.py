@@ -123,11 +123,18 @@ app.config['SESSION_KEY_PREFIX'] = 'resell_rebel:session:'  # Namespace for sess
 app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
 
 # Cookie settings for OAuth compatibility
+# CRITICAL FIX: Use 'Lax' for production since we're on the same domain (no cross-site needed)
+# SameSite='None' requires Secure=True but can cause issues with proxies/load balancers
 app.config['SESSION_COOKIE_SECURE'] = True if is_production else False
-app.config['SESSION_COOKIE_SAMESITE'] = 'None' if is_production else 'Lax'
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Changed from 'None' to 'Lax' for same-site compatibility
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent XSS attacks
 app.config['SESSION_COOKIE_NAME'] = 'resell_rebel_session'
+
+# Flask-Login remember cookie settings (critical for session persistence)
 app.config['REMEMBER_COOKIE_DURATION'] = 86400  # 24 hours
+app.config['REMEMBER_COOKIE_SECURE'] = True if is_production else False
+app.config['REMEMBER_COOKIE_HTTPONLY'] = True
+app.config['REMEMBER_COOKIE_SAMESITE'] = 'Lax'
 
 # Initialize Flask-Session
 Session(app)
@@ -139,6 +146,8 @@ print(f"   - Cookie SameSite: {app.config['SESSION_COOKIE_SAMESITE']}", flush=Tr
 print(f"   - Cookie Secure: {app.config['SESSION_COOKIE_SECURE']}", flush=True)
 print(f"   - Cookie HTTPOnly: {app.config['SESSION_COOKIE_HTTPONLY']}", flush=True)
 print(f"   - Session Lifetime: {app.config['PERMANENT_SESSION_LIFETIME']}s", flush=True)
+print(f"   - Remember Cookie Secure: {app.config['REMEMBER_COOKIE_SECURE']}", flush=True)
+print(f"   - Remember Cookie SameSite: {app.config['REMEMBER_COOKIE_SAMESITE']}", flush=True)
 
 # Ensure upload folder exists
 Path(app.config['UPLOAD_FOLDER']).mkdir(parents=True, exist_ok=True)
@@ -253,19 +262,24 @@ login_manager.login_message = 'Please log in to access this page.'
 def load_user(user_id):
     """Load user for Flask-Login - user_id is Supabase UID (or legacy UUID for old users)"""
     try:
+        from flask import session as flask_session
+        
         # user_id is Supabase UID string (stored in session by Flask-Login)
         user_id_str = str(user_id) if user_id else None
         if not user_id_str:
-            print(f"[USER_LOADER] No user_id provided")
+            print(f"[USER_LOADER] No user_id provided", flush=True)
             return None
 
-        print(f"[USER_LOADER] Loading user with Supabase UID: {user_id_str}")
+        print(f"[USER_LOADER] Loading user with Supabase UID: {user_id_str}", flush=True)
+        print(f"[USER_LOADER] Session keys: {list(flask_session.keys())}", flush=True)
+        print(f"[USER_LOADER] Session permanent: {flask_session.permanent}", flush=True)
+        
         user = User.get(user_id_str)
 
         if user:
-            print(f"[USER_LOADER] Successfully loaded user: {user.username}")
+            print(f"[USER_LOADER] ✅ Successfully loaded user: {user.username}", flush=True)
         else:
-            print(f"[USER_LOADER] User not found for ID: {user_id_str}")
+            print(f"[USER_LOADER] ❌ User not found for ID: {user_id_str}", flush=True)
 
         return user
     except (ValueError, TypeError) as e:
@@ -331,6 +345,29 @@ app.register_blueprint(cards_bp)
 app.register_blueprint(main_bp)
 
 print("✅ Flask app initialized and ready to serve requests", flush=True)
+
+# ============================================================================
+# REQUEST HOOKS FOR SESSION DEBUGGING
+# ============================================================================
+
+# Enable verbose session logging with DEBUG_SESSIONS=true environment variable
+DEBUG_SESSIONS = os.getenv('DEBUG_SESSIONS', 'false').lower() == 'true'
+
+if DEBUG_SESSIONS:
+    @app.before_request
+    def log_session_state():
+        """Log session state on each request for debugging"""
+        from flask import session, request
+        # Only log for HTML page requests (not static assets)
+        if request.path.startswith('/static/') or request.path.startswith('/data/'):
+            return
+        
+        print(f"[REQUEST] {request.method} {request.path}", flush=True)
+        print(f"[SESSION] Authenticated: {current_user.is_authenticated}", flush=True)
+        if current_user.is_authenticated:
+            print(f"[SESSION] User: {current_user.username} (ID: {current_user.id})", flush=True)
+        print(f"[SESSION] Session keys: {list(session.keys())}", flush=True)
+        print(f"[SESSION] Session permanent: {session.permanent}", flush=True)
 
 # ============================================================================
 # MAIN ROUTES (not in blueprints)

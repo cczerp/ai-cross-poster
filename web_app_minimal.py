@@ -56,11 +56,17 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
 is_production = os.getenv('FLASK_ENV') == 'production' or bool(os.getenv('RENDER_EXTERNAL_URL'))
 
 # Required for OAuth PKCE + SameSite=None cookies
+# CRITICAL FIX: Use 'Lax' for production since we're on the same domain (no cross-site needed)
 app.config['SESSION_COOKIE_SECURE'] = True if is_production else False
-app.config['SESSION_COOKIE_SAMESITE'] = 'None' if is_production else 'Lax'
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Changed from 'None' to 'Lax' for same-site compatibility
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent XSS attacks
 app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
+
+# Flask-Login remember cookie settings
 app.config['REMEMBER_COOKIE_DURATION'] = 86400  # 24 hours
+app.config['REMEMBER_COOKIE_SECURE'] = True if is_production else False
+app.config['REMEMBER_COOKIE_HTTPONLY'] = True
+app.config['REMEMBER_COOKIE_SAMESITE'] = 'Lax'
 
 print(f"🔧 Session configuration (built-in Flask cookie sessions):", flush=True)
 print(f"   - Storage: Encrypted browser cookies (no server-side storage)", flush=True)

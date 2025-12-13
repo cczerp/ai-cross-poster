@@ -3,7 +3,7 @@ routes_auth.py
 Authentication routes: login, logout, register, password reset, Google OAuth
 """
 import os
-from flask import Blueprint, request, jsonify, redirect, render_template, url_for, flash
+from flask import Blueprint, request, jsonify, redirect, render_template, url_for, flash, session
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -115,8 +115,13 @@ def login():
             )
 
         print(f"[LOGIN] Logging in user: {user.email} (Supabase UID: {user.id})")
+        
+        # CRITICAL: Mark session as permanent for Flask-Login persistence
+        session.permanent = True
+        
         login_user(user, remember=True)
         print(f"[LOGIN] ✅ Login successful for {user.email}", flush=True)
+        print(f"[LOGIN] Session marked as permanent, cookies will persist", flush=True)
 
         return redirect(url_for('index'))
 
@@ -287,7 +292,11 @@ def api_login():
         user_data.get('is_active', True),
         user_data.get('tier', 'FREE')
     )
-    login_user(user)
+    
+    # CRITICAL: Mark session as permanent for Flask-Login persistence
+    session.permanent = True
+    
+    login_user(user, remember=True)
 
     db.log_activity(
         action="api_login",
@@ -805,8 +814,13 @@ def auth_callback():
 
             # Log user in
             print(f"🔐 [CALLBACK] Calling login_user()...", flush=True)
+            
+            # CRITICAL: Mark session as permanent for Flask-Login persistence
+            session.permanent = True
+            
             login_user(user, remember=True)
             print(f"✅ [CALLBACK] login_user() completed successfully", flush=True)
+            print(f"✅ [CALLBACK] Session marked as permanent, cookies will persist", flush=True)
 
             # Log activity (with error handling)
             try:

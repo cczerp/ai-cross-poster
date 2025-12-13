@@ -218,9 +218,26 @@ class Database:
 
             # Get fresh connection from pool
             self.conn = self.pool.getconn()
+
+            # Validate connection before using it
+            # Stale connections from Supabase cause SSL errors
             if self.conn.closed:
-                # Connection is closed, return it to pool and get a new one
+                # Connection is closed, mark it as bad and get a new one
                 self.pool.putconn(self.conn, close=True)
+                self.conn = self.pool.getconn()
+
+            # Test if connection is actually alive by running a simple query
+            try:
+                cursor = self.conn.cursor()
+                cursor.execute("SELECT 1")
+                cursor.close()
+            except Exception as test_error:
+                # Connection is bad (SSL error, etc), close it and get a fresh one
+                print(f"⚠️  Connection validation failed, getting fresh connection: {test_error}", flush=True)
+                try:
+                    self.pool.putconn(self.conn, close=True)
+                except:
+                    pass
                 self.conn = self.pool.getconn()
 
             print(f"✅ Connection acquired from pool", flush=True)
@@ -1884,51 +1901,39 @@ class Database:
                     pass
 
     def get_user_by_supabase_uid(self, supabase_uid: str) -> Optional[Dict]:
-        """Get user by Supabase UID with retry logic"""
-        max_retries = 3
-        for attempt in range(max_retries):
-            cursor = None
-            try:
-                if not supabase_uid:
-                    return None
-
-                cursor = self._get_cursor()
-                cursor.execute("SELECT * FROM users WHERE supabase_uid = %s", (str(supabase_uid),))
-                row = cursor.fetchone()
-
-                if row:
-                    result = dict(row)
-                    # Ensure IDs are returned as strings
-                    result['id'] = str(result['id'])
-                    if result.get('supabase_uid'):
-                        result['supabase_uid'] = str(result['supabase_uid'])
-                    self._commit_read()  # Close transaction after read
-                    return result
-                self._commit_read()  # Close transaction even if no result
+        """Get user by Supabase UID - single attempt, fail fast for user_loader"""
+        cursor = None
+        try:
+            if not supabase_uid:
                 return None
-            except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
-                print(f"⚠️  Database connection error in get_user_by_supabase_uid (attempt {attempt + 1}/{max_retries}): {e}")
-                if attempt < max_retries - 1:
-                    try:
-                        self._get_connection_from_pool()
-                    except Exception as reconnect_error:
-                        print(f"Failed to reconnect: {reconnect_error}")
-                    import time
-                    time.sleep(0.5 * (attempt + 1))
-                else:
-                    raise
-            except Exception as e:
-                print(f"Error in get_user_by_supabase_uid: {e}")
-                import traceback
-                traceback.print_exc()
-                raise
-            finally:
-                if cursor:
-                    try:
-                        cursor.close()
-                    except:
-                        pass
-        return None
+
+            cursor = self._get_cursor()
+            cursor.execute("SELECT * FROM users WHERE supabase_uid = %s", (str(supabase_uid),))
+            row = cursor.fetchone()
+
+            if row:
+                result = dict(row)
+                # Ensure IDs are returned as strings
+                result['id'] = str(result['id'])
+                if result.get('supabase_uid'):
+                    result['supabase_uid'] = str(result['supabase_uid'])
+                self._commit_read()  # Close transaction after read
+                return result
+            self._commit_read()  # Close transaction even if no result
+            return None
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+            # Fail fast for user_loader - don't retry, just return None
+            print(f"⚠️  Database connection error in get_user_by_supabase_uid (fail fast): {e}")
+            return None
+        except Exception as e:
+            print(f"Error in get_user_by_supabase_uid: {e}")
+            return None
+        finally:
+            if cursor:
+                try:
+                    cursor.close()
+                except:
+                    pass
 
     def get_user_by_username(self, username: str) -> Optional[Dict]:
         """Get user by username with retry logic"""

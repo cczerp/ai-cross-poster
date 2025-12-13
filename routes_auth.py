@@ -3,7 +3,7 @@ routes_auth.py
 Authentication routes: login, logout, register, password reset, Google OAuth
 """
 import os
-from flask import Blueprint, request, jsonify, redirect, render_template, url_for, flash
+from flask import Blueprint, request, jsonify, redirect, render_template, url_for, flash, session
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -117,7 +117,6 @@ def login():
         print(f"[LOGIN] Logging in user: {user.email} (Supabase UID: {user.id})")
         
         # CRITICAL: Mark session as permanent for Flask-Login persistence
-        from flask import session
         session.permanent = True
         
         login_user(user, remember=True)
@@ -295,7 +294,6 @@ def api_login():
     )
     
     # CRITICAL: Mark session as permanent for Flask-Login persistence
-    from flask import session
     session.permanent = True
     
     login_user(user, remember=True)

@@ -129,7 +129,6 @@ app.config['SESSION_COOKIE_SECURE'] = True if is_production else False
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Changed from 'None' to 'Lax' for same-site compatibility
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent XSS attacks
 app.config['SESSION_COOKIE_NAME'] = 'resell_rebel_session'
-app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
 
 # Flask-Login remember cookie settings (critical for session persistence)
 app.config['REMEMBER_COOKIE_DURATION'] = 86400  # 24 hours

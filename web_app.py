@@ -123,11 +123,19 @@ app.config['SESSION_KEY_PREFIX'] = 'resell_rebel:session:'  # Namespace for sess
 app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
 
 # Cookie settings for OAuth compatibility
+# CRITICAL FIX: Use 'Lax' for production since we're on the same domain (no cross-site needed)
+# SameSite='None' requires Secure=True but can cause issues with proxies/load balancers
 app.config['SESSION_COOKIE_SECURE'] = True if is_production else False
-app.config['SESSION_COOKIE_SAMESITE'] = 'None' if is_production else 'Lax'
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Changed from 'None' to 'Lax' for same-site compatibility
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent XSS attacks
 app.config['SESSION_COOKIE_NAME'] = 'resell_rebel_session'
+app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
+
+# Flask-Login remember cookie settings (critical for session persistence)
 app.config['REMEMBER_COOKIE_DURATION'] = 86400  # 24 hours
+app.config['REMEMBER_COOKIE_SECURE'] = True if is_production else False
+app.config['REMEMBER_COOKIE_HTTPONLY'] = True
+app.config['REMEMBER_COOKIE_SAMESITE'] = 'Lax'
 
 # Initialize Flask-Session
 Session(app)
@@ -139,6 +147,8 @@ print(f"   - Cookie SameSite: {app.config['SESSION_COOKIE_SAMESITE']}", flush=Tr
 print(f"   - Cookie Secure: {app.config['SESSION_COOKIE_SECURE']}", flush=True)
 print(f"   - Cookie HTTPOnly: {app.config['SESSION_COOKIE_HTTPONLY']}", flush=True)
 print(f"   - Session Lifetime: {app.config['PERMANENT_SESSION_LIFETIME']}s", flush=True)
+print(f"   - Remember Cookie Secure: {app.config['REMEMBER_COOKIE_SECURE']}", flush=True)
+print(f"   - Remember Cookie SameSite: {app.config['REMEMBER_COOKIE_SAMESITE']}", flush=True)
 
 # Ensure upload folder exists
 Path(app.config['UPLOAD_FOLDER']).mkdir(parents=True, exist_ok=True)

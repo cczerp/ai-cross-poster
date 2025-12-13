@@ -154,11 +154,19 @@ class User(UserMixin):
 
     @staticmethod
     def get(user_id):
-        """Get user by ID from PostgreSQL"""
-        user_data = get_db_instance().get_user_by_id(user_id)
+        """Get user by Supabase UID from PostgreSQL"""
+        # Try to get by supabase_uid first (new users)
+        user_data = get_db_instance().get_user_by_supabase_uid(user_id)
+
+        # Fall back to get_user_by_id for legacy users (old users with just id)
+        if not user_data:
+            user_data = get_db_instance().get_user_by_id(user_id)
+
         if user_data:
+            # Use supabase_uid as the User.id if available, otherwise use id
+            user_identifier = user_data.get('supabase_uid') or user_data['id']
             return User(
-                user_data['id'],
+                user_identifier,
                 user_data['username'],
                 user_data['email'],
                 user_data.get('is_admin', False),
@@ -178,15 +186,15 @@ login_manager.login_message = 'Please log in to access this page.'
 
 @login_manager.user_loader
 def load_user(user_id):
-    """Load user for Flask-Login - user_id is UUID string"""
+    """Load user for Flask-Login - user_id is Supabase UID (or legacy UUID for old users)"""
     try:
-        # user_id is UUID string in PostgreSQL
+        # user_id is Supabase UID string (stored in session by Flask-Login)
         user_id_str = str(user_id) if user_id else None
         if not user_id_str:
             print(f"[USER_LOADER] No user_id provided")
             return None
 
-        print(f"[USER_LOADER] Loading user with ID: {user_id_str}")
+        print(f"[USER_LOADER] Loading user with Supabase UID: {user_id_str}")
         user = User.get(user_id_str)
 
         if user:

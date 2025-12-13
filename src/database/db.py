@@ -1839,22 +1839,36 @@ class Database:
                     pass
 
     def create_user_with_id(self, user_id: str, username: str, email: str, password_hash: str = None):
-        """Create a new user with a specific ID (for Supabase OAuth users) - returns UUID"""
+        """Create a new user with a specific Supabase UID (for Supabase OAuth users) - returns Supabase UID"""
         cursor = None
         try:
             cursor = self._get_cursor()
-            cursor.execute("""
-                INSERT INTO users (id, username, email, password_hash)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (id) DO UPDATE
-                SET username = EXCLUDED.username,
-                    email = EXCLUDED.email,
-                    updated_at = CURRENT_TIMESTAMP
-                RETURNING id
-            """, (str(user_id), username, email, password_hash))
+            # Check if user already exists by supabase_uid
+            cursor.execute("SELECT id FROM users WHERE supabase_uid = %s", (str(user_id),))
+            existing = cursor.fetchone()
+
+            if existing:
+                # Update existing user
+                cursor.execute("""
+                    UPDATE users
+                    SET username = %s,
+                        email = %s,
+                        updated_at = CURRENT_TIMESTAMP,
+                        last_login = CURRENT_TIMESTAMP
+                    WHERE supabase_uid = %s
+                    RETURNING supabase_uid
+                """, (username, email, str(user_id)))
+            else:
+                # Insert new user with supabase_uid
+                cursor.execute("""
+                    INSERT INTO users (supabase_uid, username, email, password_hash, oauth_provider)
+                    VALUES (%s, %s, %s, %s, 'supabase')
+                    RETURNING supabase_uid
+                """, (str(user_id), username, email, password_hash))
+
             result = cursor.fetchone()
             self.conn.commit()  # Commit the transaction
-            return str(result['id'])  # Return UUID as string
+            return str(result['supabase_uid'])  # Return Supabase UID as string
         except Exception as e:
             if self.conn:
                 try:
@@ -1868,6 +1882,53 @@ class Database:
                     cursor.close()
                 except:
                     pass
+
+    def get_user_by_supabase_uid(self, supabase_uid: str) -> Optional[Dict]:
+        """Get user by Supabase UID with retry logic"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            cursor = None
+            try:
+                if not supabase_uid:
+                    return None
+
+                cursor = self._get_cursor()
+                cursor.execute("SELECT * FROM users WHERE supabase_uid = %s", (str(supabase_uid),))
+                row = cursor.fetchone()
+
+                if row:
+                    result = dict(row)
+                    # Ensure IDs are returned as strings
+                    result['id'] = str(result['id'])
+                    if result.get('supabase_uid'):
+                        result['supabase_uid'] = str(result['supabase_uid'])
+                    self._commit_read()  # Close transaction after read
+                    return result
+                self._commit_read()  # Close transaction even if no result
+                return None
+            except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                print(f"⚠️  Database connection error in get_user_by_supabase_uid (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    try:
+                        self._get_connection_from_pool()
+                    except Exception as reconnect_error:
+                        print(f"Failed to reconnect: {reconnect_error}")
+                    import time
+                    time.sleep(0.5 * (attempt + 1))
+                else:
+                    raise
+            except Exception as e:
+                print(f"Error in get_user_by_supabase_uid: {e}")
+                import traceback
+                traceback.print_exc()
+                raise
+            finally:
+                if cursor:
+                    try:
+                        cursor.close()
+                    except:
+                        pass
+        return None
 
     def get_user_by_username(self, username: str) -> Optional[Dict]:
         """Get user by username with retry logic"""

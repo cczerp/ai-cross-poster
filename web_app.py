@@ -75,20 +75,43 @@ if not redis_url:
     print("=" * 80, flush=True)
     sys.exit(1)
 
+# Parse Redis URL - handle CLI command format from Upstash
+# Upstash gives: "redis-cli --tls -u redis://..."
+# We need just: "rediss://..." (note the double 's' for TLS)
+if redis_url.startswith('redis-cli'):
+    # Extract URL from CLI command format
+    import re
+    url_match = re.search(r'redis://[^\s]+', redis_url)
+    if url_match:
+        redis_url = url_match.group(0)
+        # Replace redis:// with rediss:// for TLS (Upstash requires TLS)
+        redis_url = redis_url.replace('redis://', 'rediss://', 1)
+        print(f"🔧 Extracted Redis URL from CLI format and enabled TLS", flush=True)
+    else:
+        print(f"❌ Failed to parse Redis URL from CLI format: {redis_url}", flush=True)
+        sys.exit(1)
+
+# Ensure we're using rediss:// for Upstash (TLS required)
+if redis_url.startswith('redis://') and 'upstash.io' in redis_url:
+    redis_url = redis_url.replace('redis://', 'rediss://', 1)
+    print(f"🔧 Converted to rediss:// for Upstash TLS", flush=True)
+
 # Configure Redis client for sessions
 try:
+    # For Upstash, we need SSL/TLS
     session_redis = redis.from_url(
         redis_url,
         decode_responses=False,  # Keep binary for session data
         socket_connect_timeout=5,
-        socket_timeout=5
+        socket_timeout=5,
+        ssl_cert_reqs=None  # Upstash: don't verify SSL cert
     )
     # Test connection
     session_redis.ping()
-    print(f"✅ Redis connection successful: {redis_url.split('@')[1] if '@' in redis_url else 'connected'}", flush=True)
+    print(f"✅ Redis connection successful: {redis_url.split('@')[1].split('/')[0] if '@' in redis_url else 'connected'}", flush=True)
 except Exception as e:
     print(f"❌ Failed to connect to Redis: {e}", flush=True)
-    print(f"   Redis URL: {redis_url}", flush=True)
+    print(f"   Processed Redis URL: {redis_url}", flush=True)
     sys.exit(1)
 
 # Configure Flask-Session to use Redis

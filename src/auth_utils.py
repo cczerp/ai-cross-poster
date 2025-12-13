@@ -40,12 +40,25 @@ def get_redis_client() -> Optional[redis.Redis]:
             print("[REDIS] REDIS_URL not configured")
             return None
 
+        # Parse Redis URL - handle CLI command format from Upstash
+        if redis_url.startswith('redis-cli'):
+            import re
+            url_match = re.search(r'redis://[^\s]+', redis_url)
+            if url_match:
+                redis_url = url_match.group(0)
+                redis_url = redis_url.replace('redis://', 'rediss://', 1)
+
+        # Ensure we're using rediss:// for Upstash (TLS required)
+        if redis_url.startswith('redis://') and 'upstash.io' in redis_url:
+            redis_url = redis_url.replace('redis://', 'rediss://', 1)
+
         try:
             g.redis_client = redis.from_url(
                 redis_url,
                 decode_responses=True,  # Decode responses to strings
                 socket_connect_timeout=5,
-                socket_timeout=5
+                socket_timeout=5,
+                ssl_cert_reqs=None  # Upstash: don't verify SSL cert
             )
             # Test connection
             g.redis_client.ping()

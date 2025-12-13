@@ -39,7 +39,7 @@ self.addEventListener('fetch', (event) => {
           });
           return response;
         })
-        .catch(() => {
+        .catch((err) => {
           // Network failed, try cache as fallback
           return caches.match(event.request);
         })

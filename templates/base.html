@@ -1224,14 +1224,14 @@
         </div>
 
         <div class="nav-item">
-            <a href="{{ url_for('inventory') }}" class="nav-link {% if request.endpoint == 'inventory' %}active{% endif %}">
+            <a href="{{ url_for('main.inventory') }}" class="nav-link {% if request.endpoint == 'main.inventory' %}active{% endif %}">
                 <i class="fas fa-boxes"></i>
                 <span>Inventory</span>
             </a>
         </div>
 
         <div class="nav-item">
-            <a href="{{ url_for('invoicing') }}" class="nav-link {% if request.endpoint == 'invoicing' %}active{% endif %}">
+            <a href="{{ url_for('main.invoicing') }}" class="nav-link {% if request.endpoint == 'main.invoicing' %}active{% endif %}">
                 <i class="fas fa-file-invoice-dollar"></i>
                 <span>Invoicing</span>
             </a>
